@@ -80,13 +80,20 @@ export const createCanvasSlice: StateCreator<
       },
     };
 
-    // Create undo entry
+    // Create undo entry (store actual position/size, not original payload)
     const undoEntry: UndoEntry = {
       id: undoId,
       timestamp: Date.now(),
       source: component.meta.createdBy,
       description: `Added ${typeId}`,
-      forward: { type: "component.create", payload },
+      forward: {
+        type: "component.create",
+        payload: {
+          ...payload,
+          position: finalPosition,
+          size: finalSize,
+        },
+      },
       inverse: { type: "component.remove", payload: { componentId } },
     };
 
