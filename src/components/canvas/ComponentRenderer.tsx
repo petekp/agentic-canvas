@@ -111,6 +111,8 @@ function ComponentContent({
       return <PRListContent data={data as Array<{ id: string; title: string; author: string; state: string }> } />;
     case "github.issue-grid":
       return <IssueGridContent data={data as Array<{ id: string; title: string; state: string; labels: string[] }> } />;
+    case "github.activity-timeline":
+      return <ActivityTimelineContent data={data as Array<{ id: string; type: string; actor: string; message: string; timestamp: number }> } />;
     default:
       return (
         <pre className="text-xs overflow-auto whitespace-pre-wrap">
@@ -200,6 +202,48 @@ function IssueGridContent({
               ))}
             </div>
           )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// Activity timeline renderer
+function ActivityTimelineContent({
+  data,
+}: {
+  data: Array<{ id: string; type: string; actor: string; message: string; timestamp: number }>;
+}) {
+  const typeIcons: Record<string, string> = {
+    push: "⬆",
+    pr: "🔀",
+    issue: "📋",
+    comment: "💬",
+    release: "🏷",
+  };
+
+  const formatTime = (timestamp: number) => {
+    const diff = Date.now() - timestamp;
+    const minutes = Math.floor(diff / 60000);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    return `${Math.floor(hours / 24)}d ago`;
+  };
+
+  return (
+    <ul className="space-y-2">
+      {data.map((activity) => (
+        <li key={activity.id} className="flex items-start gap-2 text-sm">
+          <span className="shrink-0 w-5 text-center" title={activity.type}>
+            {typeIcons[activity.type] ?? "•"}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="truncate">{activity.message}</p>
+            <p className="text-[var(--foreground)]/50 text-xs">
+              {activity.actor} · {formatTime(activity.timestamp)}
+            </p>
+          </div>
         </li>
       ))}
     </ul>

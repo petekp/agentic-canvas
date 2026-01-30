@@ -4,6 +4,10 @@
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
+import { enableMapSet } from "immer";
+
+// Enable Immer's MapSet plugin for Map/Set support in state
+enableMapSet();
 
 import { createCanvasSlice, type CanvasSlice } from "./canvas-slice";
 import { createHistorySlice, type HistorySlice } from "./history-slice";
