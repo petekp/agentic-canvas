@@ -37,3 +37,4 @@ coverage/
 
 # Local files (as per CLAUDE.md convention)
 *.local.md
+.playwright-mcp/
