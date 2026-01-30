@@ -124,6 +124,10 @@ function executeCommandWithoutHistory(
           },
         });
       });
+      // Trigger data fetch if binding exists (needed for redo)
+      if (dataBinding) {
+        get().fetchData(componentId, dataBinding);
+      }
       break;
     }
     case "component.remove": {
