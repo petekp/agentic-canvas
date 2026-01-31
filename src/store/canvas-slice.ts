@@ -31,9 +31,11 @@ const initialCanvas: Canvas = {
   components: [],
 };
 
+
 // Slice interface
 export interface CanvasSlice {
   canvas: Canvas;
+  selectedComponentId: ComponentId | null;
   addComponent: (payload: CreateComponentPayload) => CommandResult;
   updateComponent: (payload: UpdateComponentPayload) => CommandResult;
   removeComponent: (componentId: ComponentId) => CommandResult;
@@ -41,6 +43,7 @@ export interface CanvasSlice {
   resizeComponent: (componentId: ComponentId, size: Size) => CommandResult;
   clearCanvas: (preservePinned: boolean) => CommandResult;
   setGridDimensions: (cellWidth: number, cellHeight: number) => void;
+  selectComponent: (componentId: ComponentId | null) => void;
 }
 
 // Slice creator
@@ -51,6 +54,7 @@ export const createCanvasSlice: StateCreator<
   CanvasSlice
 > = (set, get) => ({
   canvas: initialCanvas,
+  selectedComponentId: null,
 
   addComponent: (payload) => {
     const { typeId, config, dataBinding, position, size, meta } = payload;
@@ -216,6 +220,10 @@ export const createCanvasSlice: StateCreator<
 
     set((state) => {
       state.canvas.components = state.canvas.components.filter((c) => c.id !== componentId);
+      // Clear selection if removed component was selected
+      if (state.selectedComponentId === componentId) {
+        state.selectedComponentId = null;
+      }
     });
 
     get()._pushUndo(undoEntry);
@@ -402,6 +410,12 @@ export const createCanvasSlice: StateCreator<
     set((state) => {
       state.canvas.grid.cellWidth = cellWidth;
       state.canvas.grid.cellHeight = cellHeight;
+    });
+  },
+
+  selectComponent: (componentId) => {
+    set((state) => {
+      state.selectedComponentId = componentId;
     });
   },
 });

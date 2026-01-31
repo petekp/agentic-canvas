@@ -109,9 +109,29 @@ function componentsToLayout(components: ComponentInstance[]) {
 }
 
 export function Canvas() {
-  const { components, grid, moveComponent, resizeComponent } = useCanvas();
+  const { components, grid, moveComponent, resizeComponent, selectedComponentId, selectComponent } = useCanvas();
   const { canUndo, canRedo, undo, redo } = useHistory();
   const { width, containerRef, mounted } = useContainerWidth();
+
+  // Handle click on canvas background to deselect
+  const handleCanvasClick = useCallback(
+    (e: React.MouseEvent) => {
+      // Only deselect if clicking directly on the canvas, not on a component
+      if (e.target === e.currentTarget) {
+        selectComponent(null);
+      }
+    },
+    [selectComponent]
+  );
+
+  // Handle component selection
+  const handleComponentClick = useCallback(
+    (componentId: string, e: React.MouseEvent) => {
+      e.stopPropagation(); // Prevent canvas click from firing
+      selectComponent(componentId);
+    },
+    [selectComponent]
+  );
 
   // Convert components to layout format
   const layout = useMemo(() => componentsToLayout(components), [components]);
@@ -193,6 +213,7 @@ export function Canvas() {
         ref={containerRef}
         className="flex-1 relative p-4 overflow-auto"
         style={{ minHeight: "600px" }}
+        onClick={handleCanvasClick}
       >
         {/* Empty state */}
         {components.length === 0 && (
@@ -229,12 +250,18 @@ export function Canvas() {
             {layout.map((item) => {
               const component = getComponent(item.i);
               if (!component) return null;
+              const isSelected = selectedComponentId === item.i;
               return (
                 <div
                   key={item.i}
-                  className="rounded-lg border border-[var(--grid-line)] bg-[var(--background)] shadow-sm overflow-hidden"
+                  onClick={(e) => handleComponentClick(item.i, e)}
+                  className={`rounded-lg border bg-[var(--background)] shadow-sm overflow-hidden transition-all ${
+                    isSelected
+                      ? "border-blue-500 ring-2 ring-blue-500/30"
+                      : "border-[var(--grid-line)]"
+                  }`}
                 >
-                  <ComponentContent component={component} />
+                  <ComponentContent component={component} isSelected={isSelected} />
                 </div>
               );
             })}

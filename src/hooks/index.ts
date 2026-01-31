@@ -11,18 +11,25 @@ export function useCanvas() {
     useShallow((state) => ({
       components: state.canvas.components,
       grid: state.canvas.grid,
+      selectedComponentId: state.selectedComponentId,
       addComponent: state.addComponent,
       removeComponent: state.removeComponent,
       moveComponent: state.moveComponent,
       resizeComponent: state.resizeComponent,
       clearCanvas: state.clearCanvas,
       setGridDimensions: state.setGridDimensions,
+      selectComponent: state.selectComponent,
     }))
   );
 }
 
 export function useComponent(id: ComponentId) {
   return useStore((state) => state.canvas.components.find((c) => c.id === id));
+}
+
+// Selection hook - returns whether a specific component is selected
+export function useIsSelected(id: ComponentId) {
+  return useStore((state) => state.selectedComponentId === id);
 }
 
 export function useComponentsByType(typeId: string) {

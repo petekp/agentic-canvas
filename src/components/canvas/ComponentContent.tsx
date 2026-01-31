@@ -9,9 +9,10 @@ import type { ComponentInstance } from "@/types";
 
 interface ComponentContentProps {
   component: ComponentInstance;
+  isSelected?: boolean;
 }
 
-export function ComponentContent({ component }: ComponentContentProps) {
+export function ComponentContent({ component, isSelected }: ComponentContentProps) {
   const { removeComponent } = useCanvas();
   const { dataState, refresh } = useComponentData(component.id);
 
