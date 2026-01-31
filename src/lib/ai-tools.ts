@@ -123,11 +123,20 @@ ${componentTypes.map((t) => `- **${t.typeId}**: ${t.description}`).join("\n")}
 ## Data Binding
 
 ### GitHub Components
-- stat-tile: "open_prs", "open_issues", "stars", "forks"
-- pr-list: Shows pull requests, can filter by state
-- issue-grid: Shows issues, can filter by state/labels
+- stat-tile: Metrics like "open_prs", "open_issues", "stars", "forks"
+- pr-list: Shows pull requests
+  - filter: "all" (default), "authored" (my PRs), "review_requested" (PRs needing my review)
+- issue-grid: Shows issues
+  - filter: "all" (default), "assigned" (my issues), "mentioned" (issues I'm involved in), "created" (issues I opened)
 - activity-timeline: Shows recent repository activity
 - my-activity: Shows authenticated user's contributions, requires GITHUB_TOKEN
+
+### Personal Filters (requires GITHUB_USERNAME)
+When the user asks for "my PRs", "PRs to review", "my issues", etc., use the appropriate filter:
+- "Show my PRs" → pr-list with filter: "authored"
+- "Show PRs needing my review" → pr-list with filter: "review_requested"
+- "Show my issues" or "issues assigned to me" → issue-grid with filter: "assigned"
+- "Issues I created" → issue-grid with filter: "created"
 
 ### PostHog Components (require POSTHOG_API_KEY)
 - site-health: Overview metrics with visitor/pageview counts and daily trend

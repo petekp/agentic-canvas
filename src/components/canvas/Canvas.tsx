@@ -19,41 +19,42 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
-import { Undo2, Redo2, Plus, Layers } from "lucide-react";
+import { Undo2, Redo2, Plus, Layers, User, GitPullRequest, BarChart3 } from "lucide-react";
 
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
 
 // Component types available to add
+// filter: personal GitHub filter (authored, review_requested, assigned, etc.)
+// category: for grouping in dropdown
 const componentTypes = [
+  // === My Stuff (Personal Filters) ===
   {
-    typeId: "github.stat-tile",
-    label: "Stat Tile",
-    config: { repo: "assistant-ui/assistant-ui", metric: "open_prs" },
-    size: { cols: 2, rows: 2 },
-    queryType: "stats",
+    typeId: "github.pr-list",
+    label: "My PRs",
+    config: { repo: "assistant-ui/assistant-ui", state: "open", limit: 5, filter: "authored" },
+    size: { cols: 4, rows: 3 },
+    queryType: "pull_requests",
+    category: "personal",
   },
   {
     typeId: "github.pr-list",
-    label: "PR List",
-    config: { repo: "assistant-ui/assistant-ui", state: "open", limit: 5 },
+    label: "PRs to Review",
+    config: { repo: "assistant-ui/assistant-ui", state: "open", limit: 5, filter: "review_requested" },
     size: { cols: 4, rows: 3 },
     queryType: "pull_requests",
+    category: "personal",
   },
   {
     typeId: "github.issue-grid",
-    label: "Issue Grid",
-    config: { repo: "assistant-ui/assistant-ui", state: "open", limit: 8 },
+    label: "My Issues",
+    config: { repo: "assistant-ui/assistant-ui", state: "open", limit: 8, filter: "assigned" },
     size: { cols: 4, rows: 3 },
     queryType: "issues",
-  },
-  {
-    typeId: "github.activity-timeline",
-    label: "Activity",
-    config: { repo: "assistant-ui/assistant-ui", limit: 10 },
-    size: { cols: 3, rows: 4 },
-    queryType: "activity",
+    category: "personal",
   },
   {
     typeId: "github.my-activity",
@@ -61,8 +62,42 @@ const componentTypes = [
     config: { timeWindow: "7d", feedLimit: 10 },
     size: { cols: 4, rows: 5 },
     queryType: "my_activity",
+    category: "personal",
   },
-  // PostHog Analytics
+  // === GitHub (All) ===
+  {
+    typeId: "github.stat-tile",
+    label: "Stat Tile",
+    config: { repo: "assistant-ui/assistant-ui", metric: "open_prs" },
+    size: { cols: 2, rows: 2 },
+    queryType: "stats",
+    category: "github",
+  },
+  {
+    typeId: "github.pr-list",
+    label: "All PRs",
+    config: { repo: "assistant-ui/assistant-ui", state: "open", limit: 5 },
+    size: { cols: 4, rows: 3 },
+    queryType: "pull_requests",
+    category: "github",
+  },
+  {
+    typeId: "github.issue-grid",
+    label: "All Issues",
+    config: { repo: "assistant-ui/assistant-ui", state: "open", limit: 8 },
+    size: { cols: 4, rows: 3 },
+    queryType: "issues",
+    category: "github",
+  },
+  {
+    typeId: "github.activity-timeline",
+    label: "Activity Timeline",
+    config: { repo: "assistant-ui/assistant-ui", limit: 10 },
+    size: { cols: 3, rows: 4 },
+    queryType: "activity",
+    category: "github",
+  },
+  // === PostHog Analytics ===
   {
     typeId: "posthog.site-health",
     label: "Site Health",
@@ -70,6 +105,7 @@ const componentTypes = [
     size: { cols: 4, rows: 3 },
     queryType: "site_health",
     source: "posthog",
+    category: "posthog",
   },
   {
     typeId: "posthog.property-breakdown",
@@ -78,6 +114,7 @@ const componentTypes = [
     size: { cols: 4, rows: 3 },
     queryType: "property_breakdown",
     source: "posthog",
+    category: "posthog",
   },
   {
     typeId: "posthog.top-pages",
@@ -86,6 +123,7 @@ const componentTypes = [
     size: { cols: 4, rows: 4 },
     queryType: "top_pages",
     source: "posthog",
+    category: "posthog",
   },
 ];
 
@@ -102,12 +140,17 @@ function AddComponentButton() {
         source: type.source ?? "mock-github",
         query: {
           type: type.queryType,
-          params: type.config,
+          params: type.config, // Includes filter if present
         },
         refreshInterval: type.source === "posthog" ? 120000 : null,
       },
     });
   };
+
+  // Group components by category
+  const personalTypes = componentTypes.filter((t) => t.category === "personal");
+  const githubTypes = componentTypes.filter((t) => t.category === "github");
+  const posthogTypes = componentTypes.filter((t) => t.category === "posthog");
 
   return (
     <DropdownMenu>
@@ -117,9 +160,42 @@ function AddComponentButton() {
           Add Component
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-48">
-        {componentTypes.map((type) => (
-          <DropdownMenuItem key={type.typeId} onClick={() => handleAdd(type)}>
+      <DropdownMenuContent align="end" className="w-52">
+        {/* My Stuff */}
+        <DropdownMenuLabel className="text-xs text-muted-foreground flex items-center gap-1.5">
+          <User className="h-3 w-3" />
+          My Stuff
+        </DropdownMenuLabel>
+        {personalTypes.map((type, i) => (
+          <DropdownMenuItem key={`personal-${i}`} onClick={() => handleAdd(type)}>
+            <Layers className="h-4 w-4 mr-2 text-muted-foreground" />
+            {type.label}
+          </DropdownMenuItem>
+        ))}
+
+        <DropdownMenuSeparator />
+
+        {/* GitHub */}
+        <DropdownMenuLabel className="text-xs text-muted-foreground flex items-center gap-1.5">
+          <GitPullRequest className="h-3 w-3" />
+          GitHub (All)
+        </DropdownMenuLabel>
+        {githubTypes.map((type, i) => (
+          <DropdownMenuItem key={`github-${i}`} onClick={() => handleAdd(type)}>
+            <Layers className="h-4 w-4 mr-2 text-muted-foreground" />
+            {type.label}
+          </DropdownMenuItem>
+        ))}
+
+        <DropdownMenuSeparator />
+
+        {/* PostHog */}
+        <DropdownMenuLabel className="text-xs text-muted-foreground flex items-center gap-1.5">
+          <BarChart3 className="h-3 w-3" />
+          PostHog
+        </DropdownMenuLabel>
+        {posthogTypes.map((type, i) => (
+          <DropdownMenuItem key={`posthog-${i}`} onClick={() => handleAdd(type)}>
             <Layers className="h-4 w-4 mr-2 text-muted-foreground" />
             {type.label}
           </DropdownMenuItem>

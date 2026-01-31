@@ -4,10 +4,15 @@
 import { NextRequest } from "next/server";
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
+const GITHUB_USERNAME = process.env.GITHUB_USERNAME;
 const GITHUB_API = "https://api.github.com";
 
 // Default repo if none specified
 const DEFAULT_REPO = "assistant-ui/assistant-ui";
+
+// Filter types for personal views
+type PRFilter = "all" | "authored" | "review_requested";
+type IssueFilter = "all" | "assigned" | "mentioned" | "created";
 
 interface GitHubRequest {
   type: "pull_requests" | "issues" | "stats" | "activity" | "my_activity";
@@ -20,6 +25,7 @@ interface GitHubRequest {
     state?: string;
     timeWindow?: "7d" | "14d" | "30d";
     feedLimit?: number;
+    filter?: PRFilter | IssueFilter;
   };
 }
 
@@ -80,6 +86,12 @@ async function fetchPullRequests(
 ) {
   const limit = params.limit ?? 5;
   const state = params.state ?? "open";
+  const filter = (params.filter as PRFilter) ?? "all";
+
+  // Use search API for filtered queries, regular API for "all"
+  if (filter !== "all" && GITHUB_USERNAME) {
+    return fetchFilteredPullRequests(repo, filter, state, limit, headers);
+  }
 
   const res = await fetch(
     `${GITHUB_API}/repos/${repo}/pulls?state=${state}&per_page=${limit}&sort=updated`,
@@ -114,6 +126,70 @@ async function fetchPullRequests(
   }));
 }
 
+// Use GitHub Search API for personal PR filters
+async function fetchFilteredPullRequests(
+  repo: string,
+  filter: PRFilter,
+  state: string,
+  limit: number,
+  headers: HeadersInit
+) {
+  // Build search query parts (joined with spaces, then URL encoded)
+  const parts: string[] = [`repo:${repo}`, "is:pr"];
+
+  // Add state filter
+  if (state === "open") {
+    parts.push("is:open");
+  } else if (state === "closed") {
+    parts.push("is:closed");
+  }
+
+  // Add user filter
+  switch (filter) {
+    case "authored":
+      parts.push(`author:${GITHUB_USERNAME}`);
+      break;
+    case "review_requested":
+      parts.push(`review-requested:${GITHUB_USERNAME}`);
+      break;
+  }
+
+  const q = parts.join(" ");
+  const res = await fetch(
+    `${GITHUB_API}/search/issues?q=${encodeURIComponent(q)}&per_page=${limit}&sort=updated`,
+    { headers }
+  );
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`GitHub Search API error: ${res.status} - ${errorText}`);
+  }
+
+  const data = await res.json();
+  const items = data.items ?? [];
+
+  return items.map((pr: {
+    id: number;
+    number: number;
+    title: string;
+    user: { login: string };
+    state: string;
+    pull_request?: { merged_at: string | null };
+    created_at: string;
+    updated_at: string;
+    labels: Array<{ name: string }>;
+  }) => ({
+    id: `pr_${pr.id}`,
+    number: pr.number,
+    title: pr.title,
+    author: pr.user.login,
+    state: pr.pull_request?.merged_at ? "merged" : pr.state,
+    createdAt: new Date(pr.created_at).getTime(),
+    updatedAt: new Date(pr.updated_at).getTime(),
+    labels: pr.labels.map((l) => l.name),
+  }));
+}
+
 async function fetchIssues(
   repo: string,
   params: GitHubRequest["params"],
@@ -121,6 +197,12 @@ async function fetchIssues(
 ) {
   const limit = params.limit ?? 10;
   const state = params.state ?? "open";
+  const filter = (params.filter as IssueFilter) ?? "all";
+
+  // Use search API for filtered queries, regular API for "all"
+  if (filter !== "all" && GITHUB_USERNAME) {
+    return fetchFilteredIssues(repo, filter, state, limit, headers);
+  }
 
   const res = await fetch(
     `${GITHUB_API}/repos/${repo}/issues?state=${state}&per_page=${limit}&sort=updated`,
@@ -153,6 +235,70 @@ async function fetchIssues(
       labels: issue.labels.map((l) => l.name),
       createdAt: new Date(issue.created_at).getTime(),
     }));
+}
+
+// Use GitHub Search API for personal issue filters
+async function fetchFilteredIssues(
+  repo: string,
+  filter: IssueFilter,
+  state: string,
+  limit: number,
+  headers: HeadersInit
+) {
+  // Build search query parts - explicitly exclude PRs
+  const parts: string[] = [`repo:${repo}`, "is:issue"];
+
+  // Add state filter
+  if (state === "open") {
+    parts.push("is:open");
+  } else if (state === "closed") {
+    parts.push("is:closed");
+  }
+
+  // Add user filter
+  switch (filter) {
+    case "assigned":
+      parts.push(`assignee:${GITHUB_USERNAME}`);
+      break;
+    case "mentioned":
+      parts.push(`involves:${GITHUB_USERNAME}`);
+      break;
+    case "created":
+      parts.push(`author:${GITHUB_USERNAME}`);
+      break;
+  }
+
+  const q = parts.join(" ");
+  const res = await fetch(
+    `${GITHUB_API}/search/issues?q=${encodeURIComponent(q)}&per_page=${limit}&sort=updated`,
+    { headers }
+  );
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`GitHub Search API error: ${res.status} - ${errorText}`);
+  }
+
+  const data = await res.json();
+  const items = data.items ?? [];
+
+  return items.map((issue: {
+    id: number;
+    number: number;
+    title: string;
+    user: { login: string };
+    state: string;
+    labels: Array<{ name: string }>;
+    created_at: string;
+  }) => ({
+    id: `issue_${issue.id}`,
+    number: issue.number,
+    title: issue.title,
+    author: issue.user.login,
+    state: issue.state,
+    labels: issue.labels.map((l) => l.name),
+    createdAt: new Date(issue.created_at).getTime(),
+  }));
 }
 
 async function fetchStats(
