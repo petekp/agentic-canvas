@@ -6,13 +6,21 @@
 import { useCallback } from "react";
 import { useCanvas, useComponentData } from "@/hooks";
 import type { ComponentInstance } from "@/types";
+import {
+  StatsDisplay,
+  type StatItem,
+  DataTable,
+  type Column,
+} from "@/components/tool-ui";
+import { Button } from "@/components/ui/button";
+import { RefreshCw, X, Loader2 } from "lucide-react";
 
 interface ComponentContentProps {
   component: ComponentInstance;
   isSelected?: boolean;
 }
 
-export function ComponentContent({ component, isSelected }: ComponentContentProps) {
+export function ComponentContent({ component, isSelected: _isSelected }: ComponentContentProps) {
   const { removeComponent } = useCanvas();
   const { dataState, refresh } = useComponentData(component.id);
 
@@ -23,25 +31,31 @@ export function ComponentContent({ component, isSelected }: ComponentContentProp
   }, [component.id, removeComponent]);
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Component header - acts as drag handle */}
-      <div className="drag-handle flex items-center justify-between px-3 py-2 border-b border-[var(--grid-color)] bg-[var(--grid-color)]/50 cursor-move">
-        <span className="text-sm font-medium truncate">{formatTypeId(typeId)}</span>
-        <div className="flex gap-1">
-          <button
+    <div className="group/component flex flex-col h-full">
+      {/* Component header - acts as drag handle, visible on hover */}
+      <div className="drag-handle flex items-center justify-between px-3 py-1.5 border-b border-transparent group-hover/component:border-border bg-transparent group-hover/component:bg-muted/50 cursor-move transition-all duration-150">
+        <span className="text-sm font-medium truncate opacity-0 group-hover/component:opacity-100 transition-opacity duration-150">
+          {formatTypeId(typeId)}
+        </span>
+        <div className="flex items-center gap-0.5 opacity-0 group-hover/component:opacity-100 transition-opacity duration-150">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
             onClick={refresh}
-            className="p-1 rounded hover:bg-[var(--grid-line)] transition-colors"
             title="Refresh"
           >
-            <RefreshIcon />
-          </button>
-          <button
+            <RefreshCw className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
             onClick={handleRemove}
-            className="p-1 rounded hover:bg-red-500/20 text-red-500 transition-colors"
             title="Remove"
           >
-            <CloseIcon />
-          </button>
+            <X className="h-3.5 w-3.5" />
+          </Button>
         </div>
       </div>
 
@@ -49,24 +63,30 @@ export function ComponentContent({ component, isSelected }: ComponentContentProp
       <div className="flex-1 p-3 overflow-auto">
         {dataState.status === "loading" && (
           <div className="flex items-center justify-center h-full">
-            <div className="animate-spin rounded-full h-6 w-6 border-2 border-[var(--grid-line)] border-t-[var(--foreground)]" />
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
         )}
 
         {dataState.status === "error" && (
-          <div className="flex items-center justify-center h-full text-red-500 text-sm">
+          <div className="flex items-center justify-center h-full text-destructive text-sm">
             <p>Error: {dataState.error.message}</p>
           </div>
         )}
 
         {dataState.status === "idle" && (
-          <div className="flex items-center justify-center h-full text-[var(--foreground)]/50 text-sm">
+          <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
             <p>No data</p>
           </div>
         )}
 
         {dataState.status === "ready" && (
-          <DataContent typeId={typeId} config={config} data={dataState.data} label={component.meta.label} />
+          <DataContent
+            typeId={typeId}
+            config={config}
+            data={dataState.data}
+            label={component.meta.label}
+            componentId={component.id}
+          />
         )}
       </div>
     </div>
@@ -79,25 +99,53 @@ function DataContent({
   config,
   data,
   label,
+  componentId,
 }: {
   typeId: string;
   config: Record<string, unknown>;
   data: unknown;
   label?: string;
+  componentId: string;
 }) {
   switch (typeId) {
     case "github.stat-tile":
-      return <StatTileContent config={config} data={data as { value: number; trend: number }} label={label} />;
+      return (
+        <StatTileContent
+          config={config}
+          data={data as { value: number; trend: number }}
+          label={label}
+          componentId={componentId}
+        />
+      );
     case "github.pr-list":
       return (
         <PRListContent
-          data={data as Array<{ id: string; title: string; author: string; state: string }>}
+          data={data as Array<{
+            id: string;
+            number: number;
+            title: string;
+            author: string;
+            state: string;
+            labels: string[];
+            createdAt: number;
+            updatedAt: number;
+          }>}
+          componentId={componentId}
         />
       );
     case "github.issue-grid":
       return (
         <IssueGridContent
-          data={data as Array<{ id: string; title: string; state: string; labels: string[] }>}
+          data={data as Array<{
+            id: string;
+            number: number;
+            title: string;
+            author: string;
+            state: string;
+            labels: string[];
+            createdAt: number;
+          }>}
+          componentId={componentId}
         />
       );
     case "github.activity-timeline":
@@ -123,93 +171,164 @@ function DataContent({
   }
 }
 
-// Stat tile renderer
+// Stat tile renderer using tool-ui StatsDisplay
 function StatTileContent({
   config,
   data,
   label,
+  componentId,
 }: {
   config: Record<string, unknown>;
-  data: { value: number; trend: number };
+  data: { value: number; trend: number; sparkline?: number[] };
   label?: string;
+  componentId: string;
 }) {
   // Use config.metric if available, otherwise fall back to label
   const metric = (config.metric as string) ?? label ?? "unknown";
-  const trendColor = data.trend > 0 ? "text-green-500" : data.trend < 0 ? "text-red-500" : "";
+  const metricLabel = metric.replace(/_/g, " ");
+
+  // Build stat item for StatsDisplay
+  const stat: StatItem = {
+    key: metric,
+    label: metricLabel,
+    value: data.value,
+    format: { kind: "number", compact: data.value >= 1000 },
+    ...(data.trend !== 0 && {
+      diff: {
+        value: data.trend,
+        decimals: 0,
+        upIsPositive: true,
+      },
+    }),
+    // Add sparkline if available
+    ...(data.sparkline && data.sparkline.length >= 2 && {
+      sparkline: {
+        data: data.sparkline,
+        color: "var(--foreground)",
+      },
+    }),
+  };
 
   return (
-    <div className="flex flex-col items-center justify-center h-full">
-      <p className="text-3xl font-bold">{data.value}</p>
-      <p className="text-sm text-[var(--foreground)]/70 capitalize">{metric.replace(/_/g, " ")}</p>
-      {data.trend !== 0 && (
-        <p className={`text-sm ${trendColor}`}>
-          {data.trend > 0 ? "+" : ""}
-          {data.trend}
-        </p>
-      )}
-    </div>
+    <StatsDisplay
+      id={`stats-${componentId}`}
+      stats={[stat]}
+    />
   );
 }
 
-// PR list renderer
+// PR data row type
+interface PRRow {
+  id: string;
+  number: number;
+  title: string;
+  author: string;
+  state: string;
+  labels: string[];
+  updatedAt: string;
+}
+
+// PR list renderer using DataTable
 function PRListContent({
   data,
+  componentId,
 }: {
-  data: Array<{ id: string; title: string; author: string; state: string }>;
+  data: Array<{
+    id: string;
+    number: number;
+    title: string;
+    author: string;
+    state: string;
+    labels: string[];
+    createdAt: number;
+    updatedAt: number;
+  }>;
+  componentId: string;
 }) {
+  const columns: Column<PRRow>[] = [
+    { key: "number", label: "#", width: "50px", sortable: true },
+    { key: "title", label: "Title", truncate: true, priority: "primary" },
+    { key: "author", label: "Author", hideOnMobile: true },
+    { key: "state", label: "State", format: { kind: "badge" } },
+    { key: "updatedAt", label: "Updated", format: { kind: "date", dateFormat: "relative" }, align: "right" },
+  ];
+
+  const rows: PRRow[] = data.map((pr) => ({
+    id: pr.id,
+    number: pr.number,
+    title: pr.title,
+    author: pr.author,
+    state: pr.state,
+    labels: pr.labels,
+    updatedAt: new Date(pr.updatedAt).toISOString(),
+  }));
+
   return (
-    <ul className="space-y-2">
-      {data.map((pr) => (
-        <li key={pr.id} className="flex items-start gap-2 text-sm">
-          <span
-            className={`shrink-0 w-2 h-2 mt-1.5 rounded-full ${
-              pr.state === "open"
-                ? "bg-green-500"
-                : pr.state === "merged"
-                  ? "bg-purple-500"
-                  : "bg-gray-500"
-            }`}
-          />
-          <div className="min-w-0">
-            <p className="truncate font-medium">{pr.title}</p>
-            <p className="text-[var(--foreground)]/50 text-xs">{pr.author}</p>
-          </div>
-        </li>
-      ))}
-    </ul>
+    <DataTable
+      id={`pr-list-${componentId}`}
+      columns={columns}
+      data={rows}
+      rowIdKey="id"
+      emptyMessage="No pull requests"
+      defaultSort={{ by: "updatedAt", direction: "desc" }}
+    />
   );
 }
 
-// Issue grid renderer
+// Issue data row type
+interface IssueRow {
+  id: string;
+  number: number;
+  title: string;
+  author: string;
+  state: string;
+  labels: string[];
+  createdAt: string;
+}
+
+// Issue grid renderer using DataTable
 function IssueGridContent({
   data,
+  componentId,
 }: {
-  data: Array<{ id: string; title: string; state: string; labels: string[] }>;
+  data: Array<{
+    id: string;
+    number: number;
+    title: string;
+    author: string;
+    state: string;
+    labels: string[];
+    createdAt: number;
+  }>;
+  componentId: string;
 }) {
+  const columns: Column<IssueRow>[] = [
+    { key: "number", label: "#", width: "50px", sortable: true },
+    { key: "title", label: "Title", truncate: true, priority: "primary" },
+    { key: "author", label: "Author", hideOnMobile: true },
+    { key: "state", label: "State", format: { kind: "badge" } },
+    { key: "createdAt", label: "Created", format: { kind: "date", dateFormat: "relative" }, align: "right" },
+  ];
+
+  const rows: IssueRow[] = data.map((issue) => ({
+    id: issue.id,
+    number: issue.number,
+    title: issue.title,
+    author: issue.author,
+    state: issue.state,
+    labels: issue.labels,
+    createdAt: new Date(issue.createdAt).toISOString(),
+  }));
+
   return (
-    <ul className="space-y-2">
-      {data.map((issue) => (
-        <li key={issue.id} className="text-sm">
-          <div className="flex items-center gap-2">
-            <span
-              className={`shrink-0 w-2 h-2 rounded-full ${
-                issue.state === "open" ? "bg-green-500" : "bg-gray-500"
-              }`}
-            />
-            <p className="truncate">{issue.title}</p>
-          </div>
-          {issue.labels.length > 0 && (
-            <div className="flex gap-1 mt-1 ml-4">
-              {issue.labels.slice(0, 3).map((label) => (
-                <span key={label} className="px-1.5 py-0.5 text-xs rounded bg-[var(--grid-color)]">
-                  {label}
-                </span>
-              ))}
-            </div>
-          )}
-        </li>
-      ))}
-    </ul>
+    <DataTable
+      id={`issue-list-${componentId}`}
+      columns={columns}
+      data={rows}
+      rowIdKey="id"
+      emptyMessage="No issues"
+      defaultSort={{ by: "createdAt", direction: "desc" }}
+    />
   );
 }
 
@@ -245,7 +364,7 @@ function ActivityTimelineContent({
           </span>
           <div className="min-w-0 flex-1">
             <p className="truncate">{activity.message}</p>
-            <p className="text-[var(--foreground)]/50 text-xs">
+            <p className="text-muted-foreground text-xs">
               {activity.actor} · {formatTime(activity.timestamp)}
             </p>
           </div>
@@ -266,24 +385,3 @@ function formatTypeId(typeId: string): string {
   );
 }
 
-// Icons
-function RefreshIcon() {
-  return (
-    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-      />
-    </svg>
-  );
-}
-
-function CloseIcon() {
-  return (
-    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-    </svg>
-  );
-}

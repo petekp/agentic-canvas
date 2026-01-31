@@ -1,7 +1,10 @@
 // ChatInput - text input for chat messages with Enter to send
-// Shift+Enter for new lines
+// Uses shadcn Textarea and Button components
 
 import { useState, useCallback, type KeyboardEvent, type ChangeEvent } from "react";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
+import { SendHorizonal } from "lucide-react";
 
 interface ChatInputProps {
   onSend: (message: string) => void;
@@ -42,24 +45,24 @@ export function ChatInput({
   }, [value, disabled, onSend]);
 
   return (
-    <div className="flex gap-2 p-3 border-t border-[var(--grid-line)]">
-      <textarea
+    <div className="flex gap-2 p-3">
+      <Textarea
         value={value}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
         disabled={disabled}
         placeholder={placeholder}
         rows={1}
-        className="flex-1 resize-none rounded-md border border-[var(--grid-line)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] placeholder:text-[var(--grid-line)] focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-        style={{ minHeight: "40px", maxHeight: "120px" }}
+        className="min-h-10 max-h-32 resize-none"
       />
-      <button
+      <Button
         onClick={handleSubmit}
         disabled={disabled || !value.trim()}
-        className="px-4 py-2 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        size="icon"
+        className="shrink-0"
       >
-        Send
-      </button>
+        <SendHorizonal className="h-4 w-4" />
+      </Button>
     </div>
   );
 }

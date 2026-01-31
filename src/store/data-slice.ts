@@ -64,8 +64,8 @@ export const createDataSlice: StateCreator<
     });
 
     try {
-      // v0.1: Use mock data source
-      const result = await fetchMockData(binding);
+      // Fetch from GitHub API
+      const result = await fetchGitHubData(binding);
 
       // Update cache and component
       set((state) => {
@@ -162,87 +162,23 @@ function generateCacheKey(binding: DataBinding): string {
   return `${binding.source}:${binding.query.type}:${JSON.stringify(binding.query.params)}`;
 }
 
-// Mock data fetcher (v0.1)
-async function fetchMockData(binding: DataBinding): Promise<{ data: unknown; ttl: number }> {
-  // Simulate network delay
-  await new Promise((resolve) => setTimeout(resolve, 500));
-
+// Fetch data from GitHub API route
+async function fetchGitHubData(binding: DataBinding): Promise<{ data: unknown; ttl: number }> {
   const { query } = binding;
 
-  // Return mock data based on query type
-  switch (query.type) {
-    case "pull_requests":
-      return {
-        data: generateMockPRs(query.params as { repo?: string; limit?: number }),
-        ttl: 60000,
-      };
-    case "issues":
-      return {
-        data: generateMockIssues(query.params as { repo?: string; limit?: number }),
-        ttl: 60000,
-      };
-    case "stats":
-      return {
-        data: generateMockStats(query.params as { repo?: string; metric?: string }),
-        ttl: 30000,
-      };
-    case "activity":
-      return {
-        data: generateMockActivity(query.params as { repo?: string; limit?: number }),
-        ttl: 30000,
-      };
-    default:
-      return { data: null, ttl: 60000 };
+  const response = await fetch("/api/github", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      type: query.type,
+      params: query.params,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error ?? `API error: ${response.status}`);
   }
-}
 
-// Mock data generators
-function generateMockPRs(params: { repo?: string; limit?: number }) {
-  const limit = params.limit ?? 5;
-  return Array.from({ length: limit }, (_, i) => ({
-    id: `pr_${i + 1}`,
-    number: 100 + i,
-    title: `Feature: Add ${["authentication", "caching", "logging", "metrics", "validation"][i % 5]}`,
-    author: ["alice", "bob", "charlie", "diana", "eve"][i % 5],
-    state: i === 0 ? "open" : i % 3 === 0 ? "merged" : "open",
-    createdAt: Date.now() - i * 86400000,
-    updatedAt: Date.now() - i * 3600000,
-    labels: i % 2 === 0 ? ["enhancement"] : ["bug"],
-  }));
-}
-
-function generateMockIssues(params: { repo?: string; limit?: number }) {
-  const limit = params.limit ?? 10;
-  return Array.from({ length: limit }, (_, i) => ({
-    id: `issue_${i + 1}`,
-    number: 50 + i,
-    title: `Issue: ${["Fix crash", "Add feature", "Update docs", "Improve perf", "Refactor"][i % 5]}`,
-    author: ["user1", "user2", "user3"][i % 3],
-    state: i % 4 === 0 ? "closed" : "open",
-    labels: [["bug", "high-priority"], ["enhancement"], ["documentation"], ["performance"], ["refactor"]][i % 5],
-    createdAt: Date.now() - i * 172800000,
-  }));
-}
-
-function generateMockStats(params: { repo?: string; metric?: string }) {
-  const metrics: Record<string, { value: number; trend: number }> = {
-    open_prs: { value: 12, trend: 2 },
-    open_issues: { value: 34, trend: -5 },
-    stars: { value: 1250, trend: 15 },
-    forks: { value: 89, trend: 3 },
-    contributors: { value: 24, trend: 1 },
-  };
-  return metrics[params.metric ?? "open_prs"] ?? { value: 0, trend: 0 };
-}
-
-function generateMockActivity(params: { repo?: string; limit?: number }) {
-  const limit = params.limit ?? 10;
-  const types = ["push", "pr", "issue", "comment", "release"];
-  return Array.from({ length: limit }, (_, i) => ({
-    id: `activity_${i + 1}`,
-    type: types[i % types.length],
-    actor: ["alice", "bob", "charlie"][i % 3],
-    message: `${types[i % types.length]} activity #${i + 1}`,
-    timestamp: Date.now() - i * 1800000,
-  }));
+  return response.json();
 }

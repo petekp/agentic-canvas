@@ -3,7 +3,7 @@
 // Canvas component - the main grid-based workspace
 // Uses react-grid-layout for drag & drop and resize functionality
 
-import { useEffect, useCallback, useState, useMemo } from "react";
+import { useEffect, useCallback, useMemo } from "react";
 import ReactGridLayout, { useContainerWidth, type Layout, type LayoutItem } from "react-grid-layout";
 import { getCompactor } from "react-grid-layout/core";
 
@@ -13,45 +13,53 @@ const overlapCompactor = getCompactor(null, true, false);
 import { useCanvas, useHistory } from "@/hooks";
 import { ComponentContent } from "./ComponentContent";
 import type { ComponentInstance } from "@/types";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Undo2, Redo2, Plus, Layers } from "lucide-react";
 
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
 
-// Test button to add sample components (temporary for development)
-function AddTestComponentButton() {
-  const { addComponent } = useCanvas();
-  const [isOpen, setIsOpen] = useState(false);
+// Component types available to add
+const componentTypes = [
+  {
+    typeId: "github.stat-tile",
+    label: "Stat Tile",
+    config: { repo: "assistant-ui/assistant-ui", metric: "open_prs" },
+    size: { cols: 2, rows: 2 },
+    queryType: "stats",
+  },
+  {
+    typeId: "github.pr-list",
+    label: "PR List",
+    config: { repo: "assistant-ui/assistant-ui", state: "open", limit: 5 },
+    size: { cols: 4, rows: 3 },
+    queryType: "pull_requests",
+  },
+  {
+    typeId: "github.issue-grid",
+    label: "Issue Grid",
+    config: { repo: "assistant-ui/assistant-ui", state: "open", limit: 8 },
+    size: { cols: 4, rows: 3 },
+    queryType: "issues",
+  },
+  {
+    typeId: "github.activity-timeline",
+    label: "Activity",
+    config: { repo: "assistant-ui/assistant-ui", limit: 10 },
+    size: { cols: 3, rows: 4 },
+    queryType: "activity",
+  },
+];
 
-  const componentTypes = [
-    {
-      typeId: "github.stat-tile",
-      label: "Stat Tile",
-      config: { repo: "assistant-ui/assistant-ui", metric: "open_prs" },
-      size: { cols: 2, rows: 2 },
-      queryType: "stats",
-    },
-    {
-      typeId: "github.pr-list",
-      label: "PR List",
-      config: { repo: "assistant-ui/assistant-ui", state: "open", limit: 5 },
-      size: { cols: 4, rows: 3 },
-      queryType: "pull_requests",
-    },
-    {
-      typeId: "github.issue-grid",
-      label: "Issue Grid",
-      config: { repo: "assistant-ui/assistant-ui", state: "open", limit: 8 },
-      size: { cols: 4, rows: 3 },
-      queryType: "issues",
-    },
-    {
-      typeId: "github.activity-timeline",
-      label: "Activity",
-      config: { repo: "assistant-ui/assistant-ui", limit: 10 },
-      size: { cols: 3, rows: 4 },
-      queryType: "activity",
-    },
-  ];
+// Dropdown button to add components
+function AddComponentButton() {
+  const { addComponent } = useCanvas();
 
   const handleAdd = (type: (typeof componentTypes)[0]) => {
     addComponent({
@@ -67,31 +75,25 @@ function AddTestComponentButton() {
         refreshInterval: null,
       },
     });
-    setIsOpen(false);
   };
 
   return (
-    <div className="relative">
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="px-3 py-1.5 text-sm rounded-md bg-blue-500 text-white hover:bg-blue-600 transition-colors"
-      >
-        + Add Component
-      </button>
-      {isOpen && (
-        <div className="absolute top-full left-0 mt-1 bg-[var(--background)] border border-[var(--grid-line)] rounded-md shadow-lg z-50 min-w-[160px]">
-          {componentTypes.map((type) => (
-            <button
-              key={type.typeId}
-              onClick={() => handleAdd(type)}
-              className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--grid-color)] transition-colors first:rounded-t-md last:rounded-b-md"
-            >
-              {type.label}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="default" size="sm">
+          <Plus className="h-4 w-4 mr-1.5" />
+          Add Component
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-48">
+        {componentTypes.map((type) => (
+          <DropdownMenuItem key={type.typeId} onClick={() => handleAdd(type)}>
+            <Layers className="h-4 w-4 mr-2 text-muted-foreground" />
+            {type.label}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -136,6 +138,12 @@ export function Canvas() {
   // Convert components to layout format
   const layout = useMemo(() => componentsToLayout(components), [components]);
 
+  // Build component lookup Map for O(1) access (js-index-maps)
+  const componentMap = useMemo(
+    () => new Map(components.map((c) => [c.id, c])),
+    [components]
+  );
+
   // Calculate row height based on container
   const rowHeight = 80;
 
@@ -178,48 +186,51 @@ export function Canvas() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [canUndo, canRedo, undo, redo]);
 
-  // Find component by ID
+  // Find component by ID using Map for O(1) lookup (js-index-maps)
   const getComponent = useCallback(
-    (id: string) => components.find((c) => c.id === id),
-    [components]
+    (id: string) => componentMap.get(id),
+    [componentMap]
   );
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-[var(--grid-color)]">
-        <h1 className="text-xl font-semibold">Agentic Canvas</h1>
-        <div className="flex gap-2">
-          <AddTestComponentButton />
-          <button
+    <div className="relative h-full">
+      {/* Floating toolbar */}
+      <div className="absolute top-4 right-4 z-10 flex items-center gap-2">
+        <div className="flex items-center border border-border rounded-md bg-card/80 backdrop-blur-sm shadow-sm">
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => undo()}
             disabled={!canUndo}
-            className="px-3 py-1.5 text-sm rounded-md bg-[var(--grid-color)] disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[var(--grid-line)] transition-colors"
+            className="rounded-r-none border-r border-border"
           >
-            Undo
-          </button>
-          <button
+            <Undo2 className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => redo()}
             disabled={!canRedo}
-            className="px-3 py-1.5 text-sm rounded-md bg-[var(--grid-color)] disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[var(--grid-line)] transition-colors"
+            className="rounded-l-none"
           >
-            Redo
-          </button>
+            <Redo2 className="h-4 w-4" />
+          </Button>
         </div>
+        <AddComponentButton />
       </div>
 
-      {/* Canvas area */}
+      {/* Canvas area - full bleed */}
       <div
         ref={containerRef}
-        className="flex-1 relative p-4 overflow-auto"
-        style={{ minHeight: "600px" }}
+        className="h-full overflow-auto pt-16 px-4 pb-4"
         onClick={handleCanvasClick}
       >
         {/* Empty state */}
         {components.length === 0 && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="text-center text-[var(--foreground)]/50">
-              <p className="text-lg">Canvas is empty</p>
+          <div className="flex items-center justify-center h-full pointer-events-none">
+            <div className="text-center text-muted-foreground">
+              <Layers className="h-12 w-12 mx-auto mb-3 opacity-30" />
+              <p className="text-lg font-medium">Canvas is empty</p>
               <p className="text-sm mt-1">Add components to get started</p>
             </div>
           </div>
@@ -255,10 +266,10 @@ export function Canvas() {
                 <div
                   key={item.i}
                   onClick={(e) => handleComponentClick(item.i, e)}
-                  className={`rounded-lg border bg-[var(--background)] shadow-sm overflow-hidden transition-all ${
+                  className={`rounded-lg border overflow-hidden transition-all duration-150 ${
                     isSelected
-                      ? "border-blue-500 ring-2 ring-blue-500/30"
-                      : "border-[var(--grid-line)]"
+                      ? "border-primary ring-2 ring-primary/20 shadow-sm bg-zinc-900/70 backdrop-blur-sm"
+                      : "border-transparent hover:border-border hover:shadow-sm"
                   }`}
                 >
                   <ComponentContent component={component} isSelected={isSelected} />
