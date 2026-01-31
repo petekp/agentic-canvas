@@ -290,8 +290,9 @@ function ActivityFeedItem({
       </span>
       <div className="min-w-0 flex-1">
         <p className="truncate">{message}</p>
-        <p className="text-muted-foreground text-xs">
-          {subtitle} · {formatRelativeTime(timestamp)}
+        <p className="text-muted-foreground text-xs truncate">
+          <span className="truncate">{subtitle}</span>
+          <span className="shrink-0"> · {formatRelativeTime(timestamp)}</span>
         </p>
       </div>
     </li>
@@ -306,9 +307,15 @@ interface SparklineBarChartProps {
   data: number[];
   labels?: string[];
   title?: string;
+  showEndpointLabels?: boolean;
 }
 
-function SparklineBarChart({ data, labels, title }: SparklineBarChartProps) {
+function SparklineBarChart({
+  data,
+  labels,
+  title,
+  showEndpointLabels = true,
+}: SparklineBarChartProps) {
   const maxValue = Math.max(...data, 1);
 
   return (
@@ -331,6 +338,12 @@ function SparklineBarChart({ data, labels, title }: SparklineBarChartProps) {
           );
         })}
       </div>
+      {showEndpointLabels && data.length > 1 && (
+        <div className="flex justify-between text-[10px] text-muted-foreground mt-0.5">
+          <span>{data.length - 1}d ago</span>
+          <span>today</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -547,20 +560,26 @@ function MyActivityContent({ data, componentId }: MyActivityContentProps) {
       },
       {
         key: "prs_opened",
-        label: "PRs Opened",
+        label: "PRs",
         value: stats.prsOpened,
-        format: { kind: "number" },
-      },
-      {
-        key: "prs_merged",
-        label: "PRs Merged",
-        value: stats.prsMerged,
         format: { kind: "number" },
       },
       {
         key: "reviews",
         label: "Reviews",
         value: stats.reviews,
+        format: { kind: "number" },
+      },
+      {
+        key: "issues",
+        label: "Issues",
+        value: stats.issuesOpened,
+        format: { kind: "number" },
+      },
+      {
+        key: "comments",
+        label: "Comments",
+        value: stats.comments,
         format: { kind: "number" },
       },
     ],
