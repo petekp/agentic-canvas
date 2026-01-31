@@ -231,6 +231,8 @@ export interface UndoEntry {
   description: string;
   forward: CanvasCommand;
   inverse: CanvasCommand;
+  /** View context where this action was performed (for auto-navigation on undo) */
+  viewContext: ViewId | null;
 }
 
 export type HistoryAction =

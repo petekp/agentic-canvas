@@ -161,6 +161,9 @@ export const createWorkspaceSlice: StateCreator<
     const pinnedComponents = currentComponents.filter((c) => c.meta.pinned);
     const nonPinnedComponents = currentComponents.filter((c) => !c.meta.pinned);
 
+    // Capture current view context for undo navigation
+    const previousViewId = get().activeViewId;
+
     const undoEntry: UndoEntry = {
       id: undoId,
       timestamp: Date.now(),
@@ -187,6 +190,7 @@ export const createWorkspaceSlice: StateCreator<
           description: "Restore previous canvas state",
         },
       },
+      viewContext: previousViewId,
     };
 
     // Compute snapshot hash for change detection

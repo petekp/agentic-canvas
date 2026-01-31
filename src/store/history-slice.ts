@@ -39,6 +39,15 @@ export const createHistorySlice: StateCreator<
     for (let i = 0; i < actualSteps; i++) {
       const entry = undoStack[undoStack.length - 1];
       if (entry) {
+        // Navigate to the view where this action was performed
+        const currentViewId = get().activeViewId;
+        if (entry.viewContext !== currentViewId && entry.viewContext !== null) {
+          // Switch to the view context without recording history
+          set((state) => {
+            state.activeViewId = entry.viewContext;
+          });
+        }
+
         // Execute inverse command without recording history
         executeCommandWithoutHistory(get, set, entry.inverse);
 
@@ -60,6 +69,15 @@ export const createHistorySlice: StateCreator<
     for (let i = 0; i < actualSteps; i++) {
       const entry = redoStack[redoStack.length - 1];
       if (entry) {
+        // Navigate to the view where this action was performed
+        const currentViewId = get().activeViewId;
+        if (entry.viewContext !== currentViewId && entry.viewContext !== null) {
+          // Switch to the view context without recording history
+          set((state) => {
+            state.activeViewId = entry.viewContext;
+          });
+        }
+
         // Execute forward command without recording history
         executeCommandWithoutHistory(get, set, entry.forward);
 
@@ -175,6 +193,34 @@ function executeCommandWithoutHistory(
     case "batch": {
       for (const cmd of command.payload.commands) {
         executeCommandWithoutHistory(get, set, cmd);
+      }
+      break;
+    }
+    case "view.load": {
+      // Re-execute view load (used for redo)
+      const { viewId } = command.payload;
+      const view = get().workspace.views.find((v) => v.id === viewId);
+      if (view) {
+        const pinnedComponents = get().canvas.components.filter((c) => c.meta.pinned);
+        const loadedComponents = JSON.parse(JSON.stringify(view.snapshot.components));
+
+        // Regenerate IDs
+        loadedComponents.forEach((c: { id: string; dataState: { status: string } }) => {
+          c.id = `cmp_${nanoid(10)}`;
+          c.dataState = { status: "idle" };
+        });
+
+        set((state) => {
+          state.canvas.components = [...pinnedComponents, ...loadedComponents];
+          state.activeViewId = viewId;
+        });
+
+        // Trigger data fetches
+        for (const comp of loadedComponents) {
+          if (comp.dataBinding) {
+            get().fetchData(comp.id, comp.dataBinding);
+          }
+        }
       }
       break;
     }

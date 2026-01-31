@@ -99,6 +99,7 @@ export const createCanvasSlice: StateCreator<
         },
       },
       inverse: { type: "component.remove", payload: { componentId } },
+      viewContext: get().activeViewId,
     };
 
     set((state) => {
@@ -158,6 +159,7 @@ export const createCanvasSlice: StateCreator<
           meta: beforeMeta,
         },
       },
+      viewContext: get().activeViewId,
     };
 
     set((state) => {
@@ -216,6 +218,7 @@ export const createCanvasSlice: StateCreator<
           meta: component.meta,
         },
       },
+      viewContext: get().activeViewId,
     };
 
     set((state) => {
@@ -275,6 +278,7 @@ export const createCanvasSlice: StateCreator<
       description: `Moved component`,
       forward: { type: "component.move", payload: { componentId, position } },
       inverse: { type: "component.move", payload: { componentId, position: beforePosition } },
+      viewContext: get().activeViewId,
     };
 
     set((state) => {
@@ -329,6 +333,7 @@ export const createCanvasSlice: StateCreator<
       description: `Resized component`,
       forward: { type: "component.resize", payload: { componentId, size } },
       inverse: { type: "component.resize", payload: { componentId, size: beforeSize } },
+      viewContext: get().activeViewId,
     };
 
     set((state) => {
@@ -387,6 +392,7 @@ export const createCanvasSlice: StateCreator<
           description: "Restore cleared components",
         },
       },
+      viewContext: get().activeViewId,
     };
 
     set((state) => {
