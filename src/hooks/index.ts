@@ -56,9 +56,14 @@ export function useViews() {
   return useStore(
     useShallow((state) => ({
       views: state.workspace.views,
+      activeViewId: state.activeViewId,
       saveView: state.saveView,
       loadView: state.loadView,
       deleteView: state.deleteView,
+      renameView: state.renameView,
+      duplicateView: state.duplicateView,
+      setActiveView: state.setActiveView,
+      hasUnsavedChanges: state.hasUnsavedChanges,
     }))
   );
 }

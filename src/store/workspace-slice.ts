@@ -51,14 +51,38 @@ const initialWorkspace: Workspace = {
   updatedAt: Date.now(),
 };
 
+// Extended payload for updating existing views
+export interface UpdateViewPayload extends SaveViewPayload {
+  viewId?: ViewId; // If provided, updates existing view instead of creating new
+}
+
 // Slice interface
 export interface WorkspaceSlice {
   workspace: Workspace;
-  saveView: (payload: SaveViewPayload) => ViewId;
+  activeViewId: ViewId | null;
+  viewSnapshotHash: string | null; // Hash of active view's snapshot for change detection
+  saveView: (payload: UpdateViewPayload) => ViewId;
   loadView: (viewId: ViewId) => CommandResult;
   deleteView: (viewId: ViewId) => void;
+  renameView: (viewId: ViewId, name: string) => void;
+  duplicateView: (viewId: ViewId) => ViewId | null;
+  setActiveView: (viewId: ViewId | null) => void;
   updateSettings: (settings: Partial<WorkspaceSettings>) => void;
   activateTrigger: (triggerId: TriggerId) => void;
+  // Computed helper
+  hasUnsavedChanges: () => boolean;
+}
+
+// Simple hash for change detection (not cryptographic, just for comparison)
+function hashCanvas(canvas: Canvas): string {
+  return JSON.stringify({
+    components: canvas.components.map((c) => ({
+      typeId: c.typeId,
+      position: c.position,
+      size: c.size,
+      config: c.config,
+    })),
+  });
 }
 
 // Slice creator
@@ -69,26 +93,50 @@ export const createWorkspaceSlice: StateCreator<
   WorkspaceSlice
 > = (set, get) => ({
   workspace: initialWorkspace,
+  activeViewId: null,
+  viewSnapshotHash: null,
 
   saveView: (payload) => {
-    const viewId = `view_${nanoid(10)}`;
-    const { name, description, triggerIds } = payload;
+    const { name, description, triggerIds, viewId: existingViewId } = payload;
+    const now = Date.now();
 
     // Deep clone current canvas for snapshot
     const snapshot: Canvas = JSON.parse(JSON.stringify(get().canvas));
+    const snapshotHash = hashCanvas(snapshot);
 
+    // Update existing view or create new
+    if (existingViewId) {
+      const existingIndex = get().workspace.views.findIndex((v) => v.id === existingViewId);
+      if (existingIndex !== -1) {
+        set((state) => {
+          state.workspace.views[existingIndex].snapshot = snapshot;
+          state.workspace.views[existingIndex].name = name;
+          state.workspace.views[existingIndex].description = description;
+          state.workspace.views[existingIndex].updatedAt = now;
+          state.workspace.updatedAt = now;
+          state.viewSnapshotHash = snapshotHash;
+        });
+        return existingViewId;
+      }
+    }
+
+    // Create new view
+    const viewId = `view_${nanoid(10)}`;
     const view: View = {
       id: viewId,
       name,
       description,
       snapshot,
       triggerIds: triggerIds ?? [],
-      createdAt: Date.now(),
+      createdAt: now,
+      updatedAt: now,
     };
 
     set((state) => {
       state.workspace.views.push(view);
-      state.workspace.updatedAt = Date.now();
+      state.workspace.updatedAt = now;
+      state.activeViewId = viewId;
+      state.viewSnapshotHash = snapshotHash;
     });
 
     return viewId;
@@ -141,6 +189,9 @@ export const createWorkspaceSlice: StateCreator<
       },
     };
 
+    // Compute snapshot hash for change detection
+    const snapshotHash = hashCanvas(view.snapshot);
+
     // Load view (preserve pinned components)
     set((state) => {
       const loadedComponents: ComponentInstance[] = JSON.parse(
@@ -155,6 +206,8 @@ export const createWorkspaceSlice: StateCreator<
 
       state.canvas.components = [...pinnedComponents, ...loadedComponents];
       state.workspace.updatedAt = Date.now();
+      state.activeViewId = viewId;
+      state.viewSnapshotHash = snapshotHash;
     });
 
     get()._pushUndo(undoEntry);
@@ -179,10 +232,92 @@ export const createWorkspaceSlice: StateCreator<
   },
 
   deleteView: (viewId) => {
+    const isActiveView = get().activeViewId === viewId;
     set((state) => {
       state.workspace.views = state.workspace.views.filter((v) => v.id !== viewId);
       state.workspace.updatedAt = Date.now();
+      // Clear active view if we deleted it
+      if (isActiveView) {
+        state.activeViewId = null;
+        state.viewSnapshotHash = null;
+      }
     });
+  },
+
+  renameView: (viewId, name) => {
+    set((state) => {
+      const view = state.workspace.views.find((v) => v.id === viewId);
+      if (view) {
+        view.name = name;
+        view.updatedAt = Date.now();
+        state.workspace.updatedAt = Date.now();
+      }
+    });
+  },
+
+  duplicateView: (viewId) => {
+    const view = get().workspace.views.find((v) => v.id === viewId);
+    if (!view) return null;
+
+    const newViewId = `view_${nanoid(10)}`;
+    const now = Date.now();
+
+    // Generate unique name
+    const baseName = view.name;
+    const existingNames = get().workspace.views.map((v) => v.name);
+    let newName = `${baseName} (Copy)`;
+    let counter = 2;
+    while (existingNames.includes(newName)) {
+      newName = `${baseName} (${counter})`;
+      counter++;
+    }
+
+    const newView: View = {
+      id: newViewId,
+      name: newName,
+      description: view.description,
+      snapshot: JSON.parse(JSON.stringify(view.snapshot)),
+      triggerIds: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    set((state) => {
+      state.workspace.views.push(newView);
+      state.workspace.updatedAt = now;
+    });
+
+    return newViewId;
+  },
+
+  setActiveView: (viewId) => {
+    if (viewId === null) {
+      set((state) => {
+        state.activeViewId = null;
+        state.viewSnapshotHash = null;
+      });
+      return;
+    }
+
+    const view = get().workspace.views.find((v) => v.id === viewId);
+    if (view) {
+      const snapshotHash = hashCanvas(view.snapshot);
+      set((state) => {
+        state.activeViewId = viewId;
+        state.viewSnapshotHash = snapshotHash;
+      });
+    }
+  },
+
+  hasUnsavedChanges: () => {
+    const { activeViewId, viewSnapshotHash, canvas } = get();
+    if (!activeViewId || !viewSnapshotHash) {
+      // No active view means any components on canvas are "unsaved"
+      return canvas.components.length > 0;
+    }
+    // Compare current canvas hash with stored snapshot hash
+    const currentHash = hashCanvas(canvas);
+    return currentHash !== viewSnapshotHash;
   },
 
   updateSettings: (settings) => {

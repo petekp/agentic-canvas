@@ -10,8 +10,9 @@ import { getCompactor } from "react-grid-layout/core";
 // Allow overlap - items can stack freely, no pushing behavior
 // This works well with undo/redo and future agent-driven layouts
 const overlapCompactor = getCompactor(null, true, false);
-import { useCanvas, useHistory } from "@/hooks";
+import { useCanvas, useHistory, useViews } from "@/hooks";
 import { ComponentContent } from "./ComponentContent";
+import { ViewTabs } from "./ViewTabs";
 import type { ComponentInstance } from "@/types";
 import { Button } from "@/components/ui/button";
 import {
@@ -221,6 +222,7 @@ function componentsToLayout(components: ComponentInstance[]) {
 export function Canvas() {
   const { components, grid, moveComponent, resizeComponent, selectedComponentId, selectComponent } = useCanvas();
   const { canUndo, canRedo, undo, redo } = useHistory();
+  const { views, activeViewId, saveView, loadView } = useViews();
   const { width, containerRef, mounted } = useContainerWidth();
 
   // Handle click on canvas background to deselect
@@ -277,22 +279,59 @@ export function Canvas() {
     [resizeComponent]
   );
 
-  // Keyboard shortcuts for undo/redo
+  // Keyboard shortcuts for undo/redo and view management
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key === "z") {
+      const isMod = e.metaKey || e.ctrlKey;
+
+      // Undo/Redo: Cmd+Z / Cmd+Shift+Z
+      if (isMod && e.key === "z") {
         e.preventDefault();
         if (e.shiftKey && canRedo) {
           redo();
         } else if (!e.shiftKey && canUndo) {
           undo();
         }
+        return;
+      }
+
+      // Save view: Cmd+S (update active) / Cmd+Shift+S (save as new)
+      if (isMod && e.key === "s") {
+        e.preventDefault();
+        if (e.shiftKey || !activeViewId) {
+          // Save as new view
+          const existingNames = views.map((v) => v.name);
+          let name = "Untitled";
+          let counter = 1;
+          while (existingNames.includes(name)) {
+            name = `Untitled ${counter}`;
+            counter++;
+          }
+          saveView({ name, description: "" });
+        } else {
+          // Update current view
+          const activeView = views.find((v) => v.id === activeViewId);
+          if (activeView) {
+            saveView({ viewId: activeViewId, name: activeView.name, description: activeView.description });
+          }
+        }
+        return;
+      }
+
+      // Switch views: Cmd+1-9
+      if (isMod && e.key >= "1" && e.key <= "9") {
+        e.preventDefault();
+        const index = parseInt(e.key) - 1;
+        if (index < views.length) {
+          loadView(views[index].id);
+        }
+        return;
       }
     }
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [canUndo, canRedo, undo, redo]);
+  }, [canUndo, canRedo, undo, redo, views, activeViewId, saveView, loadView]);
 
   // Find component by ID using Map for O(1) lookup (js-index-maps)
   const getComponent = useCallback(
@@ -301,38 +340,43 @@ export function Canvas() {
   );
 
   return (
-    <div className="relative h-full">
-      {/* Floating toolbar */}
-      <div className="absolute top-4 right-4 z-10 flex items-center gap-2">
-        <div className="flex items-center border border-border rounded-md bg-card/80 backdrop-blur-sm shadow-sm">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => undo()}
-            disabled={!canUndo}
-            className="rounded-r-none border-r border-border"
-          >
-            <Undo2 className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => redo()}
-            disabled={!canRedo}
-            className="rounded-l-none"
-          >
-            <Redo2 className="h-4 w-4" />
-          </Button>
-        </div>
-        <AddComponentButton />
-      </div>
+    <div className="flex flex-col h-full">
+      {/* View tabs */}
+      <ViewTabs />
 
-      {/* Canvas area - full bleed */}
-      <div
-        ref={containerRef}
-        className="h-full overflow-auto pt-16 px-4 pb-4"
-        onClick={handleCanvasClick}
-      >
+      {/* Main canvas area */}
+      <div className="relative flex-1 min-h-0">
+        {/* Floating toolbar */}
+        <div className="absolute top-4 right-4 z-10 flex items-center gap-2">
+          <div className="flex items-center border border-border rounded-md bg-card/80 backdrop-blur-sm shadow-sm">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => undo()}
+              disabled={!canUndo}
+              className="rounded-r-none border-r border-border"
+            >
+              <Undo2 className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => redo()}
+              disabled={!canRedo}
+              className="rounded-l-none"
+            >
+              <Redo2 className="h-4 w-4" />
+            </Button>
+          </div>
+          <AddComponentButton />
+        </div>
+
+        {/* Canvas area - full bleed */}
+        <div
+          ref={containerRef}
+          className="h-full overflow-auto pt-16 px-4 pb-4"
+          onClick={handleCanvasClick}
+        >
         {/* Empty state */}
         {components.length === 0 && (
           <div className="flex items-center justify-center h-full pointer-events-none">
@@ -386,6 +430,7 @@ export function Canvas() {
             })}
           </ReactGridLayout>
         )}
+        </div>
       </div>
     </div>
   );

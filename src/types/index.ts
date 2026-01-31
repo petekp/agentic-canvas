@@ -78,6 +78,7 @@ export interface View {
   snapshot: Canvas;
   triggerIds: TriggerId[];
   createdAt: number;
+  updatedAt: number;
 }
 
 // ============================================================================
