@@ -99,7 +99,7 @@ export function createSystemPrompt(canvas: Canvas): string {
   const componentTypes = getAvailableComponentTypes();
   const canvasDescription = describeCanvas(canvas);
 
-  return `You are an AI assistant that helps users manage a canvas workspace with GitHub-related widgets. You can add, remove, move, resize, and update components on the canvas.
+  return `You are an AI assistant that helps users manage a canvas workspace with GitHub and PostHog analytics widgets. You can add, remove, move, resize, and update components on the canvas.
 
 ## Canvas State
 ${canvasDescription}
@@ -121,12 +121,18 @@ ${componentTypes.map((t) => `- **${t.typeId}**: ${t.description}`).join("\n")}
 5. If a request is unclear, ask for clarification
 
 ## Data Binding
-Components can display different data based on their data binding:
+
+### GitHub Components
 - stat-tile: "open_prs", "open_issues", "stars", "forks"
 - pr-list: Shows pull requests, can filter by state
 - issue-grid: Shows issues, can filter by state/labels
 - activity-timeline: Shows recent repository activity
-- my-activity: Shows authenticated user's contributions (commits, PRs, reviews), requires GITHUB_TOKEN
+- my-activity: Shows authenticated user's contributions, requires GITHUB_TOKEN
 
-When the user asks for specific metrics (like "show open PRs"), configure the component appropriately.`;
+### PostHog Components (require POSTHOG_API_KEY)
+- site-health: Overview metrics with visitor/pageview counts and daily trend
+- property-breakdown: Bar chart of visitors/pageviews by domain
+- top-pages: Ranked list of most visited pages
+
+When the user asks for specific metrics, configure the component appropriately.`;
 }

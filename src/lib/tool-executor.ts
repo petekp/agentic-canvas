@@ -14,11 +14,16 @@ import type {
 
 // Default sizes for component types
 const DEFAULT_SIZES: Record<string, { cols: number; rows: number }> = {
+  // GitHub components
   "github.stat-tile": { cols: 2, rows: 2 },
   "github.pr-list": { cols: 4, rows: 3 },
   "github.issue-grid": { cols: 4, rows: 3 },
   "github.activity-timeline": { cols: 3, rows: 4 },
   "github.my-activity": { cols: 4, rows: 5 },
+  // PostHog components
+  "posthog.site-health": { cols: 4, rows: 3 },
+  "posthog.property-breakdown": { cols: 4, rows: 3 },
+  "posthog.top-pages": { cols: 4, rows: 4 },
 };
 
 // Default data bindings for component types
@@ -47,6 +52,22 @@ const DEFAULT_BINDINGS: Record<string, { source: string; query: { type: string; 
     source: "mock-github",
     query: { type: "my_activity", params: { timeWindow: "7d", feedLimit: 10 } },
     refreshInterval: 60000,
+  },
+  // PostHog components
+  "posthog.site-health": {
+    source: "posthog",
+    query: { type: "site_health", params: { timeWindow: "7d" } },
+    refreshInterval: 120000,
+  },
+  "posthog.property-breakdown": {
+    source: "posthog",
+    query: { type: "property_breakdown", params: { timeWindow: "7d", metric: "visitors" } },
+    refreshInterval: 120000,
+  },
+  "posthog.top-pages": {
+    source: "posthog",
+    query: { type: "top_pages", params: { timeWindow: "7d", limit: 10 } },
+    refreshInterval: 120000,
   },
 };
 

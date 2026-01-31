@@ -16,11 +16,16 @@ import type {
 
 // Component type metadata for AI context
 const TYPE_METADATA: Record<string, { name: string; category: "data" | "metric" | "timeline" | "utility" }> = {
+  // GitHub components
   "github.stat-tile": { name: "Stat Tile", category: "metric" },
   "github.pr-list": { name: "PR List", category: "data" },
   "github.issue-grid": { name: "Issue Grid", category: "data" },
   "github.activity-timeline": { name: "Activity Timeline", category: "timeline" },
   "github.my-activity": { name: "My Activity", category: "timeline" },
+  // PostHog components
+  "posthog.site-health": { name: "Site Health", category: "metric" },
+  "posthog.property-breakdown": { name: "Property Breakdown", category: "data" },
+  "posthog.top-pages": { name: "Top Pages", category: "data" },
 };
 
 /**
@@ -55,6 +60,15 @@ function summarizeComponent(component: ComponentInstance): ComponentSummary {
       if (stats.commits) highlights.push(`${stats.commits} commits`);
       if (stats.prsOpened) highlights.push(`${stats.prsOpened} PRs opened`);
       if (stats.reviews) highlights.push(`${stats.reviews} reviews`);
+    } else if (component.typeId === "posthog.site-health" && data.uniqueVisitors !== undefined) {
+      summary = `${typeMeta.name} showing ${data.uniqueVisitors} visitors, ${data.pageviews} pageviews`;
+    } else if (component.typeId === "posthog.property-breakdown" && data.properties) {
+      const props = data.properties as Array<{ name: string }>;
+      summary = `${typeMeta.name} showing ${props.length} properties`;
+      if (props[0]) highlights.push(`Top: ${props[0].name}`);
+    } else if (component.typeId === "posthog.top-pages" && data.pages) {
+      const pages = data.pages as Array<{ path: string }>;
+      summary = `${typeMeta.name} showing ${pages.length} top pages`;
     }
   } else if (component.dataState.status === "loading") {
     summary += " (loading data...)";
@@ -231,6 +245,22 @@ export function getAvailableComponentTypes(): { typeId: string; name: string; de
       typeId: "github.my-activity",
       name: "My Activity",
       description: "Shows your personal contribution summary with stats, sparkline, and activity feed (4x5 default). Requires GitHub token.",
+    },
+    // PostHog Analytics
+    {
+      typeId: "posthog.site-health",
+      name: "Site Health",
+      description: "Overview metrics: visitors, pageviews, daily trend sparkline (4x3 default). Requires PostHog API key.",
+    },
+    {
+      typeId: "posthog.property-breakdown",
+      name: "Property Breakdown",
+      description: "Bar chart showing visitors or pageviews by property/domain (4x3 default). Requires PostHog API key.",
+    },
+    {
+      typeId: "posthog.top-pages",
+      name: "Top Pages",
+      description: "Ranked list of most visited pages across all properties (4x4 default). Requires PostHog API key.",
     },
   ];
 }

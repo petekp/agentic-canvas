@@ -65,8 +65,8 @@ export const createDataSlice: StateCreator<
     });
 
     try {
-      // Fetch from GitHub API
-      const result = await fetchGitHubData(binding);
+      // Fetch from appropriate API based on source
+      const result = await fetchDataFromSource(binding);
 
       // Update cache and component
       set((state) => {
@@ -174,11 +174,43 @@ function generateCacheKey(binding: DataBinding): string {
   return `${binding.source}:${binding.query.type}:${JSON.stringify(binding.query.params)}`;
 }
 
+// Route to appropriate data source
+async function fetchDataFromSource(binding: DataBinding): Promise<{ data: unknown; ttl: number }> {
+  switch (binding.source) {
+    case "posthog":
+      return fetchPostHogData(binding);
+    case "mock-github":
+    default:
+      return fetchGitHubData(binding);
+  }
+}
+
 // Fetch data from GitHub API route
 async function fetchGitHubData(binding: DataBinding): Promise<{ data: unknown; ttl: number }> {
   const { query } = binding;
 
   const response = await fetch("/api/github", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      type: query.type,
+      params: query.params,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error ?? `API error: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+// Fetch data from PostHog API route
+async function fetchPostHogData(binding: DataBinding): Promise<{ data: unknown; ttl: number }> {
+  const { query } = binding;
+
+  const response = await fetch("/api/posthog", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

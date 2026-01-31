@@ -62,6 +62,31 @@ const componentTypes = [
     size: { cols: 4, rows: 5 },
     queryType: "my_activity",
   },
+  // PostHog Analytics
+  {
+    typeId: "posthog.site-health",
+    label: "Site Health",
+    config: { timeWindow: "7d" },
+    size: { cols: 4, rows: 3 },
+    queryType: "site_health",
+    source: "posthog",
+  },
+  {
+    typeId: "posthog.property-breakdown",
+    label: "Property Breakdown",
+    config: { timeWindow: "7d", metric: "visitors" },
+    size: { cols: 4, rows: 3 },
+    queryType: "property_breakdown",
+    source: "posthog",
+  },
+  {
+    typeId: "posthog.top-pages",
+    label: "Top Pages",
+    config: { timeWindow: "7d", limit: 10 },
+    size: { cols: 4, rows: 4 },
+    queryType: "top_pages",
+    source: "posthog",
+  },
 ];
 
 // Dropdown button to add components
@@ -74,12 +99,12 @@ function AddComponentButton() {
       config: type.config,
       size: type.size,
       dataBinding: {
-        source: "mock-github",
+        source: type.source ?? "mock-github",
         query: {
           type: type.queryType,
           params: type.config,
         },
-        refreshInterval: null,
+        refreshInterval: type.source === "posthog" ? 120000 : null,
       },
     });
   };

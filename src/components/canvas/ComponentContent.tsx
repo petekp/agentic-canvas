@@ -108,6 +108,36 @@ interface MyActivityData {
   }>;
 }
 
+// PostHog Analytics Types
+// ============================================================================
+
+/** API response shape for PostHog site health */
+interface SiteHealthData {
+  uniqueVisitors: number;
+  pageviews: number;
+  newVisitorRatio: number;
+  daily: Array<{ date: string; visitors: number }>;
+}
+
+/** API response shape for PostHog property breakdown */
+interface PropertyBreakdownData {
+  properties: Array<{
+    name: string;
+    value: number;
+    percentage: number;
+  }>;
+  total: number;
+}
+
+/** API response shape for PostHog top pages */
+interface TopPagesData {
+  pages: Array<{
+    path: string;
+    property: string;
+    views: number;
+  }>;
+}
+
 // ============================================================================
 // Shared Constants
 // ============================================================================
@@ -632,6 +662,155 @@ function MyActivityContent({ data, componentId }: MyActivityContentProps) {
 }
 
 // ============================================================================
+// PostHog Content Renderers
+// ============================================================================
+
+interface SiteHealthContentProps {
+  data: SiteHealthData;
+  componentId: string;
+}
+
+function SiteHealthContent({ data, componentId }: SiteHealthContentProps) {
+  const { uniqueVisitors, pageviews, newVisitorRatio, daily } = data;
+
+  const statItems: StatItem[] = useMemo(
+    () => [
+      {
+        key: "visitors",
+        label: "Visitors",
+        value: uniqueVisitors,
+        format: { kind: "number", compact: uniqueVisitors >= 1000 },
+      },
+      {
+        key: "pageviews",
+        label: "Pageviews",
+        value: pageviews,
+        format: { kind: "number", compact: pageviews >= 1000 },
+      },
+      {
+        key: "new_ratio",
+        label: "New",
+        value: Math.round(newVisitorRatio * 100),
+        format: { kind: "number" },
+      },
+    ],
+    [uniqueVisitors, pageviews, newVisitorRatio]
+  );
+
+  const sparklineData = useMemo(() => daily.map((d) => d.visitors), [daily]);
+  const sparklineLabels = useMemo(() => daily.map((d) => d.date), [daily]);
+  const hasData = sparklineData.some((v) => v > 0);
+
+  return (
+    <div className="flex flex-col gap-4 h-full">
+      <StatsDisplay id={`site-health-stats-${componentId}`} stats={statItems} />
+
+      {hasData && (
+        <SparklineBarChart
+          data={sparklineData}
+          labels={sparklineLabels}
+          title="Daily visitors"
+        />
+      )}
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------------
+
+interface PropertyBreakdownContentProps {
+  data: PropertyBreakdownData;
+  componentId: string;
+}
+
+function PropertyBreakdownContent({
+  data,
+  componentId: _componentId,
+}: PropertyBreakdownContentProps) {
+  const { properties, total } = data;
+  const maxValue = properties[0]?.value ?? 1;
+
+  return (
+    <div className="flex flex-col gap-2 h-full overflow-auto">
+      <div className="text-xs text-muted-foreground">
+        {total.toLocaleString()} total
+      </div>
+      <div className="flex flex-col gap-1.5">
+        {properties.map((prop) => {
+          const widthPercent = (prop.value / maxValue) * 100;
+          return (
+            <div key={prop.name} className="flex flex-col gap-0.5">
+              <div className="flex justify-between text-sm">
+                <span className="truncate">{prop.name}</span>
+                <span className="text-muted-foreground shrink-0 ml-2">
+                  {prop.value.toLocaleString()}
+                </span>
+              </div>
+              <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-primary/60 rounded-full transition-all"
+                  style={{ width: `${widthPercent}%` }}
+                />
+              </div>
+            </div>
+          );
+        })}
+        {properties.length === 0 && (
+          <div className="text-muted-foreground text-sm text-center py-4">
+            No data available
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------------
+
+interface TopPagesContentProps {
+  data: TopPagesData;
+}
+
+function TopPagesContent({ data }: TopPagesContentProps) {
+  const { pages } = data;
+
+  const handlePageClick = useCallback((property: string, path: string) => {
+    const url = `https://${property}${path}`;
+    openInNewTab(url);
+  }, []);
+
+  return (
+    <div className="flex flex-col gap-1 h-full overflow-auto">
+      {pages.map((page, index) => (
+        <div
+          key={`${page.property}::${page.path}`}
+          className="flex items-center gap-2 text-sm py-1 px-1 -mx-1 rounded cursor-pointer hover:bg-muted/50 transition-colors"
+          onClick={() => handlePageClick(page.property, page.path)}
+        >
+          <span className="text-muted-foreground w-5 text-right shrink-0">
+            {index + 1}.
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="truncate">{page.path}</p>
+            <p className="text-xs text-muted-foreground truncate">
+              {page.property}
+            </p>
+          </div>
+          <span className="text-muted-foreground shrink-0">
+            {page.views.toLocaleString()}
+          </span>
+        </div>
+      ))}
+      {pages.length === 0 && (
+        <div className="text-muted-foreground text-sm text-center py-4">
+          No pages tracked
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
 // Data Content Router
 // ============================================================================
 
@@ -689,6 +868,26 @@ function DataContent({
           componentId={componentId}
         />
       );
+
+    // PostHog Analytics Components
+    case "posthog.site-health":
+      return (
+        <SiteHealthContent
+          data={data as SiteHealthData}
+          componentId={componentId}
+        />
+      );
+
+    case "posthog.property-breakdown":
+      return (
+        <PropertyBreakdownContent
+          data={data as PropertyBreakdownData}
+          componentId={componentId}
+        />
+      );
+
+    case "posthog.top-pages":
+      return <TopPagesContent data={data as TopPagesData} />;
 
     default:
       return (
