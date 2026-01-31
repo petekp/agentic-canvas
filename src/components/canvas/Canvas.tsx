@@ -1,12 +1,17 @@
 "use client";
 
 // Canvas component - the main grid-based workspace
-// See: .claude/plans/store-architecture-v0.1.md
+// Uses react-grid-layout for drag & drop and resize functionality
 
-import { useEffect, useRef, useCallback, useState } from "react";
+import { useEffect, useCallback, useState, useMemo } from "react";
+import ReactGridLayout, { useContainerWidth, type Layout, type LayoutItem } from "react-grid-layout";
+import { noCompactor } from "react-grid-layout/core";
 import { useCanvas, useHistory } from "@/hooks";
-import { CanvasGrid } from "./CanvasGrid";
-import { ComponentRenderer } from "./ComponentRenderer";
+import { ComponentContent } from "./ComponentContent";
+import type { ComponentInstance } from "@/types";
+
+import "react-grid-layout/css/styles.css";
+import "react-resizable/css/styles.css";
 
 // Test button to add sample components (temporary for development)
 function AddTestComponentButton() {
@@ -44,7 +49,7 @@ function AddTestComponentButton() {
     },
   ];
 
-  const handleAdd = (type: typeof componentTypes[0]) => {
+  const handleAdd = (type: (typeof componentTypes)[0]) => {
     addComponent({
       typeId: type.typeId,
       config: type.config,
@@ -86,35 +91,51 @@ function AddTestComponentButton() {
   );
 }
 
+// Convert our components to react-grid-layout format
+function componentsToLayout(components: ComponentInstance[]) {
+  return components.map((c) => ({
+    i: c.id,
+    x: c.position.col,
+    y: c.position.row,
+    w: c.size.cols,
+    h: c.size.rows,
+    minW: 1,
+    minH: 1,
+  }));
+}
+
 export function Canvas() {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const { components, grid, setGridDimensions } = useCanvas();
+  const { components, grid, moveComponent, resizeComponent } = useCanvas();
   const { canUndo, canRedo, undo, redo } = useHistory();
+  const { width, containerRef, mounted } = useContainerWidth();
 
-  // Calculate cell dimensions on mount and resize
-  const updateGridDimensions = useCallback(() => {
-    if (!containerRef.current) return;
+  // Convert components to layout format
+  const layout = useMemo(() => componentsToLayout(components), [components]);
 
-    const { width, height } = containerRef.current.getBoundingClientRect();
-    const totalGapWidth = grid.gap * (grid.columns - 1);
-    const totalGapHeight = grid.gap * (grid.rows - 1);
+  // Calculate row height based on container
+  const rowHeight = 80;
 
-    const cellWidth = (width - totalGapWidth) / grid.columns;
-    const cellHeight = (height - totalGapHeight) / grid.rows;
+  // Handle drag stop - commit move to store with undo support
+  const handleDragStop = useCallback(
+    (_layout: Layout, oldItem: LayoutItem | null, newItem: LayoutItem | null) => {
+      if (!oldItem || !newItem) return;
+      if (oldItem.x !== newItem.x || oldItem.y !== newItem.y) {
+        moveComponent(newItem.i, { col: newItem.x, row: newItem.y });
+      }
+    },
+    [moveComponent]
+  );
 
-    setGridDimensions(cellWidth, cellHeight);
-  }, [grid.columns, grid.rows, grid.gap, setGridDimensions]);
-
-  useEffect(() => {
-    updateGridDimensions();
-
-    const resizeObserver = new ResizeObserver(updateGridDimensions);
-    if (containerRef.current) {
-      resizeObserver.observe(containerRef.current);
-    }
-
-    return () => resizeObserver.disconnect();
-  }, [updateGridDimensions]);
+  // Handle resize stop - commit resize to store with undo support
+  const handleResizeStop = useCallback(
+    (_layout: Layout, oldItem: LayoutItem | null, newItem: LayoutItem | null) => {
+      if (!oldItem || !newItem) return;
+      if (oldItem.w !== newItem.w || oldItem.h !== newItem.h) {
+        resizeComponent(newItem.i, { cols: newItem.w, rows: newItem.h });
+      }
+    },
+    [resizeComponent]
+  );
 
   // Keyboard shortcuts for undo/redo
   useEffect(() => {
@@ -132,6 +153,12 @@ export function Canvas() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [canUndo, canRedo, undo, redo]);
+
+  // Find component by ID
+  const getComponent = useCallback(
+    (id: string) => components.find((c) => c.id === id),
+    [components]
+  );
 
   return (
     <div className="flex flex-col h-full">
@@ -160,19 +187,9 @@ export function Canvas() {
       {/* Canvas area */}
       <div
         ref={containerRef}
-        className="flex-1 relative p-4 overflow-hidden"
-        style={{
-          minHeight: "600px",
-        }}
+        className="flex-1 relative p-4 overflow-auto"
+        style={{ minHeight: "600px" }}
       >
-        {/* Grid background */}
-        <CanvasGrid grid={grid} />
-
-        {/* Components */}
-        {components.map((component) => (
-          <ComponentRenderer key={component.id} component={component} grid={grid} />
-        ))}
-
         {/* Empty state */}
         {components.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -181,6 +198,43 @@ export function Canvas() {
               <p className="text-sm mt-1">Add components to get started</p>
             </div>
           </div>
+        )}
+
+        {/* Grid with components */}
+        {mounted && width > 0 && (
+          <ReactGridLayout
+            layout={layout}
+            width={width}
+            gridConfig={{
+              cols: grid.columns,
+              rowHeight,
+              margin: [grid.gap, grid.gap],
+            }}
+            dragConfig={{
+              enabled: true,
+              handle: ".drag-handle",
+            }}
+            resizeConfig={{
+              enabled: true,
+              handles: ["se"],
+            }}
+            onDragStop={handleDragStop}
+            onResizeStop={handleResizeStop}
+            compactor={noCompactor}
+          >
+            {layout.map((item) => {
+              const component = getComponent(item.i);
+              if (!component) return null;
+              return (
+                <div
+                  key={item.i}
+                  className="rounded-lg border border-[var(--grid-line)] bg-[var(--background)] shadow-sm overflow-hidden"
+                >
+                  <ComponentContent component={component} />
+                </div>
+              );
+            })}
+          </ReactGridLayout>
         )}
       </div>
     </div>

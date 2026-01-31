@@ -1,51 +1,30 @@
 "use client";
 
-// Renders a component instance on the canvas
-// Handles positioning, sizing, and basic interactions
+// Component content renderer - renders the interior of a canvas component
+// Positioning is handled by react-grid-layout, this just handles content
 
 import { useCallback } from "react";
 import { useCanvas, useComponentData } from "@/hooks";
-import type { ComponentInstance, GridConfig } from "@/types";
+import type { ComponentInstance } from "@/types";
 
-interface ComponentRendererProps {
+interface ComponentContentProps {
   component: ComponentInstance;
-  grid: GridConfig;
 }
 
-export function ComponentRenderer({ component, grid }: ComponentRendererProps) {
+export function ComponentContent({ component }: ComponentContentProps) {
   const { removeComponent } = useCanvas();
   const { dataState, refresh } = useComponentData(component.id);
 
-  const { position, size, typeId, config } = component;
-  const { cellWidth, cellHeight, gap } = grid;
-
-  // Calculate pixel position and size
-  const x = position.col * (cellWidth + gap);
-  const y = position.row * (cellHeight + gap);
-  const width = size.cols * cellWidth + (size.cols - 1) * gap;
-  const height = size.rows * cellHeight + (size.rows - 1) * gap;
+  const { typeId, config } = component;
 
   const handleRemove = useCallback(() => {
     removeComponent(component.id);
   }, [component.id, removeComponent]);
 
-  // Don't render until grid dimensions are set
-  if (cellWidth === 0 || cellHeight === 0) {
-    return null;
-  }
-
   return (
-    <div
-      className="absolute rounded-lg border border-[var(--grid-line)] bg-[var(--background)] shadow-sm overflow-hidden transition-shadow hover:shadow-md"
-      style={{
-        left: x,
-        top: y,
-        width,
-        height,
-      }}
-    >
-      {/* Component header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--grid-color)] bg-[var(--grid-color)]/50">
+    <div className="flex flex-col h-full">
+      {/* Component header - acts as drag handle */}
+      <div className="drag-handle flex items-center justify-between px-3 py-2 border-b border-[var(--grid-color)] bg-[var(--grid-color)]/50 cursor-move">
         <span className="text-sm font-medium truncate">{formatTypeId(typeId)}</span>
         <div className="flex gap-1">
           <button
@@ -66,7 +45,7 @@ export function ComponentRenderer({ component, grid }: ComponentRendererProps) {
       </div>
 
       {/* Component content */}
-      <div className="p-3 h-[calc(100%-41px)] overflow-auto">
+      <div className="flex-1 p-3 overflow-auto">
         {dataState.status === "loading" && (
           <div className="flex items-center justify-center h-full">
             <div className="animate-spin rounded-full h-6 w-6 border-2 border-[var(--grid-line)] border-t-[var(--foreground)]" />
@@ -86,15 +65,15 @@ export function ComponentRenderer({ component, grid }: ComponentRendererProps) {
         )}
 
         {dataState.status === "ready" && (
-          <ComponentContent typeId={typeId} config={config} data={dataState.data} />
+          <DataContent typeId={typeId} config={config} data={dataState.data} />
         )}
       </div>
     </div>
   );
 }
 
-// Simple content renderer based on component type
-function ComponentContent({
+// Data content renderer based on component type
+function DataContent({
   typeId,
   config,
   data,
@@ -103,16 +82,35 @@ function ComponentContent({
   config: Record<string, unknown>;
   data: unknown;
 }) {
-  // v0.1: Simple JSON display, replace with proper component renderers
   switch (typeId) {
     case "github.stat-tile":
       return <StatTileContent config={config} data={data as { value: number; trend: number }} />;
     case "github.pr-list":
-      return <PRListContent data={data as Array<{ id: string; title: string; author: string; state: string }> } />;
+      return (
+        <PRListContent
+          data={data as Array<{ id: string; title: string; author: string; state: string }>}
+        />
+      );
     case "github.issue-grid":
-      return <IssueGridContent data={data as Array<{ id: string; title: string; state: string; labels: string[] }> } />;
+      return (
+        <IssueGridContent
+          data={data as Array<{ id: string; title: string; state: string; labels: string[] }>}
+        />
+      );
     case "github.activity-timeline":
-      return <ActivityTimelineContent data={data as Array<{ id: string; type: string; actor: string; message: string; timestamp: number }> } />;
+      return (
+        <ActivityTimelineContent
+          data={
+            data as Array<{
+              id: string;
+              type: string;
+              actor: string;
+              message: string;
+              timestamp: number;
+            }>
+          }
+        />
+      );
     default:
       return (
         <pre className="text-xs overflow-auto whitespace-pre-wrap">
@@ -159,7 +157,11 @@ function PRListContent({
         <li key={pr.id} className="flex items-start gap-2 text-sm">
           <span
             className={`shrink-0 w-2 h-2 mt-1.5 rounded-full ${
-              pr.state === "open" ? "bg-green-500" : pr.state === "merged" ? "bg-purple-500" : "bg-gray-500"
+              pr.state === "open"
+                ? "bg-green-500"
+                : pr.state === "merged"
+                  ? "bg-purple-500"
+                  : "bg-gray-500"
             }`}
           />
           <div className="min-w-0">
@@ -193,10 +195,7 @@ function IssueGridContent({
           {issue.labels.length > 0 && (
             <div className="flex gap-1 mt-1 ml-4">
               {issue.labels.slice(0, 3).map((label) => (
-                <span
-                  key={label}
-                  className="px-1.5 py-0.5 text-xs rounded bg-[var(--grid-color)]"
-                >
+                <span key={label} className="px-1.5 py-0.5 text-xs rounded bg-[var(--grid-color)]">
                   {label}
                 </span>
               ))}
@@ -252,18 +251,25 @@ function ActivityTimelineContent({
 
 // Helper to format type ID for display
 function formatTypeId(typeId: string): string {
-  return typeId
-    .split(".")
-    .pop()
-    ?.replace(/-/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase()) ?? typeId;
+  return (
+    typeId
+      .split(".")
+      .pop()
+      ?.replace(/-/g, " ")
+      .replace(/\b\w/g, (c) => c.toUpperCase()) ?? typeId
+  );
 }
 
 // Icons
 function RefreshIcon() {
   return (
     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+      />
     </svg>
   );
 }
