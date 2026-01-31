@@ -10,12 +10,16 @@ const GITHUB_API = "https://api.github.com";
 const DEFAULT_REPO = "assistant-ui/assistant-ui";
 
 interface GitHubRequest {
-  type: "pull_requests" | "issues" | "stats" | "activity";
+  type: "pull_requests" | "issues" | "stats" | "activity" | "my_activity";
   params: {
     repo?: string;
+    repos?: string[];
+    orgs?: string[];
     limit?: number;
     metric?: string;
     state?: string;
+    timeWindow?: "7d" | "14d" | "30d";
+    feedLimit?: number;
   };
 }
 
@@ -50,6 +54,10 @@ export async function POST(req: NextRequest) {
       case "activity":
         data = await fetchActivity(repo, params, headers);
         ttl = 30000;
+        break;
+      case "my_activity":
+        data = await fetchMyActivity(params, headers);
+        ttl = 60000; // 1 minute cache
         break;
       default:
         return Response.json({ error: "Unknown query type" }, { status: 400 });
@@ -293,6 +301,8 @@ async function fetchActivity(
   const typeMap: Record<string, string> = {
     PushEvent: "push",
     PullRequestEvent: "pr",
+    PullRequestReviewEvent: "pr",
+    PullRequestReviewCommentEvent: "comment",
     IssuesEvent: "issue",
     IssueCommentEvent: "comment",
     CreateEvent: "release",
@@ -309,6 +319,8 @@ async function fetchActivity(
       action?: string;
       commits?: Array<{ message: string }>;
       pull_request?: { title: string };
+      review?: { body: string };
+      comment?: { body: string };
       issue?: { title: string };
       ref?: string;
       ref_type?: string;
@@ -326,6 +338,17 @@ async function fetchActivity(
       case "PullRequestEvent":
         message = `${event.payload.action} PR: ${event.payload.pull_request?.title ?? ""}`;
         break;
+      case "PullRequestReviewEvent": {
+        const prTitle = event.payload.pull_request?.title;
+        const action = event.payload.action ?? "reviewed";
+        message = prTitle ? `${action} review on: ${prTitle}` : `${action} a PR review`;
+        break;
+      }
+      case "PullRequestReviewCommentEvent": {
+        const prTitle2 = event.payload.pull_request?.title;
+        message = prTitle2 ? `Commented on PR: ${prTitle2}` : "Commented on a PR";
+        break;
+      }
       case "IssuesEvent":
         message = `${event.payload.action} issue: ${event.payload.issue?.title ?? ""}`;
         break;
@@ -351,4 +374,202 @@ async function fetchActivity(
       timestamp: new Date(event.created_at).getTime(),
     };
   });
+}
+
+async function fetchMyActivity(
+  params: GitHubRequest["params"],
+  headers: HeadersInit
+) {
+  const timeWindow = params.timeWindow ?? "7d";
+  const feedLimit = params.feedLimit ?? 10;
+  const repos = params.repos ?? [];
+  const orgs = params.orgs ?? [];
+
+  // Calculate time window in milliseconds
+  const windowDays = parseInt(timeWindow.replace("d", ""), 10);
+  const windowMs = windowDays * 24 * 60 * 60 * 1000;
+  const cutoffTime = Date.now() - windowMs;
+
+  // Fetch authenticated user info
+  const userRes = await fetch(`${GITHUB_API}/user`, { headers });
+  if (!userRes.ok) {
+    throw new Error(`GitHub API error: ${userRes.status} - Need authenticated user for my_activity`);
+  }
+  const user = await userRes.json();
+  const username = user.login;
+
+  // Fetch user's events (up to 300 to get good coverage)
+  const eventsRes = await fetch(
+    `${GITHUB_API}/users/${username}/events?per_page=100`,
+    { headers }
+  );
+  if (!eventsRes.ok) {
+    throw new Error(`GitHub API error: ${eventsRes.status} ${eventsRes.statusText}`);
+  }
+
+  const allEvents = await eventsRes.json();
+
+  // Filter events by time window and optionally by repos/orgs
+  const filteredEvents = allEvents.filter((event: {
+    created_at: string;
+    repo?: { name: string };
+    org?: { login: string };
+  }) => {
+    const eventTime = new Date(event.created_at).getTime();
+    if (eventTime < cutoffTime) return false;
+
+    // Filter by repos if specified
+    if (repos.length > 0 && event.repo) {
+      if (!repos.some((r) => event.repo?.name.includes(r))) return false;
+    }
+
+    // Filter by orgs if specified
+    if (orgs.length > 0) {
+      const eventOrg = event.org?.login || event.repo?.name.split("/")[0];
+      if (!orgs.includes(eventOrg ?? "")) return false;
+    }
+
+    return true;
+  });
+
+  // Aggregate stats
+  const stats = {
+    prsOpened: 0,
+    prsMerged: 0,
+    commits: 0,
+    reviews: 0,
+    issuesOpened: 0,
+    comments: 0,
+  };
+
+  // Build daily activity counts for sparkline
+  const dailyCounts: Record<string, number> = {};
+  for (let i = 0; i < windowDays; i++) {
+    const date = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
+    const key = date.toISOString().split("T")[0];
+    dailyCounts[key] = 0;
+  }
+
+  // Process events for stats and daily counts
+  for (const event of filteredEvents) {
+    const eventDate = new Date(event.created_at).toISOString().split("T")[0];
+    if (dailyCounts[eventDate] !== undefined) {
+      dailyCounts[eventDate]++;
+    }
+
+    switch (event.type) {
+      case "PullRequestEvent":
+        if (event.payload?.action === "opened") stats.prsOpened++;
+        if (event.payload?.action === "closed" && event.payload?.pull_request?.merged) {
+          stats.prsMerged++;
+        }
+        break;
+      case "PushEvent":
+        stats.commits += event.payload?.commits?.length ?? 0;
+        break;
+      case "PullRequestReviewEvent":
+        stats.reviews++;
+        break;
+      case "IssuesEvent":
+        if (event.payload?.action === "opened") stats.issuesOpened++;
+        break;
+      case "IssueCommentEvent":
+      case "PullRequestReviewCommentEvent":
+        stats.comments++;
+        break;
+    }
+  }
+
+  // Convert daily counts to sparkline array (oldest first)
+  const daily = Object.entries(dailyCounts)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, count]) => ({ date, count }));
+
+  // Build feed from recent events
+  const typeMap: Record<string, string> = {
+    PushEvent: "commit",
+    PullRequestEvent: "pr",
+    PullRequestReviewEvent: "review",
+    PullRequestReviewCommentEvent: "comment",
+    IssuesEvent: "issue",
+    IssueCommentEvent: "comment",
+    CreateEvent: "create",
+    ReleaseEvent: "release",
+  };
+
+  const feed = filteredEvents.slice(0, feedLimit).map((event: {
+    id: string;
+    type: string;
+    repo: { name: string };
+    payload: {
+      action?: string;
+      commits?: Array<{ message: string }>;
+      pull_request?: { title: string; number: number; merged?: boolean };
+      review?: { state: string };
+      issue?: { title: string; number: number };
+      ref?: string;
+      ref_type?: string;
+    };
+    created_at: string;
+  }) => {
+    let message = event.type;
+    let url: string | undefined;
+
+    switch (event.type) {
+      case "PushEvent": {
+        const commitCount = event.payload.commits?.length ?? 0;
+        message = `Pushed ${commitCount} commit${commitCount !== 1 ? "s" : ""} to ${event.repo.name}`;
+        url = `https://github.com/${event.repo.name}`;
+        break;
+      }
+      case "PullRequestEvent": {
+        const pr = event.payload.pull_request;
+        const action = event.payload.action;
+        message = `${action === "closed" && pr?.merged ? "Merged" : action} PR #${pr?.number}: ${pr?.title}`;
+        url = `https://github.com/${event.repo.name}/pull/${pr?.number}`;
+        break;
+      }
+      case "PullRequestReviewEvent": {
+        const pr = event.payload.pull_request;
+        const state = event.payload.review?.state ?? "reviewed";
+        message = `${state} PR #${pr?.number}: ${pr?.title}`;
+        url = `https://github.com/${event.repo.name}/pull/${pr?.number}`;
+        break;
+      }
+      case "IssuesEvent": {
+        const issue = event.payload.issue;
+        message = `${event.payload.action} issue #${issue?.number}: ${issue?.title}`;
+        url = `https://github.com/${event.repo.name}/issues/${issue?.number}`;
+        break;
+      }
+      case "IssueCommentEvent": {
+        const issue = event.payload.issue;
+        message = `Commented on #${issue?.number}: ${issue?.title}`;
+        url = `https://github.com/${event.repo.name}/issues/${issue?.number}`;
+        break;
+      }
+      case "CreateEvent": {
+        message = `Created ${event.payload.ref_type}: ${event.payload.ref ?? event.repo.name}`;
+        url = `https://github.com/${event.repo.name}`;
+        break;
+      }
+    }
+
+    return {
+      id: event.id,
+      type: typeMap[event.type] ?? "other",
+      repo: event.repo.name,
+      message,
+      url,
+      timestamp: new Date(event.created_at).getTime(),
+    };
+  });
+
+  return {
+    username,
+    timeWindow,
+    stats,
+    daily,
+    feed,
+  };
 }

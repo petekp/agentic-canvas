@@ -126,6 +126,7 @@ Components can display different data based on their data binding:
 - pr-list: Shows pull requests, can filter by state
 - issue-grid: Shows issues, can filter by state/labels
 - activity-timeline: Shows recent repository activity
+- my-activity: Shows authenticated user's contributions (commits, PRs, reviews), requires GITHUB_TOKEN
 
 When the user asks for specific metrics (like "show open PRs"), configure the component appropriately.`;
 }

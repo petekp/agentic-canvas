@@ -80,6 +80,7 @@ export function DataTable<T extends object = RowData>({
   maxHeight,
   id,
   onSortChange,
+  onRowClick,
   className,
   locale,
   responseActions,
@@ -145,6 +146,7 @@ export function DataTable<T extends object = RowData>({
     id,
     isLoading,
     locale: resolvedLocale,
+    onRowClick,
   };
 
   const sortAnnouncement = React.useMemo(() => {
@@ -539,10 +541,21 @@ interface DataTableRowProps {
 }
 
 function DataTableRow({ row, className }: DataTableRowProps) {
-  const { columns } = useDataTable();
+  const { columns, onRowClick } = useDataTable();
+  const isClickable = !!onRowClick;
+
+  const handleClick = React.useCallback(() => {
+    onRowClick?.(row);
+  }, [onRowClick, row]);
 
   return (
-    <TableRow className={className}>
+    <TableRow
+      className={cn(
+        className,
+        isClickable && "cursor-pointer hover:bg-muted/50 transition-colors"
+      )}
+      onClick={isClickable ? handleClick : undefined}
+    >
       {columns.map((column, columnIndex) => (
         <DataTableCell
           key={column.key}
@@ -800,7 +813,12 @@ function SimpleCard({
   index: number;
   isFirst?: boolean;
 }) {
-  const { locale, rowIdKey } = useDataTable();
+  const { locale, rowIdKey, onRowClick } = useDataTable();
+  const isClickable = !!onRowClick;
+
+  const handleClick = React.useCallback(() => {
+    onRowClick?.(row);
+  }, [onRowClick, row]);
   const primaryColumn = columns[0];
   const otherColumns = columns.slice(1);
 
@@ -815,9 +833,14 @@ function SimpleCard({
 
   return (
     <div
-      className={cn("flex flex-col gap-2 p-4", !isFirst && "border-t")}
+      className={cn(
+        "flex flex-col gap-2 p-4",
+        !isFirst && "border-t",
+        isClickable && "cursor-pointer hover:bg-muted/50 transition-colors"
+      )}
       role="listitem"
       aria-label={rowLabel}
+      onClick={isClickable ? handleClick : undefined}
     >
       {primaryColumn && (
         <div

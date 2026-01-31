@@ -20,6 +20,7 @@ export interface DataSlice {
   fetchData: (componentId: ComponentId, binding: DataBinding) => Promise<void>;
   refreshComponent: (componentId: ComponentId) => Promise<void>;
   invalidateCache: (pattern?: string) => void;
+  initializeData: () => void;
   _setCacheEntry: (key: string, data: CachedData) => void;
   _setComponentDataState: (componentId: ComponentId, state: DataLoadingState) => void;
 }
@@ -139,6 +140,17 @@ export const createDataSlice: StateCreator<
         }
       }
     });
+  },
+
+  initializeData: () => {
+    // Fetch data for all components with data bindings
+    // Called after rehydration from localStorage
+    const components = get().canvas.components;
+    for (const component of components) {
+      if (component.dataBinding) {
+        get().fetchData(component.id, component.dataBinding);
+      }
+    }
   },
 
   _setCacheEntry: (key, data) => {

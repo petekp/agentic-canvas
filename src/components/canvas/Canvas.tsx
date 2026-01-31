@@ -55,6 +55,13 @@ const componentTypes = [
     size: { cols: 3, rows: 4 },
     queryType: "activity",
   },
+  {
+    typeId: "github.my-activity",
+    label: "My Activity",
+    config: { timeWindow: "7d", feedLimit: 10 },
+    size: { cols: 4, rows: 5 },
+    queryType: "my_activity",
+  },
 ];
 
 // Dropdown button to add components

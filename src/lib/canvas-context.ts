@@ -20,6 +20,7 @@ const TYPE_METADATA: Record<string, { name: string; category: "data" | "metric" 
   "github.pr-list": { name: "PR List", category: "data" },
   "github.issue-grid": { name: "Issue Grid", category: "data" },
   "github.activity-timeline": { name: "Activity Timeline", category: "timeline" },
+  "github.my-activity": { name: "My Activity", category: "timeline" },
 };
 
 /**
@@ -48,6 +49,12 @@ function summarizeComponent(component: ComponentInstance): ComponentSummary {
       if (openCount > 0) highlights.push(`${openCount} open issues`);
     } else if (component.typeId === "github.activity-timeline" && Array.isArray(data.items)) {
       summary = `${typeMeta.name} showing ${data.items.length} recent activities`;
+    } else if (component.typeId === "github.my-activity" && data.stats) {
+      const stats = data.stats as { commits?: number; prsOpened?: number; reviews?: number };
+      summary = `${typeMeta.name} showing user's contributions`;
+      if (stats.commits) highlights.push(`${stats.commits} commits`);
+      if (stats.prsOpened) highlights.push(`${stats.prsOpened} PRs opened`);
+      if (stats.reviews) highlights.push(`${stats.reviews} reviews`);
     }
   } else if (component.dataState.status === "loading") {
     summary += " (loading data...)";
@@ -219,6 +226,11 @@ export function getAvailableComponentTypes(): { typeId: string; name: string; de
       typeId: "github.activity-timeline",
       name: "Activity Timeline",
       description: "Shows recent repository activity (3x4 default)",
+    },
+    {
+      typeId: "github.my-activity",
+      name: "My Activity",
+      description: "Shows your personal contribution summary with stats, sparkline, and activity feed (4x5 default). Requires GitHub token.",
     },
   ];
 }

@@ -18,6 +18,7 @@ const DEFAULT_SIZES: Record<string, { cols: number; rows: number }> = {
   "github.pr-list": { cols: 4, rows: 3 },
   "github.issue-grid": { cols: 4, rows: 3 },
   "github.activity-timeline": { cols: 3, rows: 4 },
+  "github.my-activity": { cols: 4, rows: 5 },
 };
 
 // Default data bindings for component types
@@ -40,6 +41,11 @@ const DEFAULT_BINDINGS: Record<string, { source: string; query: { type: string; 
   "github.activity-timeline": {
     source: "mock-github",
     query: { type: "activity", params: {} },
+    refreshInterval: 60000,
+  },
+  "github.my-activity": {
+    source: "mock-github",
+    query: { type: "my_activity", params: { timeWindow: "7d", feedLimit: 10 } },
     refreshInterval: 60000,
   },
 };

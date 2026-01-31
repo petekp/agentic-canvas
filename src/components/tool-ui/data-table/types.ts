@@ -212,6 +212,11 @@ export interface DataTableClientProps<T extends object = RowData> {
   /** Additional CSS classes */
   className?: string;
   /**
+   * Row click handler - called when a row is clicked
+   * @param row - The row data that was clicked
+   */
+  onRowClick?: (row: T) => void;
+  /**
    * Sort change handler for controlled mode (required if sort is provided)
    *
    * **Tri-state cycle behavior:**
@@ -282,4 +287,5 @@ export interface DataTableContextValue<T extends object = RowData> {
   id?: string;
   isLoading?: boolean;
   locale?: string;
+  onRowClick?: (row: T) => void;
 }
