@@ -4,7 +4,26 @@ A conversational AI workspace that generates UI components on a grid-based canva
 
 ## Project Status
 
-**Phase:** Pre-implementation (specs complete, no code yet)
+**Phase:** v0.1 implemented - Canvas + Chat interface working
+
+## Quick Start
+
+```bash
+npm install
+cp .env.example .env.local  # Add your OPENAI_API_KEY
+npm run dev
+```
+
+Open http://localhost:3000 and try: "Add a stat tile showing open PRs"
+
+## Tech Stack
+
+- **Next.js 15** + React 19 + TypeScript
+- **Zustand** + Immer for state management
+- **Vercel AI SDK v6** (`ai`, `@ai-sdk/openai`, `@ai-sdk/react`)
+- **Zod v4** for schema validation
+- **react-grid-layout** for drag & drop canvas
+- **Tailwind CSS v4** for styling
 
 ## Quick Start for Agents
 
@@ -13,26 +32,19 @@ When working on this project, read specs in this order:
 1. **Types first:** `.claude/plans/primitives-spec-v0.1.md`
    - All TypeScript interfaces live here
    - Commands, events, and protocols defined
-   - This is the single source of truth for types
 
 2. **Components second:** `.claude/plans/component-schemas-v0.1.md`
    - Config and data shapes for each component
    - Actions the assistant can take
-   - Rendering guidance
 
 3. **Store third:** `.claude/plans/store-architecture-v0.1.md`
    - Zustand slices and how they compose
    - Command → action → history flow
-   - React hooks for consuming state
-
-4. **Context last:** `agentic-canvas-proposal.md`
-   - Product vision and rationale
-   - Background only—specs override if they conflict
 
 ## Key Architecture Decisions
 
 ### Why Zustand over Redux?
-Simpler API, built-in immer support, easier slice composition. This is a prototype—we can migrate later if needed.
+Simpler API, built-in immer support, easier slice composition.
 
 ### Why commands instead of direct mutations?
 Every change goes through `CanvasCommand` so we can:
@@ -41,7 +53,7 @@ Every change goes through `CanvasCommand` so we can:
 - Validate before applying
 
 ### Why mock data instead of real GitHub API?
-v0.1 is about validating the UX, not building connectors. Mock data lets us control scenarios and iterate fast.
+v0.1 is about validating the UX. Mock data lets us control scenarios and iterate fast.
 
 ### Why grid-based instead of infinite canvas?
 Cognitive load. Fixed grids constrain layout decisions, making both user placement and AI suggestions simpler.
@@ -55,9 +67,58 @@ Cognitive load. Fixed grids constrain layout decisions, making both user placeme
 - **LLM tools use snake_case** — `add_component`, `move_component` (not camelCase)
 - **Internal types use PascalCase** — `CanvasCommand`, `DataLoadingState`
 
-## Patterns to Avoid
+## AI SDK v6 Notes
 
-See `AGENT_CHANGELOG.md` > "Deprecated Patterns" for the full list. Key ones:
+Critical patterns for working with Vercel AI SDK v6:
+
+### Tool Definitions
+```typescript
+const tools = {
+  my_tool: {
+    description: "...",
+    inputSchema: z.object({ ... }),  // NOT "parameters"
+    execute: async (params) => { ... }
+  }
+};
+```
+
+### Multi-step Tool Calls
+```typescript
+import { stepCountIs } from "ai";
+
+streamText({
+  model: openai("gpt-4o"),
+  tools,
+  stopWhen: stepCountIs(5),  // NOT "maxSteps: 5"
+});
+```
+
+### Tool Part States
+Tool invocations in UIMessage.parts use these states:
+- `input-streaming` - tool input is streaming
+- `input-available` - tool input complete
+- `output-available` - tool result ready (check for this, NOT "result")
+- `output-error` - tool errored
+
+### Client-side useChat
+```typescript
+import { useChat } from "@ai-sdk/react";
+import { DefaultChatTransport } from "ai";
+
+const { messages, sendMessage, status, stop } = useChat({
+  transport: new DefaultChatTransport({ api: "/api/chat" }),
+});
+// status: "submitted" | "streaming" | "error" | "ready"
+```
+
+### Zod v4 Syntax
+```typescript
+// Use this:
+z.record(z.string(), z.unknown())
+// NOT: z.record(z.unknown())
+```
+
+## Patterns to Avoid
 
 - Don't use `ComponentState` — it's now `DataLoadingState`
 - Don't use `DataTransform` — deferred to v0.2
@@ -65,45 +126,33 @@ See `AGENT_CHANGELOG.md` > "Deprecated Patterns" for the full list. Key ones:
 - Don't implement `ErrorRecovery` — deferred to v0.2
 - Don't create a `list_components` tool — inject IDs via `CanvasContext`
 
-## File Structure (Planned)
+## File Structure
 
 ```
 src/
+├── app/
+│   ├── api/chat/route.ts    # Streaming chat API with tools
+│   └── page.tsx             # Main layout (canvas + chat)
 ├── store/
-│   ├── index.ts           # Combined store
-│   ├── canvas-slice.ts
-│   ├── history-slice.ts
-│   ├── data-slice.ts
-│   └── workspace-slice.ts
+│   ├── index.ts             # Combined store
+│   ├── canvas-slice.ts      # Canvas state
+│   ├── history-slice.ts     # Undo/redo
+│   ├── data-slice.ts        # Mock data loading
+│   ├── workspace-slice.ts   # UI state
+│   └── chat-slice.ts        # Chat messages
 ├── components/
-│   ├── canvas/            # Grid and layout
-│   └── widgets/           # PR list, issue grid, etc.
+│   ├── canvas/              # Grid and layout
+│   └── chat/                # Chat UI components
 ├── types/
-│   └── index.ts           # All types from primitives spec
+│   └── index.ts             # All TypeScript interfaces
 ├── lib/
-│   ├── registry.ts        # Component registry
-│   ├── layout-engine.ts   # Auto-placement
-│   └── mock-github.ts     # Mock data source
+│   ├── ai-tools.ts          # Tool definitions + system prompt
+│   ├── canvas-context.ts    # Serialize canvas for AI
+│   ├── tool-executor.ts     # Execute tool calls on store
+│   ├── registry.ts          # Component registry
+│   └── mock-github.ts       # Mock data source
 └── hooks/
-    └── index.ts           # useCanvas, useHistory, etc.
-```
-
-## Implementation Notes
-
-**Next step:** Scaffold Next.js + TypeScript project with these deps:
-- `zustand`, `immer`, `nanoid` (state)
-- `tailwindcss` (styling)
-- `assistant-ui` (chat interface, future integration)
-
-**Spec validation process:** Before implementing, have a subagent review specs for gaps. The v0.1.1 revision caught 20+ issues including missing undo state types and placement contracts.
-
-## Running the Project
-
-Not yet implemented. When ready:
-
-```bash
-npm install
-npm run dev
+    └── index.ts             # useCanvas, useHistory, etc.
 ```
 
 ## Testing
