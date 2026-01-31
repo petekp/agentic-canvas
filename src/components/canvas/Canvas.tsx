@@ -5,7 +5,11 @@
 
 import { useEffect, useCallback, useState, useMemo } from "react";
 import ReactGridLayout, { useContainerWidth, type Layout, type LayoutItem } from "react-grid-layout";
-import { noCompactor } from "react-grid-layout/core";
+import { getCompactor } from "react-grid-layout/core";
+
+// Allow overlap - items can stack freely, no pushing behavior
+// This works well with undo/redo and future agent-driven layouts
+const overlapCompactor = getCompactor(null, true, false);
 import { useCanvas, useHistory } from "@/hooks";
 import { ComponentContent } from "./ComponentContent";
 import type { ComponentInstance } from "@/types";
@@ -220,7 +224,7 @@ export function Canvas() {
             }}
             onDragStop={handleDragStop}
             onResizeStop={handleResizeStop}
-            compactor={noCompactor}
+            compactor={overlapCompactor}
           >
             {layout.map((item) => {
               const component = getComponent(item.i);
