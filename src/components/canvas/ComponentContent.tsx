@@ -66,7 +66,7 @@ export function ComponentContent({ component, isSelected }: ComponentContentProp
         )}
 
         {dataState.status === "ready" && (
-          <DataContent typeId={typeId} config={config} data={dataState.data} />
+          <DataContent typeId={typeId} config={config} data={dataState.data} label={component.meta.label} />
         )}
       </div>
     </div>
@@ -78,14 +78,16 @@ function DataContent({
   typeId,
   config,
   data,
+  label,
 }: {
   typeId: string;
   config: Record<string, unknown>;
   data: unknown;
+  label?: string;
 }) {
   switch (typeId) {
     case "github.stat-tile":
-      return <StatTileContent config={config} data={data as { value: number; trend: number }} />;
+      return <StatTileContent config={config} data={data as { value: number; trend: number }} label={label} />;
     case "github.pr-list":
       return (
         <PRListContent
@@ -125,11 +127,14 @@ function DataContent({
 function StatTileContent({
   config,
   data,
+  label,
 }: {
   config: Record<string, unknown>;
   data: { value: number; trend: number };
+  label?: string;
 }) {
-  const metric = (config.metric as string) ?? "unknown";
+  // Use config.metric if available, otherwise fall back to label
+  const metric = (config.metric as string) ?? label ?? "unknown";
   const trendColor = data.trend > 0 ? "text-green-500" : data.trend < 0 ? "text-red-500" : "";
 
   return (
