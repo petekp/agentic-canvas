@@ -225,9 +225,9 @@ export function ViewTabs() {
 
   return (
     <>
-      <div className="flex items-center border-b border-border bg-card/50">
+      <div className="flex items-center border-b border-border bg-card/50 px-2">
         {/* View tabs */}
-        <div className="flex items-center overflow-x-auto">
+        <div className="flex items-center overflow-x-auto gap-1">
           {views.map((view) => (
             <ViewTab
               key={view.id}

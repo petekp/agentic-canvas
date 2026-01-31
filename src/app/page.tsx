@@ -5,7 +5,7 @@ export default function Home() {
   return (
     <main className="min-h-screen flex">
       {/* Canvas takes remaining space */}
-      <div className="flex-1 p-4">
+      <div className="flex-1">
         <Canvas />
       </div>
 
