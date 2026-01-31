@@ -224,13 +224,20 @@ export interface HistoryState {
   maxSize: number;
 }
 
+/** Deep copy of canvas components for undo/redo snapshots */
+export interface CanvasSnapshot {
+  components: ComponentInstance[];
+}
+
 export interface UndoEntry {
   id: UndoId;
   timestamp: number;
   source: "user" | "assistant";
   description: string;
-  forward: CanvasCommand;
-  inverse: CanvasCommand;
+  /** Canvas state before the action was performed */
+  beforeSnapshot: CanvasSnapshot;
+  /** Canvas state after the action was performed */
+  afterSnapshot: CanvasSnapshot;
   /** View context where this action was performed (for auto-navigation on undo) */
   viewContext: ViewId | null;
 }

@@ -15,6 +15,7 @@ import type {
   UpdateComponentPayload,
   CommandResult,
   UndoEntry,
+  CanvasSnapshot,
 } from "@/types";
 
 // Initial state
@@ -31,6 +32,10 @@ const initialCanvas: Canvas = {
   components: [],
 };
 
+// Helper to create a deep copy snapshot of components
+function createSnapshot(components: ComponentInstance[]): CanvasSnapshot {
+  return { components: structuredClone(components) };
+}
 
 // Slice interface
 export interface CanvasSlice {
@@ -59,6 +64,9 @@ export const createCanvasSlice: StateCreator<
   addComponent: (payload) => {
     const { typeId, config, dataBinding, position, size, meta } = payload;
 
+    // Capture BEFORE snapshot
+    const beforeSnapshot = createSnapshot(get().canvas.components);
+
     // Default size if not provided
     const finalSize = size ?? { cols: 3, rows: 2 };
     const finalPosition = position ?? findOpenPosition(get().canvas, finalSize);
@@ -84,27 +92,24 @@ export const createCanvasSlice: StateCreator<
       },
     };
 
-    // Create undo entry (store actual position/size, not original payload)
+    // Perform mutation
+    set((state) => {
+      state.canvas.components.push(component);
+    });
+
+    // Capture AFTER snapshot
+    const afterSnapshot = createSnapshot(get().canvas.components);
+
+    // Create undo entry with snapshots
     const undoEntry: UndoEntry = {
       id: undoId,
       timestamp: Date.now(),
       source: component.meta.createdBy,
       description: `Added ${typeId}`,
-      forward: {
-        type: "component.create",
-        payload: {
-          ...payload,
-          position: finalPosition,
-          size: finalSize,
-        },
-      },
-      inverse: { type: "component.remove", payload: { componentId } },
+      beforeSnapshot,
+      afterSnapshot,
       viewContext: get().activeViewId,
     };
-
-    set((state) => {
-      state.canvas.components.push(component);
-    });
 
     // Push to history
     get()._pushUndo(undoEntry);
@@ -137,31 +142,13 @@ export const createCanvasSlice: StateCreator<
       };
     }
 
+    // Capture BEFORE snapshot
+    const beforeSnapshot = createSnapshot(get().canvas.components);
+
     const undoId = `undo_${nanoid(10)}`;
-
-    // Capture before state for undo
-    const beforeConfig = { ...component.config };
     const beforeBinding = component.dataBinding;
-    const beforeMeta = { ...component.meta };
 
-    const undoEntry: UndoEntry = {
-      id: undoId,
-      timestamp: Date.now(),
-      source: "assistant",
-      description: `Updated component`,
-      forward: { type: "component.update", payload },
-      inverse: {
-        type: "component.update",
-        payload: {
-          componentId,
-          config: beforeConfig,
-          dataBinding: beforeBinding,
-          meta: beforeMeta,
-        },
-      },
-      viewContext: get().activeViewId,
-    };
-
+    // Perform mutation
     set((state) => {
       const comp = state.canvas.components.find((c) => c.id === componentId);
       if (comp) {
@@ -170,6 +157,19 @@ export const createCanvasSlice: StateCreator<
         if (meta) comp.meta = { ...comp.meta, ...meta };
       }
     });
+
+    // Capture AFTER snapshot
+    const afterSnapshot = createSnapshot(get().canvas.components);
+
+    const undoEntry: UndoEntry = {
+      id: undoId,
+      timestamp: Date.now(),
+      source: "assistant",
+      description: `Updated component`,
+      beforeSnapshot,
+      afterSnapshot,
+      viewContext: get().activeViewId,
+    };
 
     get()._pushUndo(undoEntry);
     get()._clearRedo();
@@ -199,28 +199,12 @@ export const createCanvasSlice: StateCreator<
       };
     }
 
+    // Capture BEFORE snapshot
+    const beforeSnapshot = createSnapshot(get().canvas.components);
+
     const undoId = `undo_${nanoid(10)}`;
 
-    const undoEntry: UndoEntry = {
-      id: undoId,
-      timestamp: Date.now(),
-      source: "assistant",
-      description: `Removed ${component.typeId}`,
-      forward: { type: "component.remove", payload: { componentId } },
-      inverse: {
-        type: "component.create",
-        payload: {
-          typeId: component.typeId,
-          config: component.config,
-          dataBinding: component.dataBinding ?? undefined,
-          position: component.position,
-          size: component.size,
-          meta: component.meta,
-        },
-      },
-      viewContext: get().activeViewId,
-    };
-
+    // Perform mutation
     set((state) => {
       state.canvas.components = state.canvas.components.filter((c) => c.id !== componentId);
       // Clear selection if removed component was selected
@@ -228,6 +212,19 @@ export const createCanvasSlice: StateCreator<
         state.selectedComponentId = null;
       }
     });
+
+    // Capture AFTER snapshot
+    const afterSnapshot = createSnapshot(get().canvas.components);
+
+    const undoEntry: UndoEntry = {
+      id: undoId,
+      timestamp: Date.now(),
+      source: "assistant",
+      description: `Removed ${component.typeId}`,
+      beforeSnapshot,
+      afterSnapshot,
+      viewContext: get().activeViewId,
+    };
 
     get()._pushUndo(undoEntry);
     get()._clearRedo();
@@ -268,23 +265,29 @@ export const createCanvasSlice: StateCreator<
       };
     }
 
+    // Capture BEFORE snapshot
+    const beforeSnapshot = createSnapshot(get().canvas.components);
+
     const undoId = `undo_${nanoid(10)}`;
-    const beforePosition = { ...component.position };
+
+    // Perform mutation
+    set((state) => {
+      const comp = state.canvas.components.find((c) => c.id === componentId);
+      if (comp) comp.position = position;
+    });
+
+    // Capture AFTER snapshot
+    const afterSnapshot = createSnapshot(get().canvas.components);
 
     const undoEntry: UndoEntry = {
       id: undoId,
       timestamp: Date.now(),
       source: "assistant",
       description: `Moved component`,
-      forward: { type: "component.move", payload: { componentId, position } },
-      inverse: { type: "component.move", payload: { componentId, position: beforePosition } },
+      beforeSnapshot,
+      afterSnapshot,
       viewContext: get().activeViewId,
     };
-
-    set((state) => {
-      const comp = state.canvas.components.find((c) => c.id === componentId);
-      if (comp) comp.position = position;
-    });
 
     get()._pushUndo(undoEntry);
     get()._clearRedo();
@@ -323,23 +326,29 @@ export const createCanvasSlice: StateCreator<
       };
     }
 
+    // Capture BEFORE snapshot
+    const beforeSnapshot = createSnapshot(get().canvas.components);
+
     const undoId = `undo_${nanoid(10)}`;
-    const beforeSize = { ...component.size };
+
+    // Perform mutation
+    set((state) => {
+      const comp = state.canvas.components.find((c) => c.id === componentId);
+      if (comp) comp.size = size;
+    });
+
+    // Capture AFTER snapshot
+    const afterSnapshot = createSnapshot(get().canvas.components);
 
     const undoEntry: UndoEntry = {
       id: undoId,
       timestamp: Date.now(),
       source: "assistant",
       description: `Resized component`,
-      forward: { type: "component.resize", payload: { componentId, size } },
-      inverse: { type: "component.resize", payload: { componentId, size: beforeSize } },
+      beforeSnapshot,
+      afterSnapshot,
       viewContext: get().activeViewId,
     };
-
-    set((state) => {
-      const comp = state.canvas.components.find((c) => c.id === componentId);
-      if (comp) comp.size = size;
-    });
 
     get()._pushUndo(undoEntry);
     get()._clearRedo();
@@ -367,39 +376,30 @@ export const createCanvasSlice: StateCreator<
       };
     }
 
+    // Capture BEFORE snapshot
+    const beforeSnapshot = createSnapshot(get().canvas.components);
+
     const undoId = `undo_${nanoid(10)}`;
+
+    // Perform mutation
+    set((state) => {
+      state.canvas.components = preservePinned
+        ? state.canvas.components.filter((c) => c.meta.pinned)
+        : [];
+    });
+
+    // Capture AFTER snapshot
+    const afterSnapshot = createSnapshot(get().canvas.components);
 
     const undoEntry: UndoEntry = {
       id: undoId,
       timestamp: Date.now(),
       source: "assistant",
       description: `Cleared canvas (${toRemove.length} components)`,
-      forward: { type: "canvas.clear", payload: { preservePinned } },
-      inverse: {
-        type: "batch",
-        payload: {
-          commands: toRemove.map((c) => ({
-            type: "component.create" as const,
-            payload: {
-              typeId: c.typeId,
-              config: c.config,
-              dataBinding: c.dataBinding ?? undefined,
-              position: c.position,
-              size: c.size,
-              meta: c.meta,
-            },
-          })),
-          description: "Restore cleared components",
-        },
-      },
+      beforeSnapshot,
+      afterSnapshot,
       viewContext: get().activeViewId,
     };
-
-    set((state) => {
-      state.canvas.components = preservePinned
-        ? state.canvas.components.filter((c) => c.meta.pinned)
-        : [];
-    });
 
     get()._pushUndo(undoEntry);
     get()._clearRedo();

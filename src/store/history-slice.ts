@@ -1,10 +1,9 @@
-// History Slice - manages undo/redo stacks
+// History Slice - manages undo/redo stacks with snapshot-based restoration
 // See: .claude/plans/store-architecture-v0.1.md
 
 import { StateCreator } from "zustand";
-import { nanoid } from "nanoid";
 import type { AgenticCanvasStore } from "./index";
-import type { HistoryState, UndoEntry, CanvasCommand } from "@/types";
+import type { HistoryState, UndoEntry } from "@/types";
 
 // Initial state
 const initialHistory: HistoryState = {
@@ -42,14 +41,21 @@ export const createHistorySlice: StateCreator<
         // Navigate to the view where this action was performed
         const currentViewId = get().activeViewId;
         if (entry.viewContext !== currentViewId && entry.viewContext !== null) {
-          // Switch to the view context without recording history
           set((state) => {
             state.activeViewId = entry.viewContext;
           });
         }
 
-        // Execute inverse command without recording history
-        executeCommandWithoutHistory(get, set, entry.inverse);
+        // Restore beforeSnapshot - this is the state before the action was taken
+        set((state) => {
+          state.canvas.components = structuredClone(entry.beforeSnapshot.components);
+        });
+
+        // Reset data state to idle for components with bindings to trigger fresh fetches
+        const componentsWithBindings = get().canvas.components.filter((c) => c.dataBinding);
+        for (const comp of componentsWithBindings) {
+          get().fetchData(comp.id, comp.dataBinding!);
+        }
 
         // Move to redo stack
         set((state) => {
@@ -72,14 +78,21 @@ export const createHistorySlice: StateCreator<
         // Navigate to the view where this action was performed
         const currentViewId = get().activeViewId;
         if (entry.viewContext !== currentViewId && entry.viewContext !== null) {
-          // Switch to the view context without recording history
           set((state) => {
             state.activeViewId = entry.viewContext;
           });
         }
 
-        // Execute forward command without recording history
-        executeCommandWithoutHistory(get, set, entry.forward);
+        // Restore afterSnapshot - this is the state after the action was taken
+        set((state) => {
+          state.canvas.components = structuredClone(entry.afterSnapshot.components);
+        });
+
+        // Reset data state to idle for components with bindings to trigger fresh fetches
+        const componentsWithBindings = get().canvas.components.filter((c) => c.dataBinding);
+        for (const comp of componentsWithBindings) {
+          get().fetchData(comp.id, comp.dataBinding!);
+        }
 
         // Move back to undo stack
         set((state) => {
@@ -114,115 +127,3 @@ export const createHistorySlice: StateCreator<
     });
   },
 });
-
-// Execute command without recording to history (for undo/redo)
-function executeCommandWithoutHistory(
-  get: () => AgenticCanvasStore,
-  set: (fn: (state: AgenticCanvasStore) => void) => void,
-  command: CanvasCommand
-) {
-  switch (command.type) {
-    case "component.create": {
-      const { typeId, config, dataBinding, position, size, meta } = command.payload;
-      const componentId = `cmp_${nanoid(10)}`;
-      set((state) => {
-        state.canvas.components.push({
-          id: componentId,
-          typeId,
-          position: position ?? { col: 0, row: 0 },
-          size: size ?? { cols: 2, rows: 2 },
-          config,
-          dataBinding: dataBinding ?? null,
-          dataState: { status: "idle" },
-          meta: {
-            createdAt: Date.now(),
-            createdBy: meta?.createdBy ?? "assistant",
-            pinned: meta?.pinned ?? false,
-            label: meta?.label,
-          },
-        });
-      });
-      // Trigger data fetch if binding exists (needed for redo)
-      if (dataBinding) {
-        get().fetchData(componentId, dataBinding);
-      }
-      break;
-    }
-    case "component.remove": {
-      set((state) => {
-        state.canvas.components = state.canvas.components.filter(
-          (c) => c.id !== command.payload.componentId
-        );
-      });
-      break;
-    }
-    case "component.update": {
-      const { componentId, config, dataBinding, meta } = command.payload;
-      set((state) => {
-        const comp = state.canvas.components.find((c) => c.id === componentId);
-        if (comp) {
-          if (config) comp.config = { ...comp.config, ...config };
-          if (dataBinding !== undefined) comp.dataBinding = dataBinding;
-          if (meta) comp.meta = { ...comp.meta, ...meta };
-        }
-      });
-      break;
-    }
-    case "component.move": {
-      set((state) => {
-        const comp = state.canvas.components.find((c) => c.id === command.payload.componentId);
-        if (comp) comp.position = command.payload.position;
-      });
-      break;
-    }
-    case "component.resize": {
-      set((state) => {
-        const comp = state.canvas.components.find((c) => c.id === command.payload.componentId);
-        if (comp) comp.size = command.payload.size;
-      });
-      break;
-    }
-    case "canvas.clear": {
-      set((state) => {
-        state.canvas.components = command.payload.preservePinned
-          ? state.canvas.components.filter((c) => c.meta.pinned)
-          : [];
-      });
-      break;
-    }
-    case "batch": {
-      for (const cmd of command.payload.commands) {
-        executeCommandWithoutHistory(get, set, cmd);
-      }
-      break;
-    }
-    case "view.load": {
-      // Re-execute view load (used for redo)
-      const { viewId } = command.payload;
-      const view = get().workspace.views.find((v) => v.id === viewId);
-      if (view) {
-        const pinnedComponents = get().canvas.components.filter((c) => c.meta.pinned);
-        const loadedComponents = JSON.parse(JSON.stringify(view.snapshot.components));
-
-        // Regenerate IDs
-        loadedComponents.forEach((c: { id: string; dataState: { status: string } }) => {
-          c.id = `cmp_${nanoid(10)}`;
-          c.dataState = { status: "idle" };
-        });
-
-        set((state) => {
-          state.canvas.components = [...pinnedComponents, ...loadedComponents];
-          state.activeViewId = viewId;
-        });
-
-        // Trigger data fetches
-        for (const comp of loadedComponents) {
-          if (comp.dataBinding) {
-            get().fetchData(comp.id, comp.dataBinding);
-          }
-        }
-      }
-      break;
-    }
-  }
-}

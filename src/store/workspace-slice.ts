@@ -15,6 +15,7 @@ import type {
   SaveViewPayload,
   CommandResult,
   UndoEntry,
+  CanvasSnapshot,
 } from "@/types";
 
 // Initial workspace
@@ -83,6 +84,11 @@ function hashCanvas(canvas: Canvas): string {
       config: c.config,
     })),
   });
+}
+
+// Helper to create a deep copy snapshot of components
+function createSnapshot(components: ComponentInstance[]): CanvasSnapshot {
+  return { components: structuredClone(components) };
 }
 
 // Slice creator
@@ -154,44 +160,17 @@ export const createWorkspaceSlice: StateCreator<
       };
     }
 
+    // Capture BEFORE snapshot
+    const beforeSnapshot = createSnapshot(get().canvas.components);
+
     const undoId = `undo_${nanoid(10)}`;
 
-    // Capture current state for undo
+    // Capture current state for pinned components
     const currentComponents = get().canvas.components;
     const pinnedComponents = currentComponents.filter((c) => c.meta.pinned);
-    const nonPinnedComponents = currentComponents.filter((c) => !c.meta.pinned);
 
     // Capture current view context for undo navigation
     const previousViewId = get().activeViewId;
-
-    const undoEntry: UndoEntry = {
-      id: undoId,
-      timestamp: Date.now(),
-      source: "assistant",
-      description: `Loaded view: ${view.name}`,
-      forward: { type: "view.load", payload: { viewId } },
-      inverse: {
-        type: "batch",
-        payload: {
-          commands: [
-            { type: "canvas.clear", payload: { preservePinned: true } },
-            ...nonPinnedComponents.map((c) => ({
-              type: "component.create" as const,
-              payload: {
-                typeId: c.typeId,
-                config: c.config,
-                dataBinding: c.dataBinding ?? undefined,
-                position: c.position,
-                size: c.size,
-                meta: c.meta,
-              },
-            })),
-          ],
-          description: "Restore previous canvas state",
-        },
-      },
-      viewContext: previousViewId,
-    };
 
     // Compute snapshot hash for change detection
     const snapshotHash = hashCanvas(view.snapshot);
@@ -213,6 +192,19 @@ export const createWorkspaceSlice: StateCreator<
       state.activeViewId = viewId;
       state.viewSnapshotHash = snapshotHash;
     });
+
+    // Capture AFTER snapshot
+    const afterSnapshot = createSnapshot(get().canvas.components);
+
+    const undoEntry: UndoEntry = {
+      id: undoId,
+      timestamp: Date.now(),
+      source: "assistant",
+      description: `Loaded view: ${view.name}`,
+      beforeSnapshot,
+      afterSnapshot,
+      viewContext: previousViewId,
+    };
 
     get()._pushUndo(undoEntry);
     get()._clearRedo();
