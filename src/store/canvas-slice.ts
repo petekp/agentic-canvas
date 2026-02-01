@@ -14,9 +14,10 @@ import type {
   CreateComponentPayload,
   UpdateComponentPayload,
   CommandResult,
-  UndoEntry,
   CanvasSnapshot,
 } from "@/types";
+import { createUserSource } from "@/lib/undo/types";
+import type { UndoCanvasCommand } from "@/lib/undo/types";
 
 // Initial state
 const initialGrid: GridConfig = {
@@ -71,9 +72,8 @@ export const createCanvasSlice: StateCreator<
     const finalSize = size ?? { cols: 3, rows: 2 };
     const finalPosition = position ?? findOpenPosition(get().canvas, finalSize);
 
-    // Generate IDs
+    // Generate ID
     const componentId = `cmp_${nanoid(10)}`;
-    const undoId = `undo_${nanoid(10)}`;
 
     // Create component instance
     const component: ComponentInstance = {
@@ -100,20 +100,20 @@ export const createCanvasSlice: StateCreator<
     // Capture AFTER snapshot
     const afterSnapshot = createSnapshot(get().canvas.components);
 
-    // Create undo entry with snapshots
-    const undoEntry: UndoEntry = {
-      id: undoId,
-      timestamp: Date.now(),
-      source: component.meta.createdBy,
-      description: `Added ${typeId}`,
-      beforeSnapshot,
-      afterSnapshot,
-      viewContext: get().activeViewId,
+    // Create undo command
+    const command: UndoCanvasCommand = {
+      type: "component_add",
+      component,
     };
 
-    // Push to history
-    get()._pushUndo(undoEntry);
-    get()._clearRedo();
+    // Push to undo stack (automatically clears redo)
+    get().pushUndo({
+      source: createUserSource(),
+      description: `Added ${typeId}`,
+      command,
+      beforeSnapshot,
+      afterSnapshot,
+    });
 
     // Trigger data fetch if binding exists
     if (dataBinding) {
@@ -122,7 +122,7 @@ export const createCanvasSlice: StateCreator<
 
     return {
       success: true,
-      undoId,
+      undoId: componentId,
       explanation: `Added ${typeId} to canvas`,
       affectedComponentIds: [componentId],
     };
@@ -144,8 +144,6 @@ export const createCanvasSlice: StateCreator<
 
     // Capture BEFORE snapshot
     const beforeSnapshot = createSnapshot(get().canvas.components);
-
-    const undoId = `undo_${nanoid(10)}`;
     const beforeBinding = component.dataBinding;
 
     // Perform mutation
@@ -161,18 +159,22 @@ export const createCanvasSlice: StateCreator<
     // Capture AFTER snapshot
     const afterSnapshot = createSnapshot(get().canvas.components);
 
-    const undoEntry: UndoEntry = {
-      id: undoId,
-      timestamp: Date.now(),
-      source: "assistant",
-      description: `Updated component`,
-      beforeSnapshot,
-      afterSnapshot,
-      viewContext: get().activeViewId,
+    // Create undo command
+    const command: UndoCanvasCommand = {
+      type: "component_update_config",
+      componentId,
+      from: component.config as Record<string, unknown>,
+      to: { ...component.config, ...config } as Record<string, unknown>,
     };
 
-    get()._pushUndo(undoEntry);
-    get()._clearRedo();
+    // Push to undo stack
+    get().pushUndo({
+      source: createUserSource(),
+      description: `Updated component`,
+      command,
+      beforeSnapshot,
+      afterSnapshot,
+    });
 
     // Re-fetch data if binding changed
     if (dataBinding && dataBinding !== beforeBinding) {
@@ -181,7 +183,7 @@ export const createCanvasSlice: StateCreator<
 
     return {
       success: true,
-      undoId,
+      undoId: componentId,
       explanation: `Updated component configuration`,
       affectedComponentIds: [componentId],
     };
@@ -202,8 +204,6 @@ export const createCanvasSlice: StateCreator<
     // Capture BEFORE snapshot
     const beforeSnapshot = createSnapshot(get().canvas.components);
 
-    const undoId = `undo_${nanoid(10)}`;
-
     // Perform mutation
     set((state) => {
       state.canvas.components = state.canvas.components.filter((c) => c.id !== componentId);
@@ -216,22 +216,25 @@ export const createCanvasSlice: StateCreator<
     // Capture AFTER snapshot
     const afterSnapshot = createSnapshot(get().canvas.components);
 
-    const undoEntry: UndoEntry = {
-      id: undoId,
-      timestamp: Date.now(),
-      source: "assistant",
-      description: `Removed ${component.typeId}`,
-      beforeSnapshot,
-      afterSnapshot,
-      viewContext: get().activeViewId,
+    // Create undo command
+    const command: UndoCanvasCommand = {
+      type: "component_remove",
+      componentId,
+      snapshot: component,
     };
 
-    get()._pushUndo(undoEntry);
-    get()._clearRedo();
+    // Push to undo stack
+    get().pushUndo({
+      source: createUserSource(),
+      description: `Removed ${component.typeId}`,
+      command,
+      beforeSnapshot,
+      afterSnapshot,
+    });
 
     return {
       success: true,
-      undoId,
+      undoId: componentId,
       explanation: `Removed component from canvas`,
       affectedComponentIds: [componentId],
     };
@@ -267,8 +270,7 @@ export const createCanvasSlice: StateCreator<
 
     // Capture BEFORE snapshot
     const beforeSnapshot = createSnapshot(get().canvas.components);
-
-    const undoId = `undo_${nanoid(10)}`;
+    const fromPosition = { ...component.position };
 
     // Perform mutation
     set((state) => {
@@ -279,22 +281,26 @@ export const createCanvasSlice: StateCreator<
     // Capture AFTER snapshot
     const afterSnapshot = createSnapshot(get().canvas.components);
 
-    const undoEntry: UndoEntry = {
-      id: undoId,
-      timestamp: Date.now(),
-      source: "assistant",
-      description: `Moved component`,
-      beforeSnapshot,
-      afterSnapshot,
-      viewContext: get().activeViewId,
+    // Create undo command
+    const command: UndoCanvasCommand = {
+      type: "component_move",
+      componentId,
+      from: fromPosition,
+      to: position,
     };
 
-    get()._pushUndo(undoEntry);
-    get()._clearRedo();
+    // Push to undo stack
+    get().pushUndo({
+      source: createUserSource(),
+      description: `Moved component`,
+      command,
+      beforeSnapshot,
+      afterSnapshot,
+    });
 
     return {
       success: true,
-      undoId,
+      undoId: componentId,
       explanation: `Moved component to (${position.col}, ${position.row})`,
       affectedComponentIds: [componentId],
     };
@@ -328,8 +334,7 @@ export const createCanvasSlice: StateCreator<
 
     // Capture BEFORE snapshot
     const beforeSnapshot = createSnapshot(get().canvas.components);
-
-    const undoId = `undo_${nanoid(10)}`;
+    const fromSize = { ...component.size };
 
     // Perform mutation
     set((state) => {
@@ -340,22 +345,26 @@ export const createCanvasSlice: StateCreator<
     // Capture AFTER snapshot
     const afterSnapshot = createSnapshot(get().canvas.components);
 
-    const undoEntry: UndoEntry = {
-      id: undoId,
-      timestamp: Date.now(),
-      source: "assistant",
-      description: `Resized component`,
-      beforeSnapshot,
-      afterSnapshot,
-      viewContext: get().activeViewId,
+    // Create undo command
+    const command: UndoCanvasCommand = {
+      type: "component_resize",
+      componentId,
+      from: fromSize,
+      to: size,
     };
 
-    get()._pushUndo(undoEntry);
-    get()._clearRedo();
+    // Push to undo stack
+    get().pushUndo({
+      source: createUserSource(),
+      description: `Resized component`,
+      command,
+      beforeSnapshot,
+      afterSnapshot,
+    });
 
     return {
       success: true,
-      undoId,
+      undoId: componentId,
       explanation: `Resized component to ${size.cols}x${size.rows}`,
       affectedComponentIds: [componentId],
     };
@@ -379,8 +388,6 @@ export const createCanvasSlice: StateCreator<
     // Capture BEFORE snapshot
     const beforeSnapshot = createSnapshot(get().canvas.components);
 
-    const undoId = `undo_${nanoid(10)}`;
-
     // Perform mutation
     set((state) => {
       state.canvas.components = preservePinned
@@ -391,22 +398,24 @@ export const createCanvasSlice: StateCreator<
     // Capture AFTER snapshot
     const afterSnapshot = createSnapshot(get().canvas.components);
 
-    const undoEntry: UndoEntry = {
-      id: undoId,
-      timestamp: Date.now(),
-      source: "assistant",
-      description: `Cleared canvas (${toRemove.length} components)`,
-      beforeSnapshot,
-      afterSnapshot,
-      viewContext: get().activeViewId,
+    // Create undo command
+    const command: UndoCanvasCommand = {
+      type: "canvas_clear",
+      removedCount: toRemove.length,
     };
 
-    get()._pushUndo(undoEntry);
-    get()._clearRedo();
+    // Push to undo stack
+    get().pushUndo({
+      source: createUserSource(),
+      description: `Cleared canvas (${toRemove.length} components)`,
+      command,
+      beforeSnapshot,
+      afterSnapshot,
+    });
 
     return {
       success: true,
-      undoId,
+      undoId: `clear_${Date.now()}`,
       explanation: `Cleared ${toRemove.length} components from canvas`,
       affectedComponentIds: toRemove.map((c) => c.id),
     };

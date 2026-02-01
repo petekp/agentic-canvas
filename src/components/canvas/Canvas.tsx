@@ -10,9 +10,10 @@ import { getCompactor } from "react-grid-layout/core";
 // Allow overlap - items can stack freely, no pushing behavior
 // This works well with undo/redo and future agent-driven layouts
 const overlapCompactor = getCompactor(null, true, false);
-import { useCanvas, useHistory, useViews } from "@/hooks";
+import { useCanvas, useViews, useUndoSimple } from "@/hooks";
 import { ComponentContent } from "./ComponentContent";
 import { ViewTabs } from "./ViewTabs";
+import { UndoRedoControls } from "@/components/UndoRedoControls";
 import type { ComponentInstance } from "@/types";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,7 +24,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
-import { Undo2, Redo2, Plus, Layers, User, GitPullRequest, BarChart3 } from "lucide-react";
+import { Plus, Layers, User, GitPullRequest, BarChart3 } from "lucide-react";
 
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
@@ -221,7 +222,7 @@ function componentsToLayout(components: ComponentInstance[]) {
 
 export function Canvas() {
   const { components, grid, moveComponent, resizeComponent, selectedComponentId, selectComponent } = useCanvas();
-  const { canUndo, canRedo, undo, redo } = useHistory();
+  const { canUndo, canRedo, undo, redo } = useUndoSimple();
   const { views, activeViewId, saveView, loadView } = useViews();
   const { width, containerRef, mounted } = useContainerWidth();
 
@@ -349,24 +350,7 @@ export function Canvas() {
         {/* Floating toolbar */}
         <div className="absolute top-4 right-4 z-10 flex items-center gap-2">
           <div className="flex items-center border border-border rounded-md bg-card/80 backdrop-blur-sm shadow-sm">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => undo()}
-              disabled={!canUndo}
-              className="rounded-r-none border-r border-border"
-            >
-              <Undo2 className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => redo()}
-              disabled={!canRedo}
-              className="rounded-l-none"
-            >
-              <Redo2 className="h-4 w-4" />
-            </Button>
+            <UndoRedoControls size="md" />
           </div>
           <AddComponentButton />
         </div>

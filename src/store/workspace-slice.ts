@@ -14,9 +14,10 @@ import type {
   ComponentInstance,
   SaveViewPayload,
   CommandResult,
-  UndoEntry,
   CanvasSnapshot,
 } from "@/types";
+import { createUserSource } from "@/lib/undo/types";
+import type { UndoCanvasCommand } from "@/lib/undo/types";
 
 // Initial workspace
 const initialWorkspace: Workspace = {
@@ -163,14 +164,9 @@ export const createWorkspaceSlice: StateCreator<
     // Capture BEFORE snapshot
     const beforeSnapshot = createSnapshot(get().canvas.components);
 
-    const undoId = `undo_${nanoid(10)}`;
-
     // Capture current state for pinned components
     const currentComponents = get().canvas.components;
     const pinnedComponents = currentComponents.filter((c) => c.meta.pinned);
-
-    // Capture current view context for undo navigation
-    const previousViewId = get().activeViewId;
 
     // Compute snapshot hash for change detection
     const snapshotHash = hashCanvas(view.snapshot);
@@ -196,18 +192,21 @@ export const createWorkspaceSlice: StateCreator<
     // Capture AFTER snapshot
     const afterSnapshot = createSnapshot(get().canvas.components);
 
-    const undoEntry: UndoEntry = {
-      id: undoId,
-      timestamp: Date.now(),
-      source: "assistant",
-      description: `Loaded view: ${view.name}`,
-      beforeSnapshot,
-      afterSnapshot,
-      viewContext: previousViewId,
+    // Create undo command
+    const command: UndoCanvasCommand = {
+      type: "view_load",
+      viewId,
+      viewName: view.name,
     };
 
-    get()._pushUndo(undoEntry);
-    get()._clearRedo();
+    // Push to undo stack
+    get().pushUndo({
+      source: createUserSource(),
+      description: `Loaded view: ${view.name}`,
+      command,
+      beforeSnapshot,
+      afterSnapshot,
+    });
 
     // Trigger data fetches for loaded components
     const loadedComponents = get().canvas.components.filter(
@@ -221,7 +220,7 @@ export const createWorkspaceSlice: StateCreator<
 
     return {
       success: true,
-      undoId,
+      undoId: viewId,
       explanation: `Loaded view: ${view.name}`,
       affectedComponentIds: loadedComponents.map((c) => c.id),
     };

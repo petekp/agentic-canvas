@@ -36,20 +36,14 @@ export function useComponentsByType(typeId: string) {
   return useStore(useShallow((state) => state.canvas.components.filter((c) => c.typeId === typeId)));
 }
 
-// History hooks
-export function useHistory() {
-  return useStore(
-    useShallow((state) => ({
-      canUndo: state.history.undoStack.length > 0,
-      canRedo: state.history.redoStack.length > 0,
-      undo: state.undo,
-      redo: state.redo,
-      clearHistory: state.clearHistory,
-      undoDescription: state.history.undoStack[state.history.undoStack.length - 1]?.description,
-      redoDescription: state.history.redoStack[state.history.redoStack.length - 1]?.description,
-    }))
-  );
-}
+// Re-export undo hooks
+export {
+  useUndo,
+  useUndoSimple,
+  useUndoKeyboardShortcuts,
+  useBatch,
+  useUndoHistoryViewer,
+} from "./useUndo";
 
 // View hooks
 export function useViews() {
