@@ -1,44 +1,70 @@
 // Chat API Route - handles streaming AI responses with tool calling
-// Uses Vercel AI SDK with Supermemory middleware for automatic memory
+// Uses Vercel AI SDK with assistant-ui for frontend tool execution
 
 import { openai } from "@ai-sdk/openai";
-import { withSupermemory } from "@supermemory/tools/ai-sdk";
 import { streamText, convertToModelMessages, type UIMessage, stepCountIs } from "ai";
-import { z } from "zod";
+import { frontendTools } from "@assistant-ui/react-ai-sdk";
 import { createSystemPrompt } from "@/lib/ai-tools";
-import type { Canvas, View } from "@/types";
-import type { RecentChange } from "@/lib/canvas-context";
 
 // Allow streaming responses up to 30 seconds
 export const maxDuration = 30;
 
-interface ChatRequest {
-  messages: UIMessage[];
-  system?: string; // From AssistantChatTransport (frontend system messages)
-  canvas: Canvas;
-  recentChanges?: RecentChange[];
-  activeViewName?: string | null;
-  views?: View[];
+// Request body type (for reference)
+// messages: UIMessage[] - Chat messages
+// system?: string - System message from AssistantChatTransport
+// tools?: unknown - Frontend tool definitions from client
+// canvas: Canvas - Current canvas state
+// recentChanges?: RecentChange[] - Recent canvas changes
+// activeViewName?: string | null - Currently active view name
+// views?: View[] - Available views
+
+// Normalize messages to ensure they have the parts array format required by AI SDK v6
+// This handles any legacy content-string format that might come through
+function normalizeMessages(messages: unknown[]): UIMessage[] {
+  return messages.map((msg: unknown) => {
+    const m = msg as Record<string, unknown>;
+    const id = (m.id as string) ?? `msg_${Date.now()}`;
+    const role = (m.role as "user" | "assistant" | "system") ?? "user";
+
+    // If message already has parts, use as-is
+    if (Array.isArray(m.parts) && m.parts.length > 0) {
+      return { id, role, parts: m.parts, metadata: m.metadata } as unknown as UIMessage;
+    }
+
+    // Convert legacy content string to parts array
+    if (typeof m.content === "string") {
+      return {
+        id,
+        role,
+        parts: [{ type: "text" as const, text: m.content }],
+        metadata: m.metadata,
+      } as unknown as UIMessage;
+    }
+
+    // Convert legacy content array (assistant-ui internal format) to parts
+    if (Array.isArray(m.content)) {
+      const parts = m.content.map((c: unknown) => {
+        const part = c as Record<string, unknown>;
+        if (part.type === "text" && typeof part.text === "string") {
+          return { type: "text" as const, text: part.text };
+        }
+        return part;
+      });
+      return { id, role, parts, metadata: m.metadata } as unknown as UIMessage;
+    }
+
+    // Fallback: return with empty parts
+    return { id, role, parts: [], metadata: m.metadata } as unknown as UIMessage;
+  });
 }
-
-// Tool parameter schemas
-const positionSchema = z.object({
-  col: z.number().int().min(0),
-  row: z.number().int().min(0),
-});
-
-const sizeSchema = z.object({
-  cols: z.number().int().min(1).max(12),
-  rows: z.number().int().min(1).max(8),
-});
 
 export async function POST(req: Request) {
   try {
-    const { messages, system, canvas, recentChanges, activeViewName, views }: ChatRequest = await req.json();
+    const body = await req.json();
+    const { messages: rawMessages, system, tools, canvas, recentChanges, activeViewName, views } = body;
 
-    // Extract user ID from session/auth
-    // TODO: Wire to your auth system
-    const userId = "default_user";
+    // Normalize messages to ensure parts array format (handles legacy content format)
+    const messages = normalizeMessages(rawMessages ?? []);
 
     // Build dynamic system prompt based on current canvas state and context
     const dynamicSystemPrompt = createSystemPrompt({
@@ -54,212 +80,38 @@ export async function POST(req: Request) {
       : dynamicSystemPrompt;
 
     // Convert UI messages to model messages
-    const modelMessages = await convertToModelMessages(messages);
+    let modelMessages;
+    try {
+      modelMessages = await convertToModelMessages(messages);
+    } catch (conversionError) {
+      console.error("[Chat API] convertToModelMessages failed:", conversionError);
+      console.error("[Chat API] Message that caused error:", JSON.stringify(messages, null, 2));
+      throw conversionError;
+    }
 
-    // Define tools with server-side execute functions
-    // These return instructions for the client to execute
-    const tools = {
-      add_component: {
-        description: `Add a new component to the canvas. Available types:
-- "github.stat-tile": metric display, requires config.metric (e.g., "open_prs", "closed_issues", "stars")
-- "github.pr-list": shows pull requests
-- "github.issue-grid": shows issues
-- "github.activity-timeline": shows activity feed
-Position and size are optional. For stat-tile, always include config with the metric name.`,
-        inputSchema: z.object({
-          type_id: z.string(),
-          config: z.record(z.string(), z.unknown()).optional(),
-          position: positionSchema.optional(),
-          size: sizeSchema.optional(),
-          label: z.string().optional(),
-        }),
-        execute: async (params: {
-          type_id: string;
-          config?: Record<string, unknown>;
-          position?: { col: number; row: number };
-          size?: { cols: number; rows: number };
-          label?: string;
-        }) => {
-          // Return the params - client will execute via store
-          return {
-            action: "add_component",
-            params,
-            success: true,
-          };
-        },
-      },
-      remove_component: {
-        description: "Remove a component from the canvas by its ID.",
-        inputSchema: z.object({
-          component_id: z.string(),
-        }),
-        execute: async (params: { component_id: string }) => {
-          return {
-            action: "remove_component",
-            params,
-            success: true,
-          };
-        },
-      },
-      move_component: {
-        description: "Move a component to a new position on the grid.",
-        inputSchema: z.object({
-          component_id: z.string(),
-          position: positionSchema,
-        }),
-        execute: async (params: { component_id: string; position: { col: number; row: number } }) => {
-          return {
-            action: "move_component",
-            params,
-            success: true,
-          };
-        },
-      },
-      resize_component: {
-        description: "Resize a component on the grid.",
-        inputSchema: z.object({
-          component_id: z.string(),
-          size: sizeSchema,
-        }),
-        execute: async (params: { component_id: string; size: { cols: number; rows: number } }) => {
-          return {
-            action: "resize_component",
-            params,
-            success: true,
-          };
-        },
-      },
-      update_component: {
-        description: "Update a component's configuration or label.",
-        inputSchema: z.object({
-          component_id: z.string(),
-          config: z.record(z.string(), z.unknown()).optional(),
-          label: z.string().optional(),
-          pinned: z.boolean().optional(),
-        }),
-        execute: async (params: {
-          component_id: string;
-          config?: Record<string, unknown>;
-          label?: string;
-          pinned?: boolean;
-        }) => {
-          return {
-            action: "update_component",
-            params,
-            success: true,
-          };
-        },
-      },
-      clear_canvas: {
-        description: "Clear all components from the canvas. Use preserve_pinned to keep pinned components.",
-        inputSchema: z.object({
-          preserve_pinned: z.boolean().default(true),
-        }),
-        execute: async (params: { preserve_pinned: boolean }) => {
-          return {
-            action: "clear_canvas",
-            params,
-            success: true,
-          };
-        },
-      },
-      create_view: {
-        description: "Create a new canvas view/tab. Use for organizing related components into separate workspaces. Views are ephemeral by default - users can pin ones they want to keep.",
-        inputSchema: z.object({
-          name: z.string().describe("Name for the new view"),
-          components: z
-            .array(
-              z.object({
-                type_id: z.string(),
-                config: z.record(z.string(), z.unknown()).optional(),
-                position: positionSchema.optional(),
-                size: sizeSchema.optional(),
-                label: z.string().optional(),
-              })
-            )
-            .optional()
-            .describe("Components to add to the view"),
-          switch_to: z.boolean().default(true).describe("Switch to the new view after creating it"),
-        }),
-        execute: async (params: {
-          name: string;
-          components?: Array<{
-            type_id: string;
-            config?: Record<string, unknown>;
-            position?: { col: number; row: number };
-            size?: { cols: number; rows: number };
-            label?: string;
-          }>;
-          switch_to: boolean;
-        }) => {
-          return {
-            action: "create_view",
-            params,
-            success: true,
-          };
-        },
-      },
-      switch_view: {
-        description: "Switch to an existing view by name or ID.",
-        inputSchema: z.object({
-          view: z.string().describe("View name or ID to switch to"),
-        }),
-        execute: async (params: { view: string }) => {
-          return {
-            action: "switch_view",
-            params,
-            success: true,
-          };
-        },
-      },
-      pin_view: {
-        description: "Pin a view to keep it. Unpinned views may be auto-cleaned after 7 days. Use this when the user wants to keep a view.",
-        inputSchema: z.object({
-          view: z.string().optional().describe("View name or ID to pin. If not specified, pins the current view."),
-        }),
-        execute: async (params: { view?: string }) => {
-          return {
-            action: "pin_view",
-            params,
-            success: true,
-          };
-        },
-      },
-      unpin_view: {
-        description: "Unpin a view. Unpinned views may be auto-cleaned after 7 days of inactivity.",
-        inputSchema: z.object({
-          view: z.string().optional().describe("View name or ID to unpin. If not specified, unpins the current view."),
-        }),
-        execute: async (params: { view?: string }) => {
-          return {
-            action: "unpin_view",
-            params,
-            success: true,
-          };
-        },
-      },
-    };
-
-    // Wrap the model with Supermemory middleware
-    // This automatically injects relevant memories and stores conversations
-    const model = withSupermemory(openai("gpt-4o"), userId, {
-      apiKey: process.env.SUPERMEMORY_API_KEY,
-      mode: "full", // Use both profile and query-based memory retrieval
-      addMemory: "always", // Automatically store conversations as memories
-      verbose: process.env.NODE_ENV === "development", // Log memory operations in dev
-    });
+    // Use model directly
+    const model = openai("gpt-4o");
 
     // Stream the response with tool support
+    // Tools are defined on the client via makeAssistantTool and forwarded here
     const result = streamText({
       model,
       system: systemPrompt,
       messages: modelMessages,
-      tools,
-      stopWhen: stepCountIs(5), // Allow multi-step tool use
+      // Convert frontend tools to AI SDK format
+      // These tools execute on the client, not the server
+      tools: frontendTools(tools),
+      // Limit to 3 steps to prevent tool call loops
+      stopWhen: stepCountIs(3),
     });
 
-    // Return the streaming response
-    return result.toUIMessageStreamResponse();
+    // Return the streaming response with error handling
+    return result.toUIMessageStreamResponse({
+      onError: (error) => {
+        console.error("[Chat API] Stream error:", error);
+        return error instanceof Error ? error.message : "Stream error occurred";
+      },
+    });
   } catch (error) {
     console.error("Chat API error:", error);
     return new Response(

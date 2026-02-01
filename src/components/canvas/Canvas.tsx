@@ -35,13 +35,15 @@ import "react-resizable/css/styles.css";
 // Component types available to add
 // filter: personal GitHub filter (authored, review_requested, assigned, etc.)
 // category: for grouping in dropdown
+// Component types with tuned default sizes
+// rowHeight=80, so: 2 rows=160px, 3 rows=240px, 4 rows=320px, 5 rows=400px
 const componentTypes = [
   // === My Stuff (Personal Filters) ===
   {
     typeId: "github.pr-list",
     label: "My PRs",
     config: { repo: "assistant-ui/assistant-ui", state: "open", limit: 5, filter: "authored" },
-    size: { cols: 4, rows: 3 },
+    size: { cols: 4, rows: 4 }, // 5 PRs @ ~50px each + padding
     queryType: "pull_requests",
     category: "personal",
   },
@@ -49,23 +51,23 @@ const componentTypes = [
     typeId: "github.pr-list",
     label: "PRs to Review",
     config: { repo: "assistant-ui/assistant-ui", state: "open", limit: 5, filter: "review_requested" },
-    size: { cols: 4, rows: 3 },
+    size: { cols: 4, rows: 4 },
     queryType: "pull_requests",
     category: "personal",
   },
   {
     typeId: "github.issue-grid",
     label: "My Issues",
-    config: { repo: "assistant-ui/assistant-ui", state: "open", limit: 8, filter: "assigned" },
-    size: { cols: 4, rows: 3 },
+    config: { repo: "assistant-ui/assistant-ui", state: "open", limit: 6, filter: "assigned" },
+    size: { cols: 4, rows: 4 }, // 6 issues @ ~50px each
     queryType: "issues",
     category: "personal",
   },
   {
     typeId: "github.my-activity",
     label: "My Activity",
-    config: { timeWindow: "7d", feedLimit: 10 },
-    size: { cols: 4, rows: 5 },
+    config: { timeWindow: "7d", feedLimit: 8 },
+    size: { cols: 4, rows: 5 }, // Stats row + sparkline + feed
     queryType: "my_activity",
     category: "personal",
   },
@@ -74,7 +76,7 @@ const componentTypes = [
     typeId: "github.stat-tile",
     label: "Stat Tile",
     config: { repo: "assistant-ui/assistant-ui", metric: "open_prs" },
-    size: { cols: 2, rows: 2 },
+    size: { cols: 2, rows: 2 }, // Compact: number + trend + sparkline
     queryType: "stats",
     category: "github",
   },
@@ -82,31 +84,31 @@ const componentTypes = [
     typeId: "github.pr-list",
     label: "All PRs",
     config: { repo: "assistant-ui/assistant-ui", state: "open", limit: 5 },
-    size: { cols: 4, rows: 3 },
+    size: { cols: 4, rows: 4 },
     queryType: "pull_requests",
     category: "github",
   },
   {
     typeId: "github.issue-grid",
     label: "All Issues",
-    config: { repo: "assistant-ui/assistant-ui", state: "open", limit: 8 },
-    size: { cols: 4, rows: 3 },
+    config: { repo: "assistant-ui/assistant-ui", state: "open", limit: 6 },
+    size: { cols: 4, rows: 4 },
     queryType: "issues",
     category: "github",
   },
   {
     typeId: "github.activity-timeline",
     label: "Activity Timeline",
-    config: { repo: "assistant-ui/assistant-ui", limit: 10 },
-    size: { cols: 3, rows: 4 },
+    config: { repo: "assistant-ui/assistant-ui", limit: 8 },
+    size: { cols: 3, rows: 4 }, // Narrow feed, 8 items @ ~40px
     queryType: "activity",
     category: "github",
   },
   {
     typeId: "github.commits",
     label: "Commits",
-    config: { repo: "assistant-ui/assistant-ui", timeWindow: "7d", limit: 30 },
-    size: { cols: 4, rows: 4 },
+    config: { repo: "assistant-ui/assistant-ui", timeWindow: "7d", limit: 20 },
+    size: { cols: 4, rows: 4 }, // Commit list with sha + message
     queryType: "commits",
     category: "github",
   },
@@ -114,7 +116,7 @@ const componentTypes = [
     typeId: "github.team-activity",
     label: "Team Activity",
     config: { repo: "assistant-ui/assistant-ui", timeWindow: "7d" },
-    size: { cols: 5, rows: 5 },
+    size: { cols: 4, rows: 5 }, // Summary + sparkline + contributor cards
     queryType: "team_activity",
     category: "github",
   },
@@ -123,7 +125,7 @@ const componentTypes = [
     typeId: "posthog.site-health",
     label: "Site Health",
     config: { timeWindow: "7d" },
-    size: { cols: 4, rows: 3 },
+    size: { cols: 3, rows: 3 }, // 3 stats + sparkline
     queryType: "site_health",
     source: "posthog",
     category: "posthog",
@@ -132,7 +134,7 @@ const componentTypes = [
     typeId: "posthog.property-breakdown",
     label: "Property Breakdown",
     config: { timeWindow: "7d", metric: "visitors" },
-    size: { cols: 4, rows: 3 },
+    size: { cols: 3, rows: 4 }, // Vertical bar list
     queryType: "property_breakdown",
     source: "posthog",
     category: "posthog",
@@ -140,8 +142,8 @@ const componentTypes = [
   {
     typeId: "posthog.top-pages",
     label: "Top Pages",
-    config: { timeWindow: "7d", limit: 10 },
-    size: { cols: 4, rows: 4 },
+    config: { timeWindow: "7d", limit: 8 },
+    size: { cols: 4, rows: 4 }, // Page list with paths
     queryType: "top_pages",
     source: "posthog",
     category: "posthog",
@@ -150,8 +152,8 @@ const componentTypes = [
   {
     typeId: "slack.channel-activity",
     label: "Channel Activity",
-    config: { channelName: "general", limit: 20 },
-    size: { cols: 4, rows: 4 },
+    config: { channelName: "general", limit: 10 },
+    size: { cols: 4, rows: 4 }, // Messages @ ~60px each with reactions
     queryType: "channel_activity",
     source: "slack",
     category: "slack",
@@ -159,8 +161,8 @@ const componentTypes = [
   {
     typeId: "slack.mentions",
     label: "My Mentions",
-    config: { limit: 10 },
-    size: { cols: 4, rows: 3 },
+    config: { limit: 8 },
+    size: { cols: 4, rows: 4 }, // Mentions with channel context
     queryType: "mentions",
     source: "slack",
     category: "slack",
@@ -169,7 +171,7 @@ const componentTypes = [
     typeId: "slack.thread-watch",
     label: "Thread Watch",
     config: {},
-    size: { cols: 3, rows: 4 },
+    size: { cols: 3, rows: 4 }, // Parent + replies, narrow
     queryType: "thread_watch",
     source: "slack",
     category: "slack",
@@ -482,7 +484,7 @@ export function Canvas() {
                   className={`rounded-lg border overflow-hidden transition-all duration-150 ${
                     isSelected
                       ? "border-primary ring-2 ring-primary/20 shadow-sm bg-zinc-900/70 backdrop-blur-sm"
-                      : "border-transparent hover:border-border hover:shadow-sm"
+                      : "border-border/50 bg-zinc-900/50 hover:border-border hover:bg-zinc-900/70 hover:shadow-sm"
                   }`}
                 >
                   <ComponentContent component={component} isSelected={isSelected} />

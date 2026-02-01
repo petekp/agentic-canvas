@@ -197,15 +197,39 @@ export function ViewTabs() {
     hasUnsavedChanges,
     pinView,
     unpinView,
+    saveView,
   } = useViews();
 
   const [deleteConfirmId, setDeleteConfirmId] = useState<ViewId | null>(null);
   const viewToDelete = views.find((v) => v.id === deleteConfirmId);
 
-  // Create new empty view (clears canvas)
+  // Track if component has mounted to avoid hydration mismatch
+  // hasUnsavedChanges() can return different values on server vs client
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Create new empty view
+  // If current view has unsaved changes, save them first
   const handleNewView = useCallback(() => {
+    const currentHasChanges = hasUnsavedChanges();
+
+    if (currentHasChanges && activeViewId) {
+      // Auto-save current view before creating new
+      const activeView = views.find((v) => v.id === activeViewId);
+      if (activeView) {
+        saveView({
+          viewId: activeViewId,
+          name: activeView.name,
+          description: activeView.description
+        });
+      }
+    }
+
+    // Create new empty view
     createEmptyView();
-  }, [createEmptyView]);
+  }, [createEmptyView, hasUnsavedChanges, activeViewId, views, saveView]);
 
   // Switch to a view
   const handleSelectView = useCallback(
@@ -240,7 +264,8 @@ export function ViewTabs() {
   }, [deleteConfirmId, deleteView]);
 
   // Check if current canvas has unsaved changes
-  const currentHasChanges = hasUnsavedChanges();
+  // Only check after mount to avoid hydration mismatch
+  const currentHasChanges = mounted && hasUnsavedChanges();
 
   return (
     <>

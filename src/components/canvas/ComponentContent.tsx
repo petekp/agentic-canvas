@@ -320,11 +320,11 @@ interface ComponentHeaderProps {
 
 function ComponentHeader({ typeId, onRefresh, onRemove }: ComponentHeaderProps) {
   return (
-    <div className="drag-handle flex items-center justify-between px-3 py-1.5 border-b border-transparent group-hover/component:border-border bg-transparent group-hover/component:bg-muted/50 cursor-move transition-all duration-150">
-      <span className="text-sm font-medium truncate opacity-0 group-hover/component:opacity-100 transition-opacity duration-150">
+    <div className="absolute inset-x-0 top-0 z-10 drag-handle flex items-center justify-between px-3 py-2 bg-gradient-to-b from-zinc-900/90 via-zinc-900/60 to-transparent opacity-0 group-hover/component:opacity-100 pointer-events-none group-hover/component:pointer-events-auto cursor-move transition-opacity duration-150">
+      <span className="text-sm font-medium truncate text-foreground/90">
         {formatTypeId(typeId)}
       </span>
-      <div className="flex items-center gap-0.5 opacity-0 group-hover/component:opacity-100 transition-opacity duration-150">
+      <div className="flex items-center gap-0.5">
         <Button
           variant="ghost"
           size="icon"
@@ -1343,14 +1343,16 @@ export function ComponentContent({
   }, [component.id, removeComponent]);
 
   return (
-    <div className="group/component flex flex-col h-full">
+    <div className="group/component relative h-full">
+      {/* Chrome overlay - appears on hover */}
       <ComponentHeader
         typeId={component.typeId}
         onRefresh={refresh}
         onRemove={handleRemove}
       />
 
-      <div className="flex-1 p-3 overflow-auto">
+      {/* Full-bleed content */}
+      <div className="h-full p-3 overflow-auto">
         <ContentState
           dataState={dataState}
           typeId={component.typeId}

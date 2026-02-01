@@ -19,7 +19,32 @@ import type {
 import { createUserSource } from "@/lib/undo/types";
 import type { UndoCanvasCommand } from "@/lib/undo/types";
 
-// Initial workspace
+// Create initial default view
+const defaultViewId = `view_${nanoid(10)}`;
+const initialTimestamp = Date.now();
+
+const defaultView: View = {
+  id: defaultViewId,
+  name: "Scratch",
+  description: "Default workspace",
+  snapshot: {
+    grid: {
+      columns: 12,
+      rows: 8,
+      gap: 12,
+      cellWidth: 0,
+      cellHeight: 0,
+    },
+    components: [],
+  },
+  triggerIds: [],
+  pinned: true, // Pin the default view so it doesn't get cleaned up
+  createdBy: "user",
+  createdAt: initialTimestamp,
+  updatedAt: initialTimestamp,
+};
+
+// Initial workspace - always starts with a default view
 const initialWorkspace: Workspace = {
   id: `ws_${nanoid(10)}`,
   name: "My Workspace",
@@ -27,14 +52,14 @@ const initialWorkspace: Workspace = {
     grid: {
       columns: 12,
       rows: 8,
-      gap: 16,
+      gap: 12,
       cellWidth: 0,
       cellHeight: 0,
     },
     components: [],
   },
   threadId: "",
-  views: [],
+  views: [defaultView], // Start with default view
   triggers: [],
   settings: {
     theme: "system",
@@ -43,14 +68,14 @@ const initialWorkspace: Workspace = {
     grid: {
       columns: 12,
       rows: 8,
-      gap: 16,
+      gap: 12,
       cellWidth: 0,
       cellHeight: 0,
     },
     proactiveMode: "suggest",
   },
-  createdAt: Date.now(),
-  updatedAt: Date.now(),
+  createdAt: initialTimestamp,
+  updatedAt: initialTimestamp,
 };
 
 // Extended payload for updating existing views
@@ -115,8 +140,8 @@ export const createWorkspaceSlice: StateCreator<
   WorkspaceSlice
 > = (set, get) => ({
   workspace: initialWorkspace,
-  activeViewId: null,
-  viewSnapshotHash: null,
+  activeViewId: defaultViewId, // Start with default view active
+  viewSnapshotHash: hashCanvas(defaultView.snapshot), // Initial hash for change detection
 
   saveView: (payload) => {
     const { name, description, triggerIds, viewId: existingViewId } = payload;

@@ -7,18 +7,10 @@ import {
   ThreadPrimitive,
   MessagePrimitive,
   ComposerPrimitive,
+  useAssistantState,
 } from "@assistant-ui/react";
-import { AuiIf } from "@assistant-ui/store";
 import { cn } from "@/lib/utils";
 import { SendHorizonal, Square } from "lucide-react";
-import {
-  AddComponentToolUI,
-  RemoveComponentToolUI,
-  MoveComponentToolUI,
-  ResizeComponentToolUI,
-  UpdateComponentToolUI,
-  ClearCanvasToolUI,
-} from "./tool-uis";
 
 // Quick suggestions for empty canvas
 const EMPTY_CANVAS_SUGGESTIONS = [
@@ -61,7 +53,7 @@ function UserMessage() {
   return (
     <div className="flex justify-end mb-3">
       <div className="max-w-[85%] rounded-lg px-3 py-2 text-sm bg-primary text-primary-foreground">
-        <MessagePrimitive.Content
+        <MessagePrimitive.Parts
           components={{
             Text: TextPart,
           }}
@@ -72,23 +64,14 @@ function UserMessage() {
 }
 
 // Assistant message component
+// Note: Tool UIs are now rendered via makeAssistantTool in canvas-tools.tsx
 function AssistantMessage() {
   return (
     <div className="flex justify-start mb-3">
       <div className="max-w-[85%] rounded-lg px-3 py-2 text-sm bg-muted text-foreground">
-        <MessagePrimitive.Content
+        <MessagePrimitive.Parts
           components={{
             Text: TextPart,
-            tools: {
-              by_name: {
-                add_component: AddComponentToolUI,
-                remove_component: RemoveComponentToolUI,
-                move_component: MoveComponentToolUI,
-                resize_component: ResizeComponentToolUI,
-                update_component: UpdateComponentToolUI,
-                clear_canvas: ClearCanvasToolUI,
-              },
-            },
           }}
         />
       </div>
@@ -112,6 +95,8 @@ function Message() {
 
 // Composer component with send/cancel buttons
 function Composer() {
+  const isRunning = useAssistantState((s) => s.thread.isRunning);
+
   return (
     <ComposerPrimitive.Root className="flex items-end gap-2 p-3 border-t border-border">
       <ComposerPrimitive.Input
@@ -122,8 +107,8 @@ function Composer() {
         )}
         autoFocus
       />
-      {/* Show cancel button when running */}
-      <AuiIf condition={({ thread }) => thread.isRunning}>
+      {/* Show cancel button when running, send button when idle */}
+      {isRunning ? (
         <ComposerPrimitive.Cancel
           className={cn(
             "p-2 rounded-lg shrink-0",
@@ -132,9 +117,7 @@ function Composer() {
         >
           <Square className="h-4 w-4" />
         </ComposerPrimitive.Cancel>
-      </AuiIf>
-      {/* Show send button when idle */}
-      <AuiIf condition={({ thread }) => !thread.isRunning}>
+      ) : (
         <ComposerPrimitive.Send
           className={cn(
             "p-2 rounded-lg shrink-0",
@@ -143,34 +126,36 @@ function Composer() {
         >
           <SendHorizonal className="h-4 w-4" />
         </ComposerPrimitive.Send>
-      </AuiIf>
+      )}
     </ComposerPrimitive.Root>
   );
 }
 
 // Loading indicator shown while assistant is generating
 function LoadingIndicator() {
+  const isRunning = useAssistantState((s) => s.thread.isRunning);
+
+  if (!isRunning) return null;
+
   return (
-    <AuiIf condition={({ thread }) => thread.isRunning}>
-      <div className="flex justify-start mb-3">
-        <div className="bg-muted rounded-lg px-3 py-2">
-          <div className="flex gap-1.5 items-center">
-            <span
-              className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce"
-              style={{ animationDelay: "0ms" }}
-            />
-            <span
-              className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce"
-              style={{ animationDelay: "150ms" }}
-            />
-            <span
-              className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce"
-              style={{ animationDelay: "300ms" }}
-            />
-          </div>
+    <div className="flex justify-start mb-3">
+      <div className="bg-muted rounded-lg px-3 py-2">
+        <div className="flex gap-1.5 items-center">
+          <span
+            className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce"
+            style={{ animationDelay: "0ms" }}
+          />
+          <span
+            className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce"
+            style={{ animationDelay: "150ms" }}
+          />
+          <span
+            className="w-1.5 h-1.5 bg-muted-foreground rounded-full animate-bounce"
+            style={{ animationDelay: "300ms" }}
+          />
         </div>
       </div>
-    </AuiIf>
+    </div>
   );
 }
 

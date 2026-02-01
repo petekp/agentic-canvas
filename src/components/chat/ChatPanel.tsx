@@ -1,75 +1,15 @@
 "use client";
 
 // ChatPanel - main chat sidebar component
-// Uses assistant-ui for chat interface with tool execution
+// Uses assistant-ui for chat interface with native tool execution
 
-import { useEffect, useMemo, useRef } from "react";
-import { useAssistantState, useAssistantApi, useThreadRuntime } from "@assistant-ui/react";
+import { useEffect } from "react";
+import { useAssistantState, useThreadRuntime } from "@assistant-ui/react";
 import { useStore } from "@/store";
-import { createToolExecutor } from "@/lib/tool-executor";
-import { createAssistantSource } from "@/lib/undo/types";
 import { AssistantProvider } from "./AssistantProvider";
 import { AssistantThread } from "./AssistantThread";
+import { CanvasTools } from "@/lib/canvas-tools";
 import { MessageSquare } from "lucide-react";
-
-// Tool result type from server
-interface ToolResult {
-  action: string;
-  params: Record<string, unknown>;
-  success: boolean;
-}
-
-// Tool execution handler - listens for completed tool calls and executes them
-function ToolExecutionHandler() {
-  const store = useStore();
-  const toolExecutor = useMemo(() => createToolExecutor(store), [store]);
-  const api = useAssistantApi();
-  const executedToolsRef = useRef<Set<string>>(new Set());
-
-  // Subscribe to state changes to detect completed tool calls
-  useEffect(() => {
-    return api.subscribe(() => {
-      const thread = api.thread().getState();
-      const messages = thread.messages;
-
-      for (const msg of messages) {
-        if (msg.role !== "assistant") continue;
-
-        for (const part of msg.content) {
-          if (part.type === "tool-call") {
-            const toolCallId = part.toolCallId;
-
-            // Only execute completed tool calls that haven't been executed yet
-            if (part.result !== undefined && !executedToolsRef.current.has(toolCallId)) {
-              executedToolsRef.current.add(toolCallId);
-
-              const result = part.result as ToolResult;
-              if (result.action && result.params) {
-                // Create assistant source with message context
-                const assistantSource = createAssistantSource({
-                  messageId: msg.id,
-                  toolCallId,
-                });
-
-                // Wrap in batch for proper undo attribution
-                store.startBatch(assistantSource, `AI: ${part.toolName}`);
-
-                try {
-                  toolExecutor.execute(result.action, result.params);
-                  store.commitBatch();
-                } catch {
-                  store.abortBatch();
-                }
-              }
-            }
-          }
-        }
-      }
-    });
-  }, [api, store, toolExecutor]);
-
-  return null;
-}
 
 // Keyboard shortcut handler for Cmd+K to focus chat
 function KeyboardShortcutHandler() {
@@ -127,7 +67,7 @@ function StatusDisplay() {
 export function ChatPanel() {
   return (
     <AssistantProvider>
-      <ToolExecutionHandler />
+      <CanvasTools />
       <KeyboardShortcutHandler />
       <PendingChatMessageHandler />
       <div className="flex flex-col h-full bg-card border-l border-border">
