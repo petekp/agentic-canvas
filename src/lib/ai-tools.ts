@@ -2,8 +2,18 @@
 // Defines the tools that the AI can use to manipulate the canvas
 
 import { z } from "zod";
-import { getAvailableComponentTypes, describeCanvas } from "./canvas-context";
+import { getAvailableComponentTypes, describeCanvas, type RecentChange } from "./canvas-context";
 import type { Canvas } from "@/types";
+
+// ============================================================================
+// System Prompt Context
+// ============================================================================
+
+export interface SystemPromptContext {
+  canvas: Canvas;
+  activeViewName?: string | null;
+  recentChanges?: RecentChange[];
+}
 
 // Tool parameter schemas (using snake_case per project convention)
 
@@ -94,13 +104,43 @@ export type ResizeComponentParams = z.infer<typeof resizeComponentSchema>;
 export type UpdateComponentParams = z.infer<typeof updateComponentSchema>;
 export type ClearCanvasParams = z.infer<typeof clearCanvasSchema>;
 
+// Format recent changes for system prompt
+function formatRecentChangesForPrompt(changes: RecentChange[]): string {
+  if (changes.length === 0) {
+    return "No recent activity.";
+  }
+
+  return changes
+    .map((change) => {
+      const sourceLabel =
+        change.source === "assistant"
+          ? "AI"
+          : change.source === "user"
+            ? "You"
+            : change.source;
+      return `- ${change.description} (${sourceLabel}, ${change.timeAgo})`;
+    })
+    .join("\n");
+}
+
 // System prompt generator
-export function createSystemPrompt(canvas: Canvas): string {
+export function createSystemPrompt(context: SystemPromptContext): string {
+  const { canvas, activeViewName, recentChanges } = context;
   const componentTypes = getAvailableComponentTypes();
   const canvasDescription = describeCanvas(canvas);
 
-  return `You are an AI assistant that helps users manage a canvas workspace with GitHub and PostHog analytics widgets. You can add, remove, move, resize, and update components on the canvas.
+  // Build optional sections
+  const activeViewSection = activeViewName
+    ? `\n## Active View\nCurrently viewing: "${activeViewName}"\n`
+    : "";
 
+  const recentActivitySection =
+    recentChanges && recentChanges.length > 0
+      ? `\n## Recent Activity\n${formatRecentChangesForPrompt(recentChanges)}\n`
+      : "";
+
+  return `You are an AI assistant that helps users manage a canvas workspace with GitHub and PostHog analytics widgets. You can add, remove, move, resize, and update components on the canvas.
+${activeViewSection}
 ## Canvas State
 ${canvasDescription}
 
@@ -109,11 +149,18 @@ ${canvasDescription}
 - Valid column positions: 0 to ${canvas.grid.columns - 1}
 - Valid row positions: 0 to ${canvas.grid.rows - 1}
 - Components can overlap
-
+${recentActivitySection}
 ## Available Component Types
 ${componentTypes.map((t) => `- **${t.typeId}**: ${t.description}`).join("\n")}
 
-## Guidelines
+## Proactive Guidelines
+1. When describing the canvas, include metric values and position context (e.g., "in the top-left")
+2. Notice patterns in data (high PR counts, traffic trends, pending reviews) and mention them
+3. If asked "what changed recently?", summarize recent activity with who made each change
+4. Offer insights based on visible data (e.g., "You have 5 PRs awaiting review")
+5. When the user asks about their workspace, be specific about component locations and data
+
+## Standard Guidelines
 1. When adding components, you can omit position/size to use auto-placement
 2. Reference components by their IDs when modifying them
 3. Use clear_canvas with preserve_pinned=true to keep important components

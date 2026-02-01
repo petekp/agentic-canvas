@@ -68,6 +68,7 @@ export interface WorkspaceSlice {
   deleteView: (viewId: ViewId) => void;
   renameView: (viewId: ViewId, name: string) => void;
   duplicateView: (viewId: ViewId) => ViewId | null;
+  createEmptyView: (name?: string) => ViewId;
   setActiveView: (viewId: ViewId | null) => void;
   updateSettings: (settings: Partial<WorkspaceSettings>) => void;
   activateTrigger: (triggerId: TriggerId) => void;
@@ -283,6 +284,47 @@ export const createWorkspaceSlice: StateCreator<
     });
 
     return newViewId;
+  },
+
+  createEmptyView: (name) => {
+    const now = Date.now();
+    const viewId = `view_${nanoid(10)}`;
+
+    // Generate unique name if not provided
+    const existingNames = get().workspace.views.map((v) => v.name);
+    let viewName = name ?? "Untitled";
+    let counter = 1;
+    while (existingNames.includes(viewName)) {
+      viewName = name ? `${name} ${counter}` : `Untitled ${counter}`;
+      counter++;
+    }
+
+    // Create empty canvas snapshot
+    const emptySnapshot: Canvas = {
+      grid: get().canvas.grid,
+      components: [],
+    };
+
+    const newView: View = {
+      id: viewId,
+      name: viewName,
+      description: "",
+      snapshot: emptySnapshot,
+      triggerIds: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    // Clear current canvas and set new view as active
+    set((state) => {
+      state.canvas.components = [];
+      state.workspace.views.push(newView);
+      state.workspace.updatedAt = now;
+      state.activeViewId = viewId;
+      state.viewSnapshotHash = hashCanvas(emptySnapshot);
+    });
+
+    return viewId;
   },
 
   setActiveView: (viewId) => {

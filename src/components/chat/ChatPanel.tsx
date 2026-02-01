@@ -3,13 +3,16 @@
 // ChatPanel - main chat sidebar component
 // Manages chat state and streams AI responses with tool execution
 
-import { useCallback, useRef, useEffect, useMemo } from "react";
+import { useCallback, useRef, useEffect, useMemo, useState } from "react";
 import { useChat, type UIMessage } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { ChatMessage } from "./ChatMessage";
 import { ChatInput } from "./ChatInput";
 import { useStore } from "@/store";
 import { createToolExecutor } from "@/lib/tool-executor";
+import { createAssistantSource } from "@/lib/undo/types";
+import { formatRecentChanges } from "@/lib/canvas-context";
+import { generateGreeting, formatGreetingMessage } from "@/lib/ai/proactive-greeting";
 import type { ToolCall } from "@/store/chat-slice";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
@@ -34,6 +37,14 @@ const LoadingDots = (
   </>
 );
 
+// Quick suggestions for empty canvas
+const EMPTY_CANVAS_SUGGESTIONS = [
+  "Show my open PRs",
+  "Add a PR review queue",
+  "Show site analytics",
+  "Track open issues",
+];
+
 // Helper to extract text from message parts
 function getMessageText(parts: UIMessage["parts"]): string {
   return parts
@@ -51,11 +62,36 @@ interface ToolResult {
 
 export function ChatPanel() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const executedToolsRef = useRef<Set<string>>(new Set());
 
   // Get store for tool execution
   const store = useStore();
   const canvas = useStore((s) => s.canvas);
+
+  // Get undo history and view info for AI context
+  // Use raw stack to avoid selector returning new array each render
+  const undoStack = useStore((s) => s.undoStack);
+  const activeViewId = useStore((s) => s.activeViewId);
+  const views = useStore((s) => s.workspace.views);
+
+  // Derive recent changes from stack (memoized to prevent recalc)
+  const recentChanges = useMemo(() => {
+    // Get last 10 entries (most recent first) and format top 5
+    const recent = [...undoStack].reverse().slice(0, 10);
+    return formatRecentChanges(recent, 5);
+  }, [undoStack]);
+
+  // Get active view name
+  const activeViewName = useMemo(() => {
+    if (!activeViewId) return null;
+    const view = views.find((v) => v.id === activeViewId);
+    return view?.name ?? null;
+  }, [views, activeViewId]);
+
+  // Track if we've shown the proactive greeting
+  const [hasGreeted, setHasGreeted] = useState(false);
+  const [greetingMessage, setGreetingMessage] = useState<string | null>(null);
 
   // Memoize tool executor to prevent recreation on every render (rerender-memo)
   const toolExecutor = useMemo(() => createToolExecutor(store), [store]);
@@ -67,7 +103,21 @@ export function ChatPanel() {
     }),
   });
 
+  // Keyboard shortcut: Cmd+K to focus chat input
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        inputRef.current?.focus();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   // Process tool results and execute them on the store
+  // Wraps each AI tool call in a batch for proper undo attribution
   useEffect(() => {
     for (const msg of messages) {
       for (const part of msg.parts) {
@@ -89,32 +139,62 @@ export function ChatPanel() {
           ) {
             const result = toolPart.output as ToolResult;
             if (result.action && result.params) {
-              toolExecutor.execute(result.action, result.params);
+              // Mark as executed first to prevent duplicate execution
               executedToolsRef.current.add(toolPart.toolCallId);
+
+              // Create assistant source with message context
+              const assistantSource = createAssistantSource({
+                messageId: msg.id,
+                toolCallId: toolPart.toolCallId,
+              });
+
+              // Wrap in batch for proper undo attribution
+              // All operations from this tool call will be grouped together
+              store.startBatch(assistantSource, `AI: ${toolPart.toolName}`);
+
+              try {
+                toolExecutor.execute(result.action, result.params);
+                store.commitBatch();
+              } catch {
+                store.abortBatch();
+              }
             }
           }
         }
       }
     }
-  }, [messages, toolExecutor]);
+  }, [messages, toolExecutor, store]);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, status]);
 
-  // Handle sending a message
+  // Handle sending a message with enhanced context
   const handleSend = useCallback(
     (content: string) => {
       sendMessage(
         { text: content },
         {
-          body: { canvas }, // Include current canvas state
+          body: {
+            canvas,
+            recentChanges,
+            activeViewName,
+          },
         }
       );
     },
-    [sendMessage, canvas]
+    [sendMessage, canvas, recentChanges, activeViewName]
   );
+
+  // Generate proactive greeting on first load with components
+  useEffect(() => {
+    if (!hasGreeted && canvas.components.length > 0) {
+      const greeting = generateGreeting(canvas.components, recentChanges);
+      setGreetingMessage(formatGreetingMessage(greeting));
+      setHasGreeted(true);
+    }
+  }, [hasGreeted, canvas.components, recentChanges]);
 
   // Check if loading
   const isLoading = status === "submitted" || status === "streaming";
@@ -153,6 +233,10 @@ export function ChatPanel() {
     [messages]
   );
 
+  // Determine what to show in empty state
+  const showEmptyCanvasSuggestions = displayMessages.length === 0 && canvas.components.length === 0;
+  const showGreeting = displayMessages.length === 0 && greetingMessage && !showEmptyCanvasSuggestions;
+
   return (
     <div className="flex flex-col h-full bg-card border-l border-border">
       {/* Header */}
@@ -160,6 +244,7 @@ export function ChatPanel() {
         <div className="flex items-center gap-2">
           <MessageSquare className="h-4 w-4 text-muted-foreground" />
           <h2 className="text-sm font-semibold">Assistant</h2>
+          <span className="text-xs text-muted-foreground ml-auto">⌘K</span>
         </div>
         <p className="text-xs text-muted-foreground mt-0.5">
           Ask me to manage your canvas
@@ -169,23 +254,49 @@ export function ChatPanel() {
       {/* Messages */}
       <ScrollArea className="flex-1">
         <div className="p-3">
-          {displayMessages.length === 0 ? (
-            <div className="text-center text-muted-foreground text-sm py-8">
-              <p>No messages yet.</p>
-              <p className="mt-1 text-xs">
-                Try: &ldquo;Add a stat tile showing open PRs&rdquo;
+          {/* Empty canvas: show interactive suggestions */}
+          {showEmptyCanvasSuggestions && (
+            <div className="text-center py-6">
+              <p className="text-muted-foreground text-sm mb-4">
+                Your canvas is empty. Try one of these:
               </p>
+              <div className="flex flex-wrap gap-2 justify-center">
+                {EMPTY_CANVAS_SUGGESTIONS.map((suggestion) => (
+                  <button
+                    key={suggestion}
+                    onClick={() => handleSend(suggestion)}
+                    disabled={isLoading}
+                    className="px-3 py-1.5 text-sm bg-muted hover:bg-muted/80 rounded-full transition-colors disabled:opacity-50"
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
             </div>
-          ) : (
-            displayMessages.map((msg) => (
-              <ChatMessage
-                key={msg.id}
-                role={msg.role}
-                content={msg.content}
-                toolCalls={msg.toolCalls}
-              />
-            ))
           )}
+
+          {/* Has components but no messages: show greeting */}
+          {showGreeting && (
+            <div className="text-muted-foreground text-sm py-4">
+              <div className="bg-muted/50 rounded-lg p-3">
+                {greetingMessage.split("\n").map((line, i) => (
+                  <p key={i} className={line.startsWith("-") ? "ml-2" : line.startsWith("**") ? "font-semibold mt-2" : ""}>
+                    {line.replace(/\*\*/g, "")}
+                  </p>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Messages */}
+          {displayMessages.map((msg) => (
+            <ChatMessage
+              key={msg.id}
+              role={msg.role}
+              content={msg.content}
+              toolCalls={msg.toolCalls}
+            />
+          ))}
 
           {/* Loading indicator */}
           {isLoading && (
@@ -222,6 +333,7 @@ export function ChatPanel() {
 
       {/* Input */}
       <ChatInput
+        ref={inputRef}
         onSend={handleSend}
         disabled={isLoading}
         placeholder={

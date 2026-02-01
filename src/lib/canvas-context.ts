@@ -13,6 +13,105 @@ import type {
   TimeOfDay,
   GridConfig,
 } from "@/types";
+import type { EnhancedUndoEntry } from "@/lib/undo/types";
+
+// ============================================================================
+// Recent Changes Types
+// ============================================================================
+
+export interface RecentChange {
+  description: string;
+  source: "user" | "assistant" | "background" | "system";
+  timeAgo: string;
+}
+
+// Position quadrant for spatial awareness
+export type PositionQuadrant =
+  | "top-left"
+  | "top-right"
+  | "bottom-left"
+  | "bottom-right"
+  | "center";
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/**
+ * Formats a timestamp into a human-readable "time ago" string
+ */
+function formatTimeAgo(timestamp: number): string {
+  const now = Date.now();
+  const diff = now - timestamp;
+
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+
+  if (minutes < 1) return "just now";
+  if (minutes === 1) return "1 minute ago";
+  if (minutes < 60) return `${minutes} minutes ago`;
+  if (hours === 1) return "1 hour ago";
+  if (hours < 24) return `${hours} hours ago`;
+  if (days === 1) return "yesterday";
+  return `${days} days ago`;
+}
+
+/**
+ * Determines the position quadrant of a component on the grid
+ */
+export function getPositionQuadrant(
+  col: number,
+  row: number,
+  gridCols: number,
+  gridRows: number
+): PositionQuadrant {
+  const midCol = gridCols / 2;
+  const midRow = gridRows / 2;
+
+  // Define center zone (middle third of the grid)
+  const centerColStart = gridCols / 3;
+  const centerColEnd = (gridCols * 2) / 3;
+  const centerRowStart = gridRows / 3;
+  const centerRowEnd = (gridRows * 2) / 3;
+
+  // Check if in center zone
+  if (
+    col >= centerColStart &&
+    col < centerColEnd &&
+    row >= centerRowStart &&
+    row < centerRowEnd
+  ) {
+    return "center";
+  }
+
+  // Determine quadrant
+  const isLeft = col < midCol;
+  const isTop = row < midRow;
+
+  if (isTop && isLeft) return "top-left";
+  if (isTop && !isLeft) return "top-right";
+  if (!isTop && isLeft) return "bottom-left";
+  return "bottom-right";
+}
+
+/**
+ * Formats undo history entries into recent changes for AI context
+ */
+export function formatRecentChanges(
+  undoHistory: EnhancedUndoEntry[],
+  limit = 5
+): RecentChange[] {
+  return undoHistory.slice(0, limit).map((entry) => ({
+    description: entry.description,
+    source: entry.source.type,
+    timeAgo: formatTimeAgo(entry.timestamp),
+  }));
+}
+
+// ============================================================================
+// Component Type Metadata
+// ============================================================================
 
 // Component type metadata for AI context
 const TYPE_METADATA: Record<string, { name: string; category: "data" | "metric" | "timeline" | "utility" }> = {
@@ -30,12 +129,32 @@ const TYPE_METADATA: Record<string, { name: string; category: "data" | "metric" 
 
 /**
  * Creates a summary of a component for AI context
+ * Optionally includes position quadrant if grid dimensions are provided
  */
-function summarizeComponent(component: ComponentInstance): ComponentSummary {
+function summarizeComponent(
+  component: ComponentInstance,
+  gridCols?: number,
+  gridRows?: number
+): ComponentSummary {
   const typeMeta = TYPE_METADATA[component.typeId] ?? { name: component.typeId, category: "utility" as const };
 
   // Build summary based on component state
-  let summary = `${typeMeta.name} at column ${component.position.col}, row ${component.position.row}`;
+  let positionDesc = `at column ${component.position.col}, row ${component.position.row}`;
+
+  // Add quadrant context if grid dimensions provided
+  if (gridCols && gridRows) {
+    const quadrant = getPositionQuadrant(
+      component.position.col,
+      component.position.row,
+      gridCols,
+      gridRows
+    );
+    positionDesc = `in the ${quadrant} (col ${component.position.col}, row ${component.position.row})`;
+  }
+
+  // Include label for natural language reference
+  const labelPart = component.meta?.label ? ` "${component.meta.label}"` : "";
+  let summary = `${typeMeta.name}${labelPart} ${positionDesc}`;
   const highlights: string[] = [];
 
   if (component.dataState.status === "ready" && component.dataState.data) {
@@ -154,15 +273,24 @@ function calculateGridUtilization(canvas: Canvas): number {
   return Math.min(1, usedCells / totalCells);
 }
 
+// Options for workspace context creation
+export interface WorkspaceContextOptions {
+  activeViewId?: string | null;
+  activeViewName?: string;
+}
+
 /**
- * Creates workspace context (simplified for v0.1)
+ * Creates workspace context with optional view information
  */
-function createWorkspaceContext(canvas: Canvas): WorkspaceContext {
+function createWorkspaceContext(
+  canvas: Canvas,
+  options?: WorkspaceContextOptions
+): WorkspaceContext {
   return {
     id: "default",
-    name: "Default Workspace",
-    activeViewId: null,
-    savedViews: [],
+    name: options?.activeViewName ?? "Default Workspace",
+    activeViewId: options?.activeViewId ?? null,
+    savedViews: [], // Views are managed by workspace slice
     componentCount: canvas.components.length,
     gridUtilization: calculateGridUtilization(canvas),
   };
@@ -184,13 +312,90 @@ function createContextBudget(componentCount: number): ContextBudget {
  * Serializes canvas state for AI context
  * This is the main export that provides AI with canvas awareness
  */
-export function serializeCanvasContext(canvas: Canvas): CanvasContext {
+export function serializeCanvasContext(
+  canvas: Canvas,
+  options?: WorkspaceContextOptions
+): CanvasContext {
+  const { columns, rows } = canvas.grid;
+
   return {
-    components: canvas.components.map(summarizeComponent),
+    components: canvas.components.map((c) => summarizeComponent(c, columns, rows)),
     temporal: createTemporalContext(),
-    workspace: createWorkspaceContext(canvas),
+    workspace: createWorkspaceContext(canvas, options),
     budget: createContextBudget(canvas.components.length),
   };
+}
+
+/**
+ * Extract detailed data entries from a component for AI context
+ */
+function extractDataDetails(component: ComponentInstance): string[] {
+  if (component.dataState.status !== "ready" || !component.dataState.data) {
+    return [];
+  }
+
+  const data = component.dataState.data as Record<string, unknown>;
+  const details: string[] = [];
+
+  // GitHub components
+  if (component.typeId === "github.pr-list" && Array.isArray(data.items)) {
+    const prs = data.items as Array<{ title?: string; number?: number; state?: string; author?: string }>;
+    for (const pr of prs.slice(0, 5)) {
+      details.push(`  - PR #${pr.number}: "${pr.title}" (${pr.state}, by ${pr.author ?? "unknown"})`);
+    }
+    if (prs.length > 5) details.push(`  ... and ${prs.length - 5} more`);
+  } else if (component.typeId === "github.issue-grid" && Array.isArray(data.items)) {
+    const issues = data.items as Array<{ title?: string; number?: number; state?: string; labels?: string[] }>;
+    for (const issue of issues.slice(0, 5)) {
+      const labels = issue.labels?.join(", ") ?? "";
+      details.push(`  - Issue #${issue.number}: "${issue.title}" (${issue.state}${labels ? `, ${labels}` : ""})`);
+    }
+    if (issues.length > 5) details.push(`  ... and ${issues.length - 5} more`);
+  } else if (component.typeId === "github.activity-timeline" && Array.isArray(data.items)) {
+    const activities = data.items as Array<{ type?: string; description?: string; timestamp?: string }>;
+    for (const activity of activities.slice(0, 5)) {
+      details.push(`  - ${activity.type}: ${activity.description}`);
+    }
+    if (activities.length > 5) details.push(`  ... and ${activities.length - 5} more`);
+  } else if (component.typeId === "github.my-activity" && data.stats) {
+    const stats = data.stats as { commits?: number; prsOpened?: number; reviews?: number };
+    const feed = data.recentActivity as Array<{ type?: string; description?: string }> | undefined;
+    if (stats.commits) details.push(`  - ${stats.commits} commits`);
+    if (stats.prsOpened) details.push(`  - ${stats.prsOpened} PRs opened`);
+    if (stats.reviews) details.push(`  - ${stats.reviews} reviews`);
+    if (feed) {
+      for (const item of feed.slice(0, 3)) {
+        details.push(`  - ${item.type}: ${item.description}`);
+      }
+    }
+  }
+  // PostHog components
+  else if (component.typeId === "posthog.site-health") {
+    details.push(`  - Unique visitors: ${data.uniqueVisitors}`);
+    details.push(`  - Total pageviews: ${data.pageviews}`);
+    if (data.newVisitorRatio !== undefined) {
+      details.push(`  - New visitor ratio: ${Math.round((data.newVisitorRatio as number) * 100)}%`);
+    }
+    const daily = data.daily as Array<{ date: string; visitors: number; pageviews: number }> | undefined;
+    if (daily && daily.length > 0) {
+      const recent = daily.slice(-3);
+      details.push(`  - Recent trend: ${recent.map((d) => `${d.visitors} visitors`).join(" → ")}`);
+    }
+  } else if (component.typeId === "posthog.property-breakdown" && data.properties) {
+    const props = data.properties as Array<{ name: string; value: number; percentage: number }>;
+    for (const prop of props.slice(0, 5)) {
+      details.push(`  - ${prop.name}: ${prop.value} (${Math.round(prop.percentage * 100)}%)`);
+    }
+    if (props.length > 5) details.push(`  ... and ${props.length - 5} more`);
+  } else if (component.typeId === "posthog.top-pages" && data.pages) {
+    const pages = data.pages as Array<{ property: string; path: string; views: number }>;
+    for (const page of pages.slice(0, 5)) {
+      details.push(`  - ${page.property}${page.path}: ${page.views} views`);
+    }
+    if (pages.length > 5) details.push(`  ... and ${pages.length - 5} more`);
+  }
+
+  return details;
 }
 
 /**
@@ -201,15 +406,23 @@ export function describeCanvas(canvas: Canvas): string {
     return "The canvas is empty.";
   }
 
+  const { columns, rows } = canvas.grid;
   const lines: string[] = [
-    `Canvas has ${canvas.components.length} component(s) on a ${canvas.grid.columns}x${canvas.grid.rows} grid:`,
+    `Canvas has ${canvas.components.length} component(s) on a ${columns}x${rows} grid:`,
   ];
 
   for (const component of canvas.components) {
-    const summary = summarizeComponent(component);
-    lines.push(`- [${component.id}] ${summary.summary}`);
+    const summary = summarizeComponent(component, columns, rows);
+    const label = component.meta?.label;
+    lines.push(`- [${component.id}]${label ? ` "${label}"` : ""}: ${summary.summary}`);
     if (summary.highlights.length > 0) {
       lines.push(`  Highlights: ${summary.highlights.join(", ")}`);
+    }
+    // Add detailed data entries
+    const dataDetails = extractDataDetails(component);
+    if (dataDetails.length > 0) {
+      lines.push(`  Data:`);
+      lines.push(...dataDetails);
     }
   }
 

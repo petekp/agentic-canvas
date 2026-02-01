@@ -8,12 +8,12 @@ import { useViews } from "@/hooks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -50,7 +50,6 @@ function ViewTab({
 }: ViewTabProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(name);
-  const [contextMenuOpen, setContextMenuOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Focus input when editing starts
@@ -86,77 +85,73 @@ function ViewTab({
     [handleRenameSubmit, name]
   );
 
-  const handleContextMenu = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    setContextMenuOpen(true);
-  }, []);
+  const startRename = useCallback(() => {
+    setEditName(name);
+    setIsEditing(true);
+  }, [name]);
 
   return (
-    <div
-      className={`group relative flex items-center gap-1.5 px-3 py-1.5 text-sm cursor-pointer border-b-2 transition-colors ${
-        isActive
-          ? "border-primary bg-background text-foreground"
-          : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
-      }`}
-      onClick={onSelect}
-      onDoubleClick={handleDoubleClick}
-      onContextMenu={handleContextMenu}
-    >
-      {/* Unsaved indicator */}
-      {hasChanges && (
-        <Circle className="h-2 w-2 fill-current text-amber-500" />
-      )}
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <div
+          className={`group relative flex items-center gap-1.5 px-3 py-1.5 text-sm cursor-pointer border-b-2 transition-colors ${
+            isActive
+              ? "border-primary bg-background text-foreground"
+              : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
+          }`}
+          onClick={onSelect}
+          onDoubleClick={handleDoubleClick}
+        >
+          {/* Unsaved indicator */}
+          {hasChanges && (
+            <Circle className="h-2 w-2 fill-current text-amber-500" />
+          )}
 
-      {/* Tab name or edit input */}
-      {isEditing ? (
-        <Input
-          ref={inputRef}
-          value={editName}
-          onChange={(e) => setEditName(e.target.value)}
-          onBlur={handleRenameSubmit}
-          onKeyDown={handleKeyDown}
-          onClick={(e) => e.stopPropagation()}
-          className="h-5 w-24 px-1 py-0 text-sm"
-        />
-      ) : (
-        <span className="truncate max-w-[120px]">{name}</span>
-      )}
+          {/* Tab name or edit input */}
+          {isEditing ? (
+            <Input
+              ref={inputRef}
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              onBlur={handleRenameSubmit}
+              onKeyDown={handleKeyDown}
+              onClick={(e) => e.stopPropagation()}
+              className="h-5 w-24 px-1 py-0 text-sm"
+            />
+          ) : (
+            <span className="truncate max-w-[120px]">{name}</span>
+          )}
 
-      {/* Close button (visible on hover or when active) */}
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onClose();
-        }}
-        className={`ml-1 p-0.5 rounded hover:bg-muted ${
-          isActive ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-        } transition-opacity`}
-      >
-        <X className="h-3 w-3" />
-      </button>
-
-      {/* Context menu */}
-      <DropdownMenu open={contextMenuOpen} onOpenChange={setContextMenuOpen}>
-        <DropdownMenuTrigger asChild>
-          <span className="sr-only">Open menu</span>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start">
-          <DropdownMenuItem onClick={() => { setEditName(name); setIsEditing(true); setContextMenuOpen(false); }}>
-            <Pencil className="h-4 w-4 mr-2" />
-            Rename
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={onDuplicate}>
-            <Copy className="h-4 w-4 mr-2" />
-            Duplicate
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={onDelete} className="text-destructive">
-            <Trash2 className="h-4 w-4 mr-2" />
-            Delete
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
+          {/* Close button (visible on hover or when active) */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
+            className={`ml-1 p-0.5 rounded hover:bg-muted ${
+              isActive ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+            } transition-opacity`}
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuItem onClick={startRename}>
+          <Pencil className="h-4 w-4 mr-2" />
+          Rename
+        </ContextMenuItem>
+        <ContextMenuItem onClick={onDuplicate}>
+          <Copy className="h-4 w-4 mr-2" />
+          Duplicate
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem onClick={onDelete} className="text-destructive">
+          <Trash2 className="h-4 w-4 mr-2" />
+          Delete
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }
 
@@ -164,11 +159,11 @@ export function ViewTabs() {
   const {
     views,
     activeViewId,
-    saveView,
     loadView,
     deleteView,
     renameView,
     duplicateView,
+    createEmptyView,
     setActiveView,
     hasUnsavedChanges,
   } = useViews();
@@ -176,17 +171,10 @@ export function ViewTabs() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<ViewId | null>(null);
   const viewToDelete = views.find((v) => v.id === deleteConfirmId);
 
-  // Create new view from current canvas state
+  // Create new empty view (clears canvas)
   const handleNewView = useCallback(() => {
-    const existingNames = views.map((v) => v.name);
-    let name = "Untitled";
-    let counter = 1;
-    while (existingNames.includes(name)) {
-      name = `Untitled ${counter}`;
-      counter++;
-    }
-    saveView({ name, description: "" });
-  }, [views, saveView]);
+    createEmptyView();
+  }, [createEmptyView]);
 
   // Switch to a view
   const handleSelectView = useCallback(
@@ -249,7 +237,7 @@ export function ViewTabs() {
           size="sm"
           onClick={handleNewView}
           className="ml-1 h-7 w-7 p-0"
-          title="Save current canvas as new view"
+          title="Create new empty view"
         >
           <Plus className="h-4 w-4" />
         </Button>

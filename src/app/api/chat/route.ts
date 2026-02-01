@@ -6,6 +6,7 @@ import { streamText, convertToModelMessages, type UIMessage, stepCountIs } from 
 import { z } from "zod";
 import { createSystemPrompt } from "@/lib/ai-tools";
 import type { Canvas } from "@/types";
+import type { RecentChange } from "@/lib/canvas-context";
 
 // Allow streaming responses up to 30 seconds
 export const maxDuration = 30;
@@ -13,6 +14,8 @@ export const maxDuration = 30;
 interface ChatRequest {
   messages: UIMessage[];
   canvas: Canvas;
+  recentChanges?: RecentChange[];
+  activeViewName?: string | null;
 }
 
 // Tool parameter schemas
@@ -28,10 +31,14 @@ const sizeSchema = z.object({
 
 export async function POST(req: Request) {
   try {
-    const { messages, canvas }: ChatRequest = await req.json();
+    const { messages, canvas, recentChanges, activeViewName }: ChatRequest = await req.json();
 
-    // Build dynamic system prompt based on current canvas state
-    const systemPrompt = createSystemPrompt(canvas);
+    // Build dynamic system prompt based on current canvas state and context
+    const systemPrompt = createSystemPrompt({
+      canvas,
+      activeViewName,
+      recentChanges,
+    });
 
     // Convert UI messages to model messages
     const modelMessages = await convertToModelMessages(messages);

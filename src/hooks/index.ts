@@ -56,6 +56,7 @@ export function useViews() {
       deleteView: state.deleteView,
       renameView: state.renameView,
       duplicateView: state.duplicateView,
+      createEmptyView: state.createEmptyView,
       setActiveView: state.setActiveView,
       hasUnsavedChanges: state.hasUnsavedChanges,
     }))
