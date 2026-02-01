@@ -108,6 +108,32 @@ interface MyActivityData {
   }>;
 }
 
+/** API response shape for commits */
+interface CommitData {
+  sha: string;
+  message: string;
+  author: string;
+  authorAvatar?: string;
+  timestamp: number;
+  url: string;
+}
+
+/** API response shape for team activity */
+interface TeamActivityData {
+  repo: string;
+  timeWindow: string;
+  totalCommits: number;
+  contributors: Array<{
+    login: string;
+    avatar: string;
+    commits: number;
+    lastActive: number;
+    themes: string[];
+    recentCommits: string[];
+  }>;
+  daily: Array<{ date: string; count: number }>;
+}
+
 // PostHog Analytics Types
 // ============================================================================
 
@@ -136,6 +162,53 @@ interface TopPagesData {
     property: string;
     views: number;
   }>;
+}
+
+// Slack Types
+// ============================================================================
+
+/** API response shape for Slack channel activity */
+interface SlackMessageData {
+  ts: string;
+  user: string;
+  userId?: string;
+  text: string;
+  threadTs?: string;
+  replyCount?: number;
+  reactions?: Array<{ name: string; count: number }>;
+  timestamp: number;
+}
+
+/** API response shape for Slack mentions */
+interface SlackMentionData {
+  ts: string;
+  user: string;
+  userId?: string;
+  text: string;
+  channel: string;
+  channelId?: string;
+  permalink?: string;
+  timestamp: number;
+}
+
+/** API response shape for Slack thread watch */
+interface SlackThreadData {
+  parent: {
+    ts: string;
+    user: string;
+    userId?: string;
+    text: string;
+    timestamp: number;
+  } | null;
+  replies: Array<{
+    ts: string;
+    user: string;
+    userId?: string;
+    text: string;
+    reactions?: Array<{ name: string; count: number }>;
+    timestamp: number;
+  }>;
+  replyCount: number;
 }
 
 // ============================================================================
@@ -661,6 +734,134 @@ function MyActivityContent({ data, componentId }: MyActivityContentProps) {
   );
 }
 
+// ----------------------------------------------------------------------------
+
+interface CommitsContentProps {
+  data: CommitData[];
+}
+
+function CommitsContent({ data }: CommitsContentProps) {
+  const handleCommitClick = useCallback((url: string) => {
+    openInNewTab(url);
+  }, []);
+
+  return (
+    <div className="flex flex-col gap-1 h-full overflow-auto">
+      {data.map((commit) => (
+        <div
+          key={commit.sha}
+          className="flex items-start gap-2 text-sm py-1.5 px-1 -mx-1 rounded cursor-pointer hover:bg-muted/50 transition-colors"
+          onClick={() => handleCommitClick(commit.url)}
+        >
+          <code className="text-xs text-muted-foreground font-mono shrink-0 mt-0.5">
+            {commit.sha}
+          </code>
+          <div className="min-w-0 flex-1">
+            <p className="truncate">{commit.message}</p>
+            <p className="text-xs text-muted-foreground">
+              {commit.author} · {formatRelativeTime(commit.timestamp)}
+            </p>
+          </div>
+        </div>
+      ))}
+      {data.length === 0 && (
+        <div className="text-muted-foreground text-sm text-center py-4">
+          No commits in this time window
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------------
+
+interface TeamActivityContentProps {
+  data: TeamActivityData;
+  componentId: string;
+}
+
+function TeamActivityContent({ data, componentId }: TeamActivityContentProps) {
+  const { contributors, daily, totalCommits } = data;
+
+  const sparklineData = useMemo(() => daily.map((d) => d.count), [daily]);
+  const sparklineLabels = useMemo(() => daily.map((d) => d.date), [daily]);
+  const hasActivity = sparklineData.some((count) => count > 0);
+
+  return (
+    <div className="flex flex-col gap-3 h-full">
+      {/* Summary header */}
+      <div className="flex items-center justify-between text-sm">
+        <span className="text-muted-foreground">
+          {totalCommits} commits from {contributors.length} contributors
+        </span>
+      </div>
+
+      {/* Activity sparkline */}
+      {hasActivity && (
+        <SparklineBarChart
+          data={sparklineData}
+          labels={sparklineLabels}
+          title="Commit activity"
+        />
+      )}
+
+      {/* Contributors list */}
+      <div className="flex-1 overflow-auto">
+        <div className="flex flex-col gap-3">
+          {contributors.map((contributor) => (
+            <div
+              key={contributor.login}
+              className="flex flex-col gap-1 p-2 rounded-md bg-muted/30"
+            >
+              <div className="flex items-center gap-2">
+                {contributor.avatar && (
+                  <img
+                    src={contributor.avatar}
+                    alt={contributor.login}
+                    className="w-6 h-6 rounded-full"
+                  />
+                )}
+                <span className="font-medium">{contributor.login}</span>
+                <span className="text-muted-foreground text-xs ml-auto">
+                  {contributor.commits} commits
+                </span>
+              </div>
+
+              {/* Work themes */}
+              {contributor.themes.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {contributor.themes.map((theme) => (
+                    <span
+                      key={theme}
+                      className="text-xs px-1.5 py-0.5 bg-primary/10 text-primary rounded"
+                    >
+                      {theme}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* Recent commits preview */}
+              <div className="text-xs text-muted-foreground">
+                {contributor.recentCommits.slice(0, 2).map((msg, i) => (
+                  <p key={i} className="truncate">
+                    • {msg}
+                  </p>
+                ))}
+              </div>
+            </div>
+          ))}
+          {contributors.length === 0 && (
+            <div className="text-muted-foreground text-sm text-center py-4">
+              No activity in this time window
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ============================================================================
 // PostHog Content Renderers
 // ============================================================================
@@ -811,6 +1012,167 @@ function TopPagesContent({ data }: TopPagesContentProps) {
 }
 
 // ============================================================================
+// Slack Content Renderers
+// ============================================================================
+
+interface ChannelActivityContentProps {
+  data: SlackMessageData[];
+}
+
+function ChannelActivityContent({ data }: ChannelActivityContentProps) {
+  return (
+    <div className="flex flex-col gap-2 h-full overflow-auto">
+      {data.map((msg) => (
+        <div
+          key={msg.ts}
+          className="flex flex-col gap-0.5 text-sm py-1.5 border-b border-border/50 last:border-0"
+        >
+          <div className="flex items-center gap-2">
+            <span className="font-medium truncate">{msg.user}</span>
+            <span className="text-muted-foreground text-xs shrink-0">
+              {formatRelativeTime(msg.timestamp)}
+            </span>
+          </div>
+          <p className="text-sm text-muted-foreground line-clamp-2">{msg.text}</p>
+          {msg.reactions && msg.reactions.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1">
+              {msg.reactions.slice(0, 5).map((r) => (
+                <span
+                  key={r.name}
+                  className="inline-flex items-center gap-0.5 text-xs bg-muted px-1.5 py-0.5 rounded"
+                >
+                  :{r.name}: {r.count}
+                </span>
+              ))}
+            </div>
+          )}
+          {msg.replyCount && msg.replyCount > 0 && (
+            <span className="text-xs text-primary">
+              {msg.replyCount} {msg.replyCount === 1 ? "reply" : "replies"}
+            </span>
+          )}
+        </div>
+      ))}
+      {data.length === 0 && (
+        <div className="text-muted-foreground text-sm text-center py-4">
+          No messages
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------------
+
+interface MentionsContentProps {
+  data: SlackMentionData[];
+}
+
+function MentionsContent({ data }: MentionsContentProps) {
+  const handleMentionClick = useCallback((permalink?: string) => {
+    if (permalink) {
+      openInNewTab(permalink);
+    }
+  }, []);
+
+  return (
+    <div className="flex flex-col gap-2 h-full overflow-auto">
+      {data.map((mention) => (
+        <div
+          key={mention.ts}
+          className={`flex flex-col gap-0.5 text-sm py-1.5 border-b border-border/50 last:border-0 ${
+            mention.permalink ? "cursor-pointer hover:bg-muted/50 -mx-1 px-1 rounded" : ""
+          }`}
+          onClick={() => handleMentionClick(mention.permalink)}
+        >
+          <div className="flex items-center gap-2">
+            <span className="font-medium truncate">{mention.user}</span>
+            <span className="text-muted-foreground text-xs">in #{mention.channel}</span>
+            <span className="text-muted-foreground text-xs shrink-0 ml-auto">
+              {formatRelativeTime(mention.timestamp)}
+            </span>
+          </div>
+          <p className="text-sm text-muted-foreground line-clamp-2">{mention.text}</p>
+        </div>
+      ))}
+      {data.length === 0 && (
+        <div className="text-muted-foreground text-sm text-center py-4">
+          No mentions
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------------
+
+interface ThreadWatchContentProps {
+  data: SlackThreadData;
+}
+
+function ThreadWatchContent({ data }: ThreadWatchContentProps) {
+  const { parent, replies } = data;
+
+  if (!parent) {
+    return (
+      <div className="text-muted-foreground text-sm text-center py-4">
+        Thread not found
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-3 h-full overflow-auto">
+      {/* Parent message */}
+      <div className="flex flex-col gap-1 pb-2 border-b border-border">
+        <div className="flex items-center gap-2">
+          <span className="font-medium">{parent.user}</span>
+          <span className="text-muted-foreground text-xs">
+            {formatRelativeTime(parent.timestamp)}
+          </span>
+        </div>
+        <p className="text-sm">{parent.text}</p>
+      </div>
+
+      {/* Replies */}
+      <div className="flex flex-col gap-2 flex-1 overflow-auto">
+        {replies.map((reply) => (
+          <div
+            key={reply.ts}
+            className="flex flex-col gap-0.5 text-sm pl-3 border-l-2 border-muted"
+          >
+            <div className="flex items-center gap-2">
+              <span className="font-medium truncate">{reply.user}</span>
+              <span className="text-muted-foreground text-xs shrink-0">
+                {formatRelativeTime(reply.timestamp)}
+              </span>
+            </div>
+            <p className="text-muted-foreground">{reply.text}</p>
+            {reply.reactions && reply.reactions.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1">
+                {reply.reactions.slice(0, 3).map((r) => (
+                  <span
+                    key={r.name}
+                    className="inline-flex items-center gap-0.5 text-xs bg-muted px-1.5 py-0.5 rounded"
+                  >
+                    :{r.name}: {r.count}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+        {replies.length === 0 && (
+          <div className="text-muted-foreground text-sm text-center py-2">
+            No replies yet
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
 // Data Content Router
 // ============================================================================
 
@@ -869,6 +1231,17 @@ function DataContent({
         />
       );
 
+    case "github.commits":
+      return <CommitsContent data={data as CommitData[]} />;
+
+    case "github.team-activity":
+      return (
+        <TeamActivityContent
+          data={data as TeamActivityData}
+          componentId={componentId}
+        />
+      );
+
     // PostHog Analytics Components
     case "posthog.site-health":
       return (
@@ -888,6 +1261,16 @@ function DataContent({
 
     case "posthog.top-pages":
       return <TopPagesContent data={data as TopPagesData} />;
+
+    // Slack Components
+    case "slack.channel-activity":
+      return <ChannelActivityContent data={data as SlackMessageData[]} />;
+
+    case "slack.mentions":
+      return <MentionsContent data={data as SlackMentionData[]} />;
+
+    case "slack.thread-watch":
+      return <ThreadWatchContent data={data as SlackThreadData} />;
 
     default:
       return (

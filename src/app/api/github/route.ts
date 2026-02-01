@@ -15,7 +15,7 @@ type PRFilter = "all" | "authored" | "review_requested";
 type IssueFilter = "all" | "assigned" | "mentioned" | "created";
 
 interface GitHubRequest {
-  type: "pull_requests" | "issues" | "stats" | "activity" | "my_activity";
+  type: "pull_requests" | "issues" | "stats" | "activity" | "my_activity" | "commits" | "team_activity";
   params: {
     repo?: string;
     repos?: string[];
@@ -64,6 +64,14 @@ export async function POST(req: NextRequest) {
       case "my_activity":
         data = await fetchMyActivity(params, headers);
         ttl = 60000; // 1 minute cache
+        break;
+      case "commits":
+        data = await fetchCommits(repo, params, headers);
+        ttl = 60000;
+        break;
+      case "team_activity":
+        data = await fetchTeamActivity(repo, params, headers);
+        ttl = 120000; // 2 minute cache
         break;
       default:
         return Response.json({ error: "Unknown query type" }, { status: 400 });
@@ -718,4 +726,181 @@ async function fetchMyActivity(
     daily,
     feed,
   };
+}
+
+async function fetchCommits(
+  repo: string,
+  params: GitHubRequest["params"],
+  headers: HeadersInit
+) {
+  const limit = params.limit ?? 30;
+  const timeWindow = params.timeWindow ?? "7d";
+
+  // Calculate date for since parameter
+  const windowDays = parseInt(timeWindow.replace("d", ""), 10);
+  const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000).toISOString();
+
+  const res = await fetch(
+    `${GITHUB_API}/repos/${repo}/commits?per_page=${limit}&since=${since}`,
+    { headers }
+  );
+
+  if (!res.ok) {
+    throw new Error(`GitHub API error: ${res.status} ${res.statusText}`);
+  }
+
+  const commits = await res.json();
+
+  return commits.map((commit: {
+    sha: string;
+    commit: {
+      message: string;
+      author: { name: string; date: string };
+    };
+    author?: { login: string; avatar_url: string };
+    html_url: string;
+    stats?: { additions: number; deletions: number };
+  }) => ({
+    sha: commit.sha.slice(0, 7),
+    message: commit.commit.message.split("\n")[0], // First line only
+    author: commit.author?.login ?? commit.commit.author.name,
+    authorAvatar: commit.author?.avatar_url,
+    timestamp: new Date(commit.commit.author.date).getTime(),
+    url: commit.html_url,
+  }));
+}
+
+async function fetchTeamActivity(
+  repo: string,
+  params: GitHubRequest["params"],
+  headers: HeadersInit
+) {
+  const timeWindow = params.timeWindow ?? "7d";
+  const windowDays = parseInt(timeWindow.replace("d", ""), 10);
+  const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000).toISOString();
+
+  // Fetch commits to analyze team activity
+  const commitsRes = await fetch(
+    `${GITHUB_API}/repos/${repo}/commits?per_page=100&since=${since}`,
+    { headers }
+  );
+
+  if (!commitsRes.ok) {
+    throw new Error(`GitHub API error: ${commitsRes.status} ${commitsRes.statusText}`);
+  }
+
+  const commits = await commitsRes.json();
+
+  // Group commits by author and extract themes
+  const authorStats: Record<string, {
+    login: string;
+    avatar: string;
+    commits: number;
+    messages: string[];
+    lastActive: number;
+  }> = {};
+
+  for (const commit of commits) {
+    const login = commit.author?.login ?? commit.commit.author.name;
+    const avatar = commit.author?.avatar_url ?? "";
+    const message = commit.commit.message.split("\n")[0];
+    const timestamp = new Date(commit.commit.author.date).getTime();
+
+    if (!authorStats[login]) {
+      authorStats[login] = {
+        login,
+        avatar,
+        commits: 0,
+        messages: [],
+        lastActive: 0,
+      };
+    }
+
+    authorStats[login].commits++;
+    authorStats[login].messages.push(message);
+    authorStats[login].lastActive = Math.max(authorStats[login].lastActive, timestamp);
+  }
+
+  // Convert to array and sort by commit count
+  const contributors = Object.values(authorStats)
+    .sort((a, b) => b.commits - a.commits)
+    .map((author) => {
+      // Extract work themes from commit messages
+      const themes = extractWorkThemes(author.messages);
+      return {
+        login: author.login,
+        avatar: author.avatar,
+        commits: author.commits,
+        lastActive: author.lastActive,
+        themes,
+        recentCommits: author.messages.slice(0, 5),
+      };
+    });
+
+  // Daily activity for sparkline
+  const dailyActivity: Record<string, number> = {};
+  for (let i = 0; i < windowDays; i++) {
+    const date = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
+    const key = date.toISOString().split("T")[0];
+    dailyActivity[key] = 0;
+  }
+
+  for (const commit of commits) {
+    const date = new Date(commit.commit.author.date).toISOString().split("T")[0];
+    if (dailyActivity[date] !== undefined) {
+      dailyActivity[date]++;
+    }
+  }
+
+  const daily = Object.entries(dailyActivity)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, count]) => ({ date, count }));
+
+  return {
+    repo,
+    timeWindow,
+    totalCommits: commits.length,
+    contributors,
+    daily,
+  };
+}
+
+// Extract work themes from commit messages using common patterns
+function extractWorkThemes(messages: string[]): string[] {
+  const themes: Record<string, number> = {};
+
+  const patterns: [RegExp, string][] = [
+    [/\bfix(es|ed|ing)?\b/i, "bug fixes"],
+    [/\bfeat(ure)?s?\b/i, "features"],
+    [/\brefactor(s|ed|ing)?\b/i, "refactoring"],
+    [/\bdocs?\b/i, "documentation"],
+    [/\btest(s|ing)?\b/i, "testing"],
+    [/\bstyle\b/i, "styling"],
+    [/\bperf(ormance)?\b/i, "performance"],
+    [/\bbuild\b/i, "build"],
+    [/\bci\b/i, "CI/CD"],
+    [/\bchore\b/i, "maintenance"],
+    [/\badd(s|ed|ing)?\b/i, "additions"],
+    [/\bremove[ds]?\b|delet(e[ds]?|ing)\b/i, "cleanup"],
+    [/\bupdat(e[ds]?|ing)\b/i, "updates"],
+    [/\bupgrad(e[ds]?|ing)\b/i, "upgrades"],
+    [/\bapi\b/i, "API work"],
+    [/\bui\b|\bux\b|\bfrontend\b/i, "UI/UX"],
+    [/\bdb\b|\bdatabase\b|\bmigrat/i, "database"],
+    [/\bauth\b|\blogin\b|\bsession\b/i, "authentication"],
+  ];
+
+  for (const msg of messages) {
+    for (const [pattern, theme] of patterns) {
+      if (pattern.test(msg)) {
+        themes[theme] = (themes[theme] ?? 0) + 1;
+      }
+    }
+  }
+
+  // Return top 3 themes
+  return Object.entries(themes)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 3)
+    .map(([theme]) => theme);
 }

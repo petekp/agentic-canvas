@@ -45,10 +45,16 @@ const DEFAULT_SIZES: Record<string, { cols: number; rows: number }> = {
   "github.issue-grid": { cols: 4, rows: 3 },
   "github.activity-timeline": { cols: 3, rows: 4 },
   "github.my-activity": { cols: 4, rows: 5 },
+  "github.commits": { cols: 4, rows: 4 },
+  "github.team-activity": { cols: 5, rows: 5 },
   // PostHog components
   "posthog.site-health": { cols: 4, rows: 3 },
   "posthog.property-breakdown": { cols: 4, rows: 3 },
   "posthog.top-pages": { cols: 4, rows: 4 },
+  // Slack components
+  "slack.channel-activity": { cols: 4, rows: 4 },
+  "slack.mentions": { cols: 4, rows: 3 },
+  "slack.thread-watch": { cols: 3, rows: 4 },
 };
 
 // Default data bindings for component types
@@ -78,6 +84,16 @@ const DEFAULT_BINDINGS: Record<string, { source: string; query: { type: string; 
     query: { type: "my_activity", params: { timeWindow: "7d", feedLimit: 10 } },
     refreshInterval: 60000,
   },
+  "github.commits": {
+    source: "mock-github",
+    query: { type: "commits", params: { timeWindow: "7d", limit: 30 } },
+    refreshInterval: 60000,
+  },
+  "github.team-activity": {
+    source: "mock-github",
+    query: { type: "team_activity", params: { timeWindow: "7d" } },
+    refreshInterval: 120000,
+  },
   // PostHog components
   "posthog.site-health": {
     source: "posthog",
@@ -93,6 +109,22 @@ const DEFAULT_BINDINGS: Record<string, { source: string; query: { type: string; 
     source: "posthog",
     query: { type: "top_pages", params: { timeWindow: "7d", limit: 10 } },
     refreshInterval: 120000,
+  },
+  // Slack components
+  "slack.channel-activity": {
+    source: "slack",
+    query: { type: "channel_activity", params: { limit: 20 } },
+    refreshInterval: 60000,
+  },
+  "slack.mentions": {
+    source: "slack",
+    query: { type: "mentions", params: { limit: 10 } },
+    refreshInterval: 60000,
+  },
+  "slack.thread-watch": {
+    source: "slack",
+    query: { type: "thread_watch", params: {} },
+    refreshInterval: 30000,
   },
 };
 

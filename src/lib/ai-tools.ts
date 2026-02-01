@@ -213,6 +213,13 @@ ${componentTypes.map((t) => `- **${t.typeId}**: ${t.description}`).join("\n")}
   - filter: "all" (default), "assigned" (my issues), "mentioned" (issues I'm involved in), "created" (issues I opened)
 - activity-timeline: Shows recent repository activity
 - my-activity: Shows authenticated user's contributions, requires GITHUB_TOKEN
+- commits: Shows recent commit history with authors and messages
+  - config.timeWindow: "7d" (default), "14d", "30d"
+  - config.limit: Number of commits to show
+- team-activity: **Analyze what the team is working on** - groups contributors by work themes extracted from commit messages
+  - config.timeWindow: "7d" (default), "14d", "30d"
+  - Shows each contributor's commit count, detected themes (features, bug fixes, refactoring, etc.), and recent commit messages
+  - Great for standup prep, understanding team focus, or onboarding
 
 ### Personal Filters (requires GITHUB_USERNAME)
 When the user asks for "my PRs", "PRs to review", "my issues", etc., use the appropriate filter:
@@ -225,6 +232,21 @@ When the user asks for "my PRs", "PRs to review", "my issues", etc., use the app
 - site-health: Overview metrics with visitor/pageview counts and daily trend
 - property-breakdown: Bar chart of visitors/pageviews by domain
 - top-pages: Ranked list of most visited pages
+
+### Slack Components (require SLACK_BOT_TOKEN)
+- channel-activity: Shows recent messages from a Slack channel
+  - config.channelId or config.channelName (e.g., "general" or "#engineering")
+  - config.limit: Number of messages (default 20)
+- mentions: Shows messages where the user was @mentioned
+  - config.limit: Number of mentions (default 10)
+- thread-watch: Monitors a specific thread for replies
+  - config.channelId or config.channelName: Channel containing the thread
+  - config.threadTs: Timestamp of the parent message (e.g., "1234567890.123456")
+
+### Slack Usage Examples
+- "Show messages from #general" → channel-activity with channelName: "general"
+- "Show my mentions" → mentions component
+- "Watch this thread: [thread link]" → Extract channel and thread_ts from Slack link
 
 When the user asks for specific metrics, configure the component appropriately.`;
 }

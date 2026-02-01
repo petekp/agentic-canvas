@@ -121,10 +121,16 @@ const TYPE_METADATA: Record<string, { name: string; category: "data" | "metric" 
   "github.issue-grid": { name: "Issue Grid", category: "data" },
   "github.activity-timeline": { name: "Activity Timeline", category: "timeline" },
   "github.my-activity": { name: "My Activity", category: "timeline" },
+  "github.commits": { name: "Commits", category: "timeline" },
+  "github.team-activity": { name: "Team Activity", category: "data" },
   // PostHog components
   "posthog.site-health": { name: "Site Health", category: "metric" },
   "posthog.property-breakdown": { name: "Property Breakdown", category: "data" },
   "posthog.top-pages": { name: "Top Pages", category: "data" },
+  // Slack components
+  "slack.channel-activity": { name: "Channel Activity", category: "timeline" },
+  "slack.mentions": { name: "Mentions", category: "data" },
+  "slack.thread-watch": { name: "Thread Watch", category: "timeline" },
 };
 
 /**
@@ -179,6 +185,17 @@ function summarizeComponent(
       if (stats.commits) highlights.push(`${stats.commits} commits`);
       if (stats.prsOpened) highlights.push(`${stats.prsOpened} PRs opened`);
       if (stats.reviews) highlights.push(`${stats.reviews} reviews`);
+    } else if (component.typeId === "github.commits" && Array.isArray(data)) {
+      const commits = data as Array<{ author: string }>;
+      summary = `${typeMeta.name} showing ${commits.length} recent commits`;
+    } else if (component.typeId === "github.team-activity" && data.contributors) {
+      const teamData = data as { totalCommits: number; contributors: Array<{ login: string; themes: string[] }> };
+      summary = `${typeMeta.name} showing ${teamData.contributors.length} contributors`;
+      highlights.push(`${teamData.totalCommits} total commits`);
+      // Extract top themes across team
+      const allThemes = teamData.contributors.flatMap((c) => c.themes);
+      const uniqueThemes = [...new Set(allThemes)].slice(0, 3);
+      if (uniqueThemes.length > 0) highlights.push(`Focus: ${uniqueThemes.join(", ")}`);
     } else if (component.typeId === "posthog.site-health" && data.uniqueVisitors !== undefined) {
       summary = `${typeMeta.name} showing ${data.uniqueVisitors} visitors, ${data.pageviews} pageviews`;
     } else if (component.typeId === "posthog.property-breakdown" && data.properties) {
@@ -188,6 +205,18 @@ function summarizeComponent(
     } else if (component.typeId === "posthog.top-pages" && data.pages) {
       const pages = data.pages as Array<{ path: string }>;
       summary = `${typeMeta.name} showing ${pages.length} top pages`;
+    }
+    // Slack components
+    else if (component.typeId === "slack.channel-activity" && Array.isArray(data)) {
+      const messages = data as Array<{ user: string }>;
+      summary = `${typeMeta.name} showing ${messages.length} recent messages`;
+    } else if (component.typeId === "slack.mentions" && Array.isArray(data)) {
+      const mentions = data as Array<{ channel: string }>;
+      summary = `${typeMeta.name} showing ${mentions.length} @mentions`;
+      if (mentions.length > 0) highlights.push(`Latest in #${mentions[0].channel}`);
+    } else if (component.typeId === "slack.thread-watch" && data.parent) {
+      const thread = data as { replyCount: number };
+      summary = `${typeMeta.name} with ${thread.replyCount} replies`;
     }
   } else if (component.dataState.status === "loading") {
     summary += " (loading data...)";
@@ -368,6 +397,26 @@ function extractDataDetails(component: ComponentInstance): string[] {
         details.push(`  - ${item.type}: ${item.description}`);
       }
     }
+  } else if (component.typeId === "github.commits" && Array.isArray(data)) {
+    const commits = data as Array<{ sha: string; message: string; author: string }>;
+    for (const commit of commits.slice(0, 5)) {
+      details.push(`  - ${commit.sha} (${commit.author}): ${commit.message.slice(0, 50)}${commit.message.length > 50 ? "..." : ""}`);
+    }
+    if (commits.length > 5) details.push(`  ... and ${commits.length - 5} more commits`);
+  } else if (component.typeId === "github.team-activity" && data.contributors) {
+    const teamData = data as {
+      totalCommits: number;
+      contributors: Array<{ login: string; commits: number; themes: string[]; recentCommits: string[] }>;
+    };
+    details.push(`  Total: ${teamData.totalCommits} commits`);
+    for (const contributor of teamData.contributors.slice(0, 5)) {
+      const themes = contributor.themes.length > 0 ? ` [${contributor.themes.join(", ")}]` : "";
+      details.push(`  - ${contributor.login}: ${contributor.commits} commits${themes}`);
+      if (contributor.recentCommits[0]) {
+        details.push(`    └ "${contributor.recentCommits[0].slice(0, 40)}${contributor.recentCommits[0].length > 40 ? "..." : ""}"`);
+      }
+    }
+    if (teamData.contributors.length > 5) details.push(`  ... and ${teamData.contributors.length - 5} more contributors`);
   }
   // PostHog components
   else if (component.typeId === "posthog.site-health") {
@@ -393,6 +442,27 @@ function extractDataDetails(component: ComponentInstance): string[] {
       details.push(`  - ${page.property}${page.path}: ${page.views} views`);
     }
     if (pages.length > 5) details.push(`  ... and ${pages.length - 5} more`);
+  }
+  // Slack components
+  else if (component.typeId === "slack.channel-activity" && Array.isArray(data)) {
+    const messages = data as Array<{ user: string; text: string; timestamp: number }>;
+    for (const msg of messages.slice(0, 5)) {
+      const text = msg.text.length > 50 ? msg.text.slice(0, 50) + "..." : msg.text;
+      details.push(`  - ${msg.user}: "${text}"`);
+    }
+    if (messages.length > 5) details.push(`  ... and ${messages.length - 5} more messages`);
+  } else if (component.typeId === "slack.mentions" && Array.isArray(data)) {
+    const mentions = data as Array<{ user: string; text: string; channel: string }>;
+    for (const m of mentions.slice(0, 5)) {
+      const text = m.text.length > 40 ? m.text.slice(0, 40) + "..." : m.text;
+      details.push(`  - ${m.user} in #${m.channel}: "${text}"`);
+    }
+    if (mentions.length > 5) details.push(`  ... and ${mentions.length - 5} more mentions`);
+  } else if (component.typeId === "slack.thread-watch" && data.parent) {
+    const thread = data as { parent: { user: string; text: string }; replyCount: number };
+    const parentText = thread.parent.text.length > 50 ? thread.parent.text.slice(0, 50) + "..." : thread.parent.text;
+    details.push(`  - Thread by ${thread.parent.user}: "${parentText}"`);
+    details.push(`  - ${thread.replyCount} replies`);
   }
 
   return details;
@@ -459,6 +529,16 @@ export function getAvailableComponentTypes(): { typeId: string; name: string; de
       name: "My Activity",
       description: "Shows your personal contribution summary with stats, sparkline, and activity feed (4x5 default). Requires GitHub token.",
     },
+    {
+      typeId: "github.commits",
+      name: "Commits",
+      description: "Recent commit history with authors and messages (4x4 default).",
+    },
+    {
+      typeId: "github.team-activity",
+      name: "Team Activity",
+      description: "Shows who's working on what - contributors grouped by work themes extracted from commits (5x5 default). Great for understanding team focus areas.",
+    },
     // PostHog Analytics
     {
       typeId: "posthog.site-health",
@@ -474,6 +554,22 @@ export function getAvailableComponentTypes(): { typeId: string; name: string; de
       typeId: "posthog.top-pages",
       name: "Top Pages",
       description: "Ranked list of most visited pages across all properties (4x4 default). Requires PostHog API key.",
+    },
+    // Slack
+    {
+      typeId: "slack.channel-activity",
+      name: "Channel Activity",
+      description: "Shows recent messages from a Slack channel (4x4 default). Requires Slack Bot Token.",
+    },
+    {
+      typeId: "slack.mentions",
+      name: "Mentions",
+      description: "Shows messages where you've been @mentioned (4x3 default). Requires Slack Bot Token.",
+    },
+    {
+      typeId: "slack.thread-watch",
+      name: "Thread Watch",
+      description: "Monitors a specific Slack thread for replies (3x4 default). Requires Slack Bot Token.",
     },
   ];
 }

@@ -179,6 +179,8 @@ async function fetchDataFromSource(binding: DataBinding): Promise<{ data: unknow
   switch (binding.source) {
     case "posthog":
       return fetchPostHogData(binding);
+    case "slack":
+      return fetchSlackData(binding);
     case "mock-github":
     default:
       return fetchGitHubData(binding);
@@ -211,6 +213,27 @@ async function fetchPostHogData(binding: DataBinding): Promise<{ data: unknown; 
   const { query } = binding;
 
   const response = await fetch("/api/posthog", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      type: query.type,
+      params: query.params,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error ?? `API error: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+// Fetch data from Slack API route
+async function fetchSlackData(binding: DataBinding): Promise<{ data: unknown; ttl: number }> {
+  const { query } = binding;
+
+  const response = await fetch("/api/slack", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

@@ -24,7 +24,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
-import { Plus, Layers, User, GitPullRequest, BarChart3 } from "lucide-react";
+import { Plus, Layers, User, GitPullRequest, BarChart3, MessageSquare } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { NotificationBadge } from "@/components/notifications/NotificationBadge";
 import { NotificationPanel } from "@/components/notifications/NotificationPanel";
@@ -102,6 +102,22 @@ const componentTypes = [
     queryType: "activity",
     category: "github",
   },
+  {
+    typeId: "github.commits",
+    label: "Commits",
+    config: { repo: "assistant-ui/assistant-ui", timeWindow: "7d", limit: 30 },
+    size: { cols: 4, rows: 4 },
+    queryType: "commits",
+    category: "github",
+  },
+  {
+    typeId: "github.team-activity",
+    label: "Team Activity",
+    config: { repo: "assistant-ui/assistant-ui", timeWindow: "7d" },
+    size: { cols: 5, rows: 5 },
+    queryType: "team_activity",
+    category: "github",
+  },
   // === PostHog Analytics ===
   {
     typeId: "posthog.site-health",
@@ -130,6 +146,34 @@ const componentTypes = [
     source: "posthog",
     category: "posthog",
   },
+  // === Slack ===
+  {
+    typeId: "slack.channel-activity",
+    label: "Channel Activity",
+    config: { channelName: "general", limit: 20 },
+    size: { cols: 4, rows: 4 },
+    queryType: "channel_activity",
+    source: "slack",
+    category: "slack",
+  },
+  {
+    typeId: "slack.mentions",
+    label: "My Mentions",
+    config: { limit: 10 },
+    size: { cols: 4, rows: 3 },
+    queryType: "mentions",
+    source: "slack",
+    category: "slack",
+  },
+  {
+    typeId: "slack.thread-watch",
+    label: "Thread Watch",
+    config: {},
+    size: { cols: 3, rows: 4 },
+    queryType: "thread_watch",
+    source: "slack",
+    category: "slack",
+  },
 ];
 
 // Dropdown button to add components
@@ -156,6 +200,7 @@ function AddComponentButton() {
   const personalTypes = componentTypes.filter((t) => t.category === "personal");
   const githubTypes = componentTypes.filter((t) => t.category === "github");
   const posthogTypes = componentTypes.filter((t) => t.category === "posthog");
+  const slackTypes = componentTypes.filter((t) => t.category === "slack");
 
   return (
     <DropdownMenu>
@@ -201,6 +246,20 @@ function AddComponentButton() {
         </DropdownMenuLabel>
         {posthogTypes.map((type, i) => (
           <DropdownMenuItem key={`posthog-${i}`} onClick={() => handleAdd(type)}>
+            <Layers className="h-4 w-4 mr-2 text-muted-foreground" />
+            {type.label}
+          </DropdownMenuItem>
+        ))}
+
+        <DropdownMenuSeparator />
+
+        {/* Slack */}
+        <DropdownMenuLabel className="text-xs text-muted-foreground flex items-center gap-1.5">
+          <MessageSquare className="h-3 w-3" />
+          Slack
+        </DropdownMenuLabel>
+        {slackTypes.map((type, i) => (
+          <DropdownMenuItem key={`slack-${i}`} onClick={() => handleAdd(type)}>
             <Layers className="h-4 w-4 mr-2 text-muted-foreground" />
             {type.label}
           </DropdownMenuItem>
