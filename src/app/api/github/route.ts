@@ -1,5 +1,23 @@
-// GitHub API Route - fetches real data from GitHub
-// Keeps token server-side for security
+// github/route.ts
+//
+// Server-side proxy for GitHub API requests.
+//
+// WHY SERVER-SIDE: The GitHub token stays here, never exposed to the browser.
+// This also lets us add caching, rate limit handling, and data transformation
+// without bloating the client bundle.
+//
+// API STRATEGY:
+// - Regular endpoints (repos/:owner/:repo/...) for unfiltered queries
+// - Search API for personal filters (authored, review_requested, assigned)
+//   because the regular API doesn't support those filters
+//
+// CACHING: TTL values are returned with each response. The client can use
+// these to avoid redundant requests. Longer TTLs for stable data (commits),
+// shorter for volatile data (stats, activity).
+//
+// RATE LIMITS: GitHub allows 5000 requests/hour with auth. We don't
+// implement explicit rate limiting here - the polling intervals in
+// data-slice.ts keep us well under budget.
 
 import { NextRequest } from "next/server";
 
@@ -134,7 +152,16 @@ async function fetchPullRequests(
   }));
 }
 
-// Use GitHub Search API for personal PR filters
+/**
+ * Fetches PRs matching personal filters using GitHub's Search API.
+ *
+ * WHY SEARCH API: The regular /repos/:owner/:repo/pulls endpoint doesn't
+ * support filtering by review_requested or author. Search API does, but
+ * returns results in a different format (items array, issues-style response).
+ *
+ * QUERY SYNTAX: Space-separated qualifiers, URL-encoded. Example:
+ * "repo:foo/bar is:pr is:open review-requested:username"
+ */
 async function fetchFilteredPullRequests(
   repo: string,
   filter: PRFilter,
@@ -245,7 +272,18 @@ async function fetchIssues(
     }));
 }
 
-// Use GitHub Search API for personal issue filters
+/**
+ * Fetches issues matching personal filters using GitHub's Search API.
+ *
+ * IMPORTANT: GitHub's /repos/:owner/:repo/issues endpoint returns PRs too.
+ * We add "is:issue" to the search query to exclude them, rather than
+ * filtering client-side (which wastes API quota).
+ *
+ * FILTER MAPPING:
+ * - assigned → assignee:username (issues assigned to you)
+ * - mentioned → involves:username (issues where you're @mentioned or participated)
+ * - created → author:username (issues you opened)
+ */
 async function fetchFilteredIssues(
   repo: string,
   filter: IssueFilter,
@@ -316,55 +354,76 @@ async function fetchStats(
 ) {
   const metric = params.metric ?? "open_prs";
 
-  // Fetch repo info for stars/forks
-  const repoRes = await fetch(`${GITHUB_API}/repos/${repo}`, { headers });
-  if (!repoRes.ok) {
-    throw new Error(`GitHub API error: ${repoRes.status} ${repoRes.statusText}`);
-  }
-  const repoData = await repoRes.json();
+  // Start all potential fetches in parallel based on metric type
+  // This eliminates waterfalls by not waiting for sequential responses
+  const repoPromise = fetch(`${GITHUB_API}/repos/${repo}`, { headers });
 
-  // For PR/issue counts, we need separate calls
   let value = 0;
-  let trend = 0;
+  const trend = 0;
   let sparkline: number[] | undefined;
 
   switch (metric) {
     case "open_prs": {
-      // Use search API to get accurate count
-      const openPrs = await fetch(
-        `${GITHUB_API}/search/issues?q=repo:${repo}+type:pr+state:open`,
-        { headers }
-      );
-      const openPrsData = await openPrs.json();
+      // Parallel: fetch count and sparkline data simultaneously
+      const [openPrsRes, sparklineData] = await Promise.all([
+        fetch(
+          `${GITHUB_API}/search/issues?q=repo:${repo}+type:pr+state:open`,
+          { headers }
+        ),
+        generatePRSparkline(repo, headers),
+      ]);
+      const openPrsData = await openPrsRes.json();
       value = openPrsData.total_count ?? 0;
-      // Generate sparkline from recent PR activity
-      sparkline = await generatePRSparkline(repo, headers);
+      sparkline = sparklineData;
       break;
     }
     case "closed_prs": {
-      const closedPrs = await fetch(
+      const closedPrsRes = await fetch(
         `${GITHUB_API}/search/issues?q=repo:${repo}+type:pr+state:closed`,
         { headers }
       );
-      const closedPrsData = await closedPrs.json();
+      const closedPrsData = await closedPrsRes.json();
       value = closedPrsData.total_count ?? 0;
       break;
     }
     case "open_issues": {
+      const repoRes = await repoPromise;
+      if (!repoRes.ok) {
+        throw new Error(`GitHub API error: ${repoRes.status} ${repoRes.statusText}`);
+      }
+      const repoData = await repoRes.json();
       value = repoData.open_issues_count ?? 0;
       break;
     }
     case "stars": {
+      // Parallel: fetch repo data and sparkline simultaneously
+      const [repoRes, sparklineData] = await Promise.all([
+        repoPromise,
+        generateStarSparkline(repo, headers),
+      ]);
+      if (!repoRes.ok) {
+        throw new Error(`GitHub API error: ${repoRes.status} ${repoRes.statusText}`);
+      }
+      const repoData = await repoRes.json();
       value = repoData.stargazers_count ?? 0;
-      // Get star history from stargazers if available
-      sparkline = await generateStarSparkline(repo, headers, value);
+      sparkline = sparklineData;
       break;
     }
     case "forks": {
+      const repoRes = await repoPromise;
+      if (!repoRes.ok) {
+        throw new Error(`GitHub API error: ${repoRes.status} ${repoRes.statusText}`);
+      }
+      const repoData = await repoRes.json();
       value = repoData.forks_count ?? 0;
       break;
     }
     case "watchers": {
+      const repoRes = await repoPromise;
+      if (!repoRes.ok) {
+        throw new Error(`GitHub API error: ${repoRes.status} ${repoRes.statusText}`);
+      }
+      const repoData = await repoRes.json();
       value = repoData.subscribers_count ?? 0;
       break;
     }
@@ -412,8 +471,7 @@ async function generatePRSparkline(
 // Generate sparkline for stars (using commit activity as proxy for repo health)
 async function generateStarSparkline(
   repo: string,
-  headers: HeadersInit,
-  _currentStars: number
+  headers: HeadersInit
 ): Promise<number[]> {
   try {
     // Fetch commit activity as a proxy for repo activity/growth
@@ -865,7 +923,21 @@ async function fetchTeamActivity(
   };
 }
 
-// Extract work themes from commit messages using common patterns
+/**
+ * Extracts work themes from commit messages using keyword matching.
+ *
+ * This is intentionally simple heuristics, not ML. Patterns target:
+ * 1. Conventional commit prefixes (fix:, feat:, refactor:, etc.)
+ * 2. Common verbs (added, removed, updated, fixed)
+ * 3. Domain keywords (api, ui, db, auth)
+ *
+ * Returns the top 3 themes by frequency. "features" from 10 commits
+ * beats "documentation" from 2 commits.
+ *
+ * WHY NOT AI: This runs on every team_activity request. LLM calls would
+ * add latency and cost. Keyword matching is fast and "good enough" for
+ * giving users a sense of what the team is working on.
+ */
 function extractWorkThemes(messages: string[]): string[] {
   const themes: Record<string, number> = {};
 

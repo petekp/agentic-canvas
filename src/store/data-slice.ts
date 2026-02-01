@@ -1,4 +1,29 @@
-// Data Slice - manages data fetching and caching
+// data-slice.ts
+//
+// Manages data fetching, caching, and component data state.
+//
+// CACHE STRATEGY:
+// Each unique DataBinding configuration gets a cache key. Multiple components
+// can share the same cached data if they have identical bindings (e.g., two
+// PR lists for the same repo). Cache entries have a TTL from the API response.
+//
+// FETCH DEDUPLICATION:
+// pendingFetches tracks in-flight requests. If a fetch is already in progress
+// for a cache key, additional requests for that key no-op. This prevents
+// thundering herd when multiple components mount simultaneously.
+//
+// COMPONENT DATA STATE:
+// Components have a dataState field with discriminated union variants:
+// - idle: No fetch attempted yet
+// - loading: Fetch in progress
+// - ready: Data loaded successfully
+// - error: Fetch failed
+// - stale: Data is old but still shown while refreshing
+//
+// REHYDRATION:
+// After page reload (zustand persist rehydration), initializeData() re-fetches
+// all components with bindings. Cached data is stale across sessions.
+//
 // See: .claude/plans/store-architecture-v0.1.md
 
 import { StateCreator } from "zustand";

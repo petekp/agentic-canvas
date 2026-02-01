@@ -1,7 +1,25 @@
-// Component Registry - centralized configuration for canvas components
-// Provides:
-// 1. CONTENT_RENDERERS: maps typeId -> lazy-loaded renderer component
-// 2. COMPONENT_TYPES: dropdown configuration with defaults
+// component-registry.ts
+//
+// Centralized configuration mapping component types to their renderers and defaults.
+//
+// TWO REGISTRIES:
+// 1. CONTENT_RENDERERS: typeId → lazy-loaded React component
+//    Used by ComponentContent to render the right UI for each component type.
+//    Lazy loading keeps the initial bundle small - renderer code loads on demand.
+//
+// 2. COMPONENT_TYPES: Configuration for the "Add Component" dropdown
+//    Includes default sizes, query types, and categories for grouping.
+//
+// ADDING A NEW COMPONENT TYPE:
+// 1. Create the renderer in src/components/canvas/renderers/
+// 2. Add entry to CONTENT_RENDERERS with lazy(() => import(...))
+// 3. Add entry to COMPONENT_TYPES with defaults
+// 4. Update CATEGORIES if introducing a new category
+// 5. Add tool documentation in ai-tools.ts for AI awareness
+//
+// WHY LAZY LOADING:
+// Each renderer may import heavy dependencies (charts, data grids). Lazy loading
+// ensures we only pay the bundle cost when that component type is actually used.
 
 import { lazy, type LazyExoticComponent, type ComponentType } from "react";
 import type { LucideIcon } from "lucide-react";

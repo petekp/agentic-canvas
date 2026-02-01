@@ -1,5 +1,28 @@
-// Chat API Route - handles streaming AI responses with tool calling
-// Uses Vercel AI SDK with assistant-ui for frontend tool execution
+// chat/route.ts
+//
+// Streaming chat API that bridges the frontend to OpenAI with tool support.
+//
+// ARCHITECTURE: Frontend tool execution
+// Tools are defined on the client (via assistant-ui's makeAssistantTool) and
+// forwarded to this route. The server converts them to AI SDK format, but
+// actual execution happens client-side when tool calls stream back.
+//
+// This pattern keeps canvas mutations in the browser where Zustand lives,
+// avoiding complex server→client state sync.
+//
+// MESSAGE NORMALIZATION:
+// AI SDK v6 expects messages with a `parts` array, but legacy formats use
+// `content` strings. normalizeMessages() bridges this gap, letting us accept
+// messages from various sources (saved conversations, older clients).
+//
+// SYSTEM PROMPT COMPOSITION:
+// 1. Optional frontend system message (from AssistantChatTransport)
+// 2. Dynamic prompt with current canvas state and available tools
+// The canvas description gives the AI spatial awareness and data context.
+//
+// STEP LIMIT:
+// We cap at 3 steps (stopWhen: stepCountIs(3)) to prevent runaway tool loops.
+// Most interactions need 1-2 steps; 3 handles complex multi-tool scenarios.
 
 import { openai } from "@ai-sdk/openai";
 import { streamText, convertToModelMessages, type UIMessage, stepCountIs } from "ai";
@@ -18,8 +41,18 @@ export const maxDuration = 30;
 // activeViewName?: string | null - Currently active view name
 // views?: View[] - Available views
 
-// Normalize messages to ensure they have the parts array format required by AI SDK v6
-// This handles any legacy content-string format that might come through
+/**
+ * Normalizes incoming messages to AI SDK v6's parts-based format.
+ *
+ * Handles three legacy formats:
+ * 1. { content: "string" } → { parts: [{ type: "text", text: "string" }] }
+ * 2. { content: [{ type: "text", text: "..." }] } → { parts: [...] }
+ * 3. { parts: [...] } → unchanged (already v6 format)
+ *
+ * WHY: assistant-ui internally converts between formats during serialization.
+ * Saved conversations or older API clients might send legacy formats.
+ * Without normalization, convertToModelMessages() throws cryptic errors.
+ */
 function normalizeMessages(messages: unknown[]): UIMessage[] {
   return messages.map((msg: unknown) => {
     const m = msg as Record<string, unknown>;

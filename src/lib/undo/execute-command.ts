@@ -1,6 +1,29 @@
-// Command Executor for Undo/Redo
-// This module provides semantic command execution for tracking purposes.
-// The actual state restoration uses snapshot-based approach (beforeSnapshot/afterSnapshot).
+// execute-command.ts
+//
+// Command description and change detection for the undo system.
+//
+// ARCHITECTURAL NOTE: Snapshots vs Commands
+// We use SNAPSHOTS for actual undo/redo (restoring beforeSnapshot/afterSnapshot).
+// We use COMMANDS for human-readable descriptions and semantic tracking.
+//
+// WHY NOT COMMAND-BASED UNDO?
+// Command inversion (invertCanvasCommand) works for simple operations but breaks
+// for complex cases:
+// - Bulk operations with interdependencies
+// - Operations that trigger side effects (data refetches)
+// - External state that can't be captured in a command
+//
+// Snapshots are more reliable: we literally restore the prior state. The trade-off
+// is memory (~2KB per entry), which is acceptable for our scale.
+//
+// DESCRIPTION GENERATION:
+// describeCanvasCommand() generates user-facing text for undo history. These appear
+// in the undo dropdown: "Undo: Add github.stat-tile", "Redo: Move component".
+//
+// CHANGE DETECTION:
+// detectChanges() compares two snapshots to find what was added/removed/modified.
+// Used for audit logging and UI feedback (e.g., "3 components changed").
+//
 // See: .claude/plans/undo-redo-system-v2.md
 
 import type { UndoCanvasCommand, FilesystemCommand, HybridCommand } from "./types";

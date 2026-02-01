@@ -1,4 +1,21 @@
-// Undo Policy Engine
+// policies.ts
+//
+// Policy engine for controlling undo behavior.
+//
+// WHY POLICIES: Enterprises need compliance controls over undo. Examples:
+// - Legal hold: Prevent undoing changes during litigation discovery
+// - Audit trail: Block undo after 24h so changes are "on the record"
+// - Source control: Prevent users from undoing AI decisions (or vice versa)
+// - Size limits: Flag batch operations affecting many files for review
+//
+// EVALUATION FLOW:
+// 1. Check if policy is enabled and applies to this entry (scope matching)
+// 2. Evaluate the rule against the entry (time-based, path-based, etc.)
+// 3. If triggered, apply enforcement: block, flag, or log_only
+//
+// Policies are additive - multiple policies can apply to one entry.
+// If ANY policy blocks, the operation is blocked.
+//
 // See: .claude/plans/undo-redo-system-v2.md
 
 import type { EnhancedUndoEntry, PolicyCheckResult } from "./types";
@@ -149,6 +166,12 @@ export function canUndoEntry(
 
 // ============================================================================
 // Policy Matching
+//
+// Scope matching determines IF a policy should be evaluated for an entry.
+// This is different from rule evaluation (whether the policy is triggered).
+//
+// Empty scope arrays mean "apply to all" - the most common case.
+// Non-empty arrays are allowlists: policy only applies if entry matches.
 // ============================================================================
 
 function policyAppliesToEntry(
@@ -189,6 +212,10 @@ function policyAppliesToEntry(
 
 // ============================================================================
 // Rule Evaluation
+//
+// Rules define WHEN a policy should trigger. Each rule type checks a different
+// condition. Some rules (path_requires_approval, require_reason_for_undo) are
+// UI-layer concerns and return not-triggered here - they're handled by prompts.
 // ============================================================================
 
 interface RuleResult {
@@ -196,6 +223,12 @@ interface RuleResult {
   reason: string;
 }
 
+/**
+ * Evaluates a single policy rule against an undo entry.
+ *
+ * Returns { triggered: true, reason: "..." } if the rule condition is met.
+ * The reason is human-readable and shown to users when undo is blocked.
+ */
 function evaluateRule(
   rule: UndoPolicyRule,
   entry: EnhancedUndoEntry,

@@ -1,4 +1,27 @@
-// Canvas Slice - manages component instances and grid
+// canvas-slice.ts
+//
+// Manages canvas state: components, positions, sizes, and the grid itself.
+//
+// MUTATION PATTERN:
+// Every mutating action follows the same flow:
+// 1. Capture beforeSnapshot (for undo)
+// 2. Perform mutation via immer draft
+// 3. Capture afterSnapshot
+// 4. Push to undo stack
+// 5. Return CommandResult
+//
+// This verbosity is intentional - it guarantees every change is undoable.
+//
+// AUTO-PLACEMENT:
+// When position isn't specified, findOpenPosition() scans the grid left-to-right,
+// top-to-bottom for the first gap that fits the component. If no space exists,
+// it falls back to (0,0) and allows overlap. Users can then drag to reposition.
+//
+// DATA LIFECYCLE:
+// Components start with dataState: { status: "idle" }. After addComponent(),
+// if dataBinding exists, we call fetchData() to kick off the data fetch.
+// The data slice handles the actual API calls and updates dataState.
+//
 // See: .claude/plans/store-architecture-v0.1.md
 
 import { StateCreator } from "zustand";
@@ -435,7 +458,18 @@ export const createCanvasSlice: StateCreator<
   },
 });
 
-// Simple auto-placement: find first open position
+/**
+ * Finds the first position where a component of given size fits without overlap.
+ *
+ * Algorithm: Scans grid left-to-right, top-to-bottom. For each candidate position,
+ * checks if all cells required by the component are unoccupied.
+ *
+ * Time complexity: O(rows × cols × size.rows × size.cols × numComponents)
+ * This is fine for our ~20 component limit. For larger grids, we'd want spatial indexing.
+ *
+ * Returns (0,0) if no space found - allows overlap rather than failing.
+ * The UI shows overlapping components, and users can drag to fix.
+ */
 function findOpenPosition(canvas: Canvas, size: Size): Position {
   const { columns, rows } = canvas.grid;
   const occupied = new Set<string>();

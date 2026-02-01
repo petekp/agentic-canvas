@@ -1,5 +1,24 @@
-// AI Tools - Vercel AI SDK tool definitions
-// Defines the tools that the AI can use to manipulate the canvas
+// ai-tools.ts
+//
+// Defines AI tools and generates the system prompt for canvas manipulation.
+//
+// TOOL NAMING: snake_case per LLM convention
+// LLMs are trained on APIs that use snake_case (Python, REST). Using camelCase
+// for tool names leads to inconsistent invocations. We convert at the boundary.
+//
+// SCHEMA DESIGN:
+// Zod schemas serve dual purpose: runtime validation and type inference.
+// The .meta({ description }) annotations generate OpenAI-compatible tool specs.
+// Optional fields have sensible defaults - the AI doesn't need to specify position
+// and size for every component add.
+//
+// SYSTEM PROMPT:
+// The prompt is dynamically generated based on current canvas state. This gives
+// the AI awareness of:
+// - What components exist and their data
+// - Grid constraints (so it doesn't place components out of bounds)
+// - Available views and recent activity
+// - Component type capabilities and required configurations
 
 import { z } from "zod";
 import { getAvailableComponentTypes, describeCanvas, type RecentChange } from "./canvas-context";

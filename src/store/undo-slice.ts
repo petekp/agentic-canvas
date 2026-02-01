@@ -1,5 +1,30 @@
-// Enhanced Undo Slice - Manages undo/redo with source attribution and batching
-// See: .claude/plans/undo-redo-system-v2.md
+// undo-slice.ts
+//
+// Manages undo/redo operations with source attribution, batching, and policy enforcement.
+//
+// ARCHITECTURE: Hybrid snapshot + command approach
+// We store full canvas snapshots (before/after) rather than inverse commands because:
+// 1. Canvas state is relatively small (dozens of components, not thousands)
+// 2. Snapshots guarantee correctness - no risk of command replay bugs
+// 3. External integrations (data refetches) can't be expressed as inverse commands
+// 4. Simpler mental model: undo always restores exact prior state
+//
+// The trade-off is memory (~2KB per entry × 100 entries = ~200KB max). Acceptable for
+// the reliability gains, especially when AI assistants make multi-step changes.
+//
+// BATCHING: Groups related operations into single undo entries
+// When the assistant adds 3 components in one turn, the user shouldn't need to
+// undo 3 times. Batching collapses them into one "Add 3 components" entry.
+// Flow: startBatch() → pushUndo() calls accumulate → commitBatch() creates one entry
+//
+// SOURCE ATTRIBUTION: Tracks who/what made each change
+// - user: Direct user action (drag, click, keyboard)
+// - assistant: AI tool call
+// - background: Polling, auto-refresh
+// - system: Internal operations
+// This enables policies like "can't undo assistant changes after 1 hour" for compliance.
+//
+// See: .claude/plans/undo-redo-system-v2.md for full design rationale
 
 import { StateCreator } from "zustand";
 import type { AgenticCanvasStore } from "./index";
@@ -145,6 +170,17 @@ export const createUndoSlice: StateCreator<
   // Core Operations
   // ============================================================================
 
+  /**
+   * Records a canvas change for undo/redo.
+   *
+   * If a batch is active, the entry accumulates there instead of the main stack.
+   * This lets us group multiple operations (like AI adding several components)
+   * into a single undoable action.
+   *
+   * Policies are evaluated immediately to determine if this operation can be
+   * undone later. An operation might be allowed now but blocked from undo
+   * (e.g., "no undoing after 24 hours" policy).
+   */
   pushUndo: (params) => {
     const state = get();
     const id = generateUndoId();
@@ -215,6 +251,16 @@ export const createUndoSlice: StateCreator<
     return entry;
   },
 
+  /**
+   * Reverts canvas to a previous state.
+   *
+   * Multi-step undo (steps > 1) stops early if it hits a blocked entry,
+   * so users get partial progress rather than nothing.
+   *
+   * After restoring the snapshot, we re-fetch data for any components with
+   * bindings. This handles the case where a component was removed and re-added:
+   * its data needs refreshing even though its config is restored.
+   */
   undo: (steps = 1) => {
     const state = get();
     let lastEntry: EnhancedUndoEntry | null = null;
@@ -343,6 +389,15 @@ export const createUndoSlice: StateCreator<
 
   // ============================================================================
   // Batch Operations
+  //
+  // Batches group multiple operations into a single undo entry. Lifecycle:
+  // 1. startBatch() - Opens a batch, returns batch ID
+  // 2. pushUndo() calls - Accumulate in activeBatch.entries (not main stack)
+  // 3. commitBatch() - Combines entries, pushes one entry to main stack
+  //    OR abortBatch() - Discards accumulated entries
+  //
+  // The combined entry uses the first entry's beforeSnapshot and last entry's
+  // afterSnapshot, effectively capturing the full transformation.
   // ============================================================================
 
   startBatch: (source, description) => {

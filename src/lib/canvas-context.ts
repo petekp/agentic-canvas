@@ -1,5 +1,26 @@
-// Canvas Context - serializes canvas state for AI awareness
-// Provides the AI with a snapshot of what's on the canvas
+// canvas-context.ts
+//
+// Serializes canvas state into structured context for AI system prompts.
+//
+// WHY THIS EXISTS: The AI needs to "see" what's on the canvas to make intelligent
+// decisions. But dumping raw component state would be noisy and token-expensive.
+// This module transforms internal state into concise, AI-friendly summaries.
+//
+// CONTEXT BUDGET STRATEGY:
+// - Each component contributes ~100 tokens to context (rough estimate)
+// - We cap at 20 components (~2000 tokens) to leave room for conversation
+// - Beyond 10 components, we switch to "condensed" summaries
+// - The budget object tells the AI when to abbreviate
+//
+// SPATIAL AWARENESS:
+// We include position quadrants (top-left, center, etc.) so the AI can make
+// spatially-aware suggestions like "Add the new chart below the existing ones"
+// instead of blindly picking coordinates.
+//
+// DATA EXTRACTION:
+// Components with loaded data get detailed summaries. A PR list doesn't just say
+// "5 PRs" - it includes titles, states, authors. This lets the AI answer questions
+// like "which PR is ready for review?" without additional API calls.
 
 import type {
   Canvas,
@@ -134,8 +155,14 @@ const TYPE_METADATA: Record<string, { name: string; category: "data" | "metric" 
 };
 
 /**
- * Creates a summary of a component for AI context
- * Optionally includes position quadrant if grid dimensions are provided
+ * Creates a human-readable summary of a component for AI context.
+ *
+ * The summary varies by component type and data state:
+ * - Empty/loading: Basic type + position info
+ * - Ready with data: Type + count/value + highlights
+ *
+ * Highlights are brief callouts (e.g., "5 open PRs", "Trend: +12%") that
+ * help the AI quickly grasp what's notable without parsing raw data.
  */
 function summarizeComponent(
   component: ComponentInstance,

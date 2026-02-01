@@ -1,5 +1,26 @@
-// Core Primitives - copied from primitives-spec-v0.1.md
-// This is the single source of truth for all TypeScript types
+// types/index.ts
+//
+// Single source of truth for all TypeScript interfaces in the canvas system.
+//
+// ORGANIZATION:
+// 1. Identifiers - Branded string types for type safety (ComponentId, ViewId, etc.)
+// 2. Grid & Layout - Position, Size, GridConfig for spatial awareness
+// 3. Workspace & Canvas - Top-level containers and views
+// 4. Component Instance - The core data structure for canvas items
+// 5. Canvas Commands - Intent-based mutations (user/AI actions)
+// 6. History & Undo - Entries for the undo/redo system
+// 7. Data Binding - Connecting components to data sources
+// 8. Component Registry - Type definitions for the registry
+// 9. Events - Pub/sub event types
+// 10. Errors - Structured error responses
+//
+// DESIGN PRINCIPLES:
+// - Prefer branded types (ComponentId vs string) for API boundaries
+// - Use discriminated unions for state variants (DataLoadingState)
+// - Commands describe intent, not mutation - they're what gets logged/displayed
+// - All timestamps are milliseconds since epoch (Date.now())
+//
+// See: .claude/plans/primitives-spec-v0.1.md for design rationale
 
 import type { JSONSchema7 } from "json-schema";
 
