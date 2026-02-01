@@ -5,7 +5,7 @@
 
 ## Current State Summary
 
-Agentic Canvas is a **working v0.1 implementation** with canvas + chat interface, AI-powered component manipulation, saved views with tabs, assistant-driven view management, and multi-source data integrations. Supports GitHub (stats, PRs, issues, activity, commits, team analysis), PostHog analytics, and Slack (channel activity, thread watch). The assistant creates ephemeral, task-focused views and provides proactive insights based on data patterns.
+Agentic Canvas is a **working v0.1 implementation** with canvas + chat interface, AI-powered component manipulation, saved views with tabs, assistant-driven view management, and multi-source data integrations. Uses **assistant-ui's native `makeAssistantTool` pattern** for tool execution. Supports GitHub (stats, PRs, issues, activity, commits, team analysis), PostHog analytics, and Slack (channel activity, thread watch). The assistant creates ephemeral, task-focused views and provides proactive insights based on data patterns.
 
 ## Stale Information Detected
 
@@ -13,8 +13,42 @@ Agentic Canvas is a **working v0.1 implementation** with canvas + chat interface
 |----------|--------|---------|-------|
 | `CLAUDE.md` file structure | Lists `history-slice.ts` | File deleted, undo/redo in canvas-slice | 2026-01-31 |
 | `CLAUDE.md` file structure | Lists `mock-github.ts` | Real GitHub API via `/api/github` route | 2026-01-31 |
+| `CLAUDE.md` file structure | Lists `tool-executor.ts` | File deleted, tools in canvas-tools.tsx | 2026-02-01 |
 
 ## Timeline
+
+### 2026-02-01 - Native assistant-ui Tool Pattern
+
+**What changed:** (commit ad7c232)
+- Refactored from custom `ToolExecutionHandler` to assistant-ui's native `makeAssistantTool`
+- Tools now execute automatically via assistant-ui framework
+- Eliminated O(n²) message scanning that caused app freezes
+- Server uses `frontendTools()` to receive client-defined tools
+
+**Why:** Custom tool execution was fighting against the framework and causing severe app freezes. assistant-ui's native pattern handles the complete tool lifecycle automatically.
+
+**Agent impact:**
+- Tools defined in `/src/lib/canvas-tools.tsx` using `makeAssistantTool`
+- Do NOT use `ToolExecutionHandler` - it no longer exists
+- Do NOT look for `/src/lib/tool-executor.ts` - deleted
+- Do NOT look for `/src/components/chat/tool-uis.tsx` - deleted
+- Tool execute functions access store imperatively via `useStore.getState()`
+- Each tool renders its own inline UI via the `render` prop
+
+**Files:**
+- Created: `src/lib/canvas-tools.tsx` - all 10 tools with execute + render
+- Modified: `src/app/api/chat/route.ts` - uses `frontendTools(tools)`
+- Modified: `src/components/chat/ChatPanel.tsx` - mounts `<CanvasTools />`
+- Deleted: `src/lib/tool-executor.ts`
+- Deleted: `src/components/chat/tool-uis.tsx`
+
+**Deprecated:**
+- Custom `ToolExecutionHandler` component
+- Manual tool execution via state subscription
+- `tool-executor.ts` file
+- `tool-uis.tsx` file
+
+---
 
 ### 2026-02-01 - Slack Integration & GitHub Commit Analysis
 
@@ -95,7 +129,7 @@ Agentic Canvas is a **working v0.1 implementation** with canvas + chat interface
 
 **Agent impact:**
 - Canvas context automatically injected into prompts
-- Tool executor in `src/lib/tool-executor.ts`
+- ~~Tool executor in `src/lib/tool-executor.ts`~~ Now in `canvas-tools.tsx`
 
 ---
 
@@ -165,6 +199,10 @@ Agentic Canvas is a **working v0.1 implementation** with canvas + chat interface
 | Create `list_components` tool | Inject via `CanvasContext` | v0.1.1 |
 | Use client-side `InsightEngine` | Use `/api/insights` route | 2026-02-01 |
 | Call memory service from client | Use `/api/memory/*` routes | 2026-02-01 |
+| Use `ToolExecutionHandler` | Use `makeAssistantTool` in canvas-tools.tsx | 2026-02-01 |
+| Use `tool-executor.ts` | Tools execute in canvas-tools.tsx | 2026-02-01 |
+| Use `tool-uis.tsx` | Tool UIs are in canvas-tools.tsx render | 2026-02-01 |
+| Subscribe to messages for tool execution | Use `makeAssistantTool` auto-execute | 2026-02-01 |
 
 ## Data Sources
 
@@ -194,6 +232,7 @@ Current trajectory based on recent commits:
 
 1. **Completed:** Multi-source data (GitHub, PostHog, Slack)
 2. **Completed:** Commit analysis and team activity insights
-3. **Next likely:** Real-time updates / WebSocket support
-4. **Future:** User authentication, multi-user support
-5. **Future:** Additional data sources (Linear, Jira, etc.)
+3. **Completed:** Native assistant-ui tool execution pattern
+4. **Next likely:** Real-time updates / WebSocket support
+5. **Future:** User authentication, multi-user support
+6. **Future:** Additional data sources (Linear, Jira, etc.)
