@@ -24,29 +24,35 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, X, Copy, Pencil, Trash2, Circle } from "lucide-react";
+import { Plus, X, Copy, Pencil, Trash2, Circle, Pin, PinOff } from "lucide-react";
 import type { ViewId } from "@/types";
 
 interface ViewTabProps {
   name: string;
   isActive: boolean;
   hasChanges: boolean;
+  isPinned: boolean;
+  createdBy: "user" | "assistant";
   onSelect: () => void;
   onRename: (newName: string) => void;
   onDuplicate: () => void;
   onDelete: () => void;
   onClose: () => void;
+  onTogglePin: () => void;
 }
 
 function ViewTab({
   name,
   isActive,
   hasChanges,
+  isPinned,
+  createdBy,
   onSelect,
   onRename,
   onDuplicate,
   onDelete,
   onClose,
+  onTogglePin,
 }: ViewTabProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(name);
@@ -102,6 +108,16 @@ function ViewTab({
           onClick={onSelect}
           onDoubleClick={handleDoubleClick}
         >
+          {/* Pinned indicator */}
+          {isPinned && (
+            <Pin className="h-3 w-3 text-muted-foreground" />
+          )}
+
+          {/* AI-created indicator */}
+          {createdBy === "assistant" && !isPinned && (
+            <span className="text-[10px] text-muted-foreground/60">AI</span>
+          )}
+
           {/* Unsaved indicator */}
           {hasChanges && (
             <Circle className="h-2 w-2 fill-current text-amber-500" />
@@ -137,6 +153,19 @@ function ViewTab({
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent>
+        <ContextMenuItem onClick={onTogglePin}>
+          {isPinned ? (
+            <>
+              <PinOff className="h-4 w-4 mr-2" />
+              Unpin
+            </>
+          ) : (
+            <>
+              <Pin className="h-4 w-4 mr-2" />
+              Pin
+            </>
+          )}
+        </ContextMenuItem>
         <ContextMenuItem onClick={startRename}>
           <Pencil className="h-4 w-4 mr-2" />
           Rename
@@ -166,6 +195,8 @@ export function ViewTabs() {
     createEmptyView,
     setActiveView,
     hasUnsavedChanges,
+    pinView,
+    unpinView,
   } = useViews();
 
   const [deleteConfirmId, setDeleteConfirmId] = useState<ViewId | null>(null);
@@ -222,11 +253,14 @@ export function ViewTabs() {
               name={view.name}
               isActive={view.id === activeViewId}
               hasChanges={view.id === activeViewId && currentHasChanges}
+              isPinned={view.pinned}
+              createdBy={view.createdBy}
               onSelect={() => handleSelectView(view.id)}
               onRename={(newName) => renameView(view.id, newName)}
               onDuplicate={() => duplicateView(view.id)}
               onDelete={() => setDeleteConfirmId(view.id)}
               onClose={() => handleCloseView(view.id)}
+              onTogglePin={() => view.pinned ? unpinView(view.id) : pinView(view.id)}
             />
           ))}
         </div>

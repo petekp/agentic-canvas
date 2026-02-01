@@ -14,13 +14,15 @@ import { createDataSlice, type DataSlice } from "./data-slice";
 import { createWorkspaceSlice, type WorkspaceSlice } from "./workspace-slice";
 import { createChatSlice, type ChatSlice } from "./chat-slice";
 import { createUndoSlice, type UndoSlice } from "./undo-slice";
+import { createNotificationSlice, type NotificationSlice } from "./notification-slice";
 
 // Combined store type
 export type AgenticCanvasStore = CanvasSlice &
   DataSlice &
   WorkspaceSlice &
   ChatSlice &
-  UndoSlice;
+  UndoSlice &
+  NotificationSlice;
 
 // Create the store with middleware
 export const useStore = create<AgenticCanvasStore>()(
@@ -32,6 +34,7 @@ export const useStore = create<AgenticCanvasStore>()(
         ...createWorkspaceSlice(...args),
         ...createChatSlice(...args),
         ...createUndoSlice(...args),
+        ...createNotificationSlice(...args),
       })),
       {
         name: "agentic-canvas",
@@ -58,4 +61,4 @@ export const useStore = create<AgenticCanvasStore>()(
 );
 
 // Re-export slices for type access
-export type { CanvasSlice, DataSlice, WorkspaceSlice, ChatSlice, UndoSlice };
+export type { CanvasSlice, DataSlice, WorkspaceSlice, ChatSlice, UndoSlice, NotificationSlice };

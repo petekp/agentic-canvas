@@ -3,14 +3,14 @@
 // Canvas component - the main grid-based workspace
 // Uses react-grid-layout for drag & drop and resize functionality
 
-import { useEffect, useCallback, useMemo } from "react";
+import { useEffect, useCallback, useMemo, useState } from "react";
 import ReactGridLayout, { useContainerWidth, type Layout, type LayoutItem } from "react-grid-layout";
 import { getCompactor } from "react-grid-layout/core";
 
 // Allow overlap - items can stack freely, no pushing behavior
 // This works well with undo/redo and future agent-driven layouts
 const overlapCompactor = getCompactor(null, true, false);
-import { useCanvas, useViews, useUndoSimple } from "@/hooks";
+import { useCanvas, useViews, useUndoSimple, usePolling, useInsightLoop } from "@/hooks";
 import { ComponentContent } from "./ComponentContent";
 import { ViewTabs } from "./ViewTabs";
 import { UndoRedoControls } from "@/components/UndoRedoControls";
@@ -25,6 +25,9 @@ import {
   DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
 import { Plus, Layers, User, GitPullRequest, BarChart3 } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { NotificationBadge } from "@/components/notifications/NotificationBadge";
+import { NotificationPanel } from "@/components/notifications/NotificationPanel";
 
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
@@ -226,6 +229,11 @@ export function Canvas() {
   const { views, activeViewId, saveView, loadView } = useViews();
   const { width, containerRef, mounted } = useContainerWidth();
 
+  // Polling for notifications and insight generation
+  usePolling();
+  useInsightLoop();
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+
   // Handle click on canvas background to deselect
   const handleCanvasClick = useCallback(
     (e: React.MouseEvent) => {
@@ -352,6 +360,16 @@ export function Canvas() {
           <div className="flex items-center border border-border rounded-md bg-card/80 backdrop-blur-sm shadow-sm">
             <UndoRedoControls size="md" />
           </div>
+          <Popover open={notificationsOpen} onOpenChange={setNotificationsOpen}>
+            <PopoverTrigger asChild>
+              <div className="border border-border rounded-md bg-card/80 backdrop-blur-sm shadow-sm">
+                <NotificationBadge />
+              </div>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="p-0 w-auto">
+              <NotificationPanel onClose={() => setNotificationsOpen(false)} />
+            </PopoverContent>
+          </Popover>
           <AddComponentButton />
         </div>
 

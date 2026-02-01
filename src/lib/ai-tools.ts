@@ -3,7 +3,7 @@
 
 import { z } from "zod";
 import { getAvailableComponentTypes, describeCanvas, type RecentChange } from "./canvas-context";
-import type { Canvas } from "@/types";
+import type { Canvas, View } from "@/types";
 
 // ============================================================================
 // System Prompt Context
@@ -13,6 +13,7 @@ export interface SystemPromptContext {
   canvas: Canvas;
   activeViewName?: string | null;
   recentChanges?: RecentChange[];
+  views?: View[];
 }
 
 // Tool parameter schemas (using snake_case per project convention)
@@ -123,9 +124,25 @@ function formatRecentChangesForPrompt(changes: RecentChange[]): string {
     .join("\n");
 }
 
+// Format views for system prompt
+function formatViewsForPrompt(views: View[], activeViewName?: string | null): string {
+  if (views.length === 0) {
+    return "No saved views.";
+  }
+
+  return views
+    .map((view) => {
+      const pinStatus = view.pinned ? " (pinned)" : "";
+      const activeStatus = view.name === activeViewName ? " **[ACTIVE]**" : "";
+      const createdBy = view.createdBy === "assistant" ? " (AI-created)" : "";
+      return `- ${view.name}${pinStatus}${createdBy}${activeStatus}: ${view.snapshot.components.length} components`;
+    })
+    .join("\n");
+}
+
 // System prompt generator
 export function createSystemPrompt(context: SystemPromptContext): string {
-  const { canvas, activeViewName, recentChanges } = context;
+  const { canvas, activeViewName, recentChanges, views } = context;
   const componentTypes = getAvailableComponentTypes();
   const canvasDescription = describeCanvas(canvas);
 
@@ -134,13 +151,18 @@ export function createSystemPrompt(context: SystemPromptContext): string {
     ? `\n## Active View\nCurrently viewing: "${activeViewName}"\n`
     : "";
 
+  const viewsSection =
+    views && views.length > 0
+      ? `\n## All Views\n${formatViewsForPrompt(views, activeViewName)}\n`
+      : "";
+
   const recentActivitySection =
     recentChanges && recentChanges.length > 0
       ? `\n## Recent Activity\n${formatRecentChangesForPrompt(recentChanges)}\n`
       : "";
 
   return `You are an AI assistant that helps users manage a canvas workspace with GitHub and PostHog analytics widgets. You can add, remove, move, resize, and update components on the canvas.
-${activeViewSection}
+${activeViewSection}${viewsSection}
 ## Canvas State
 ${canvasDescription}
 
@@ -153,12 +175,26 @@ ${recentActivitySection}
 ## Available Component Types
 ${componentTypes.map((t) => `- **${t.typeId}**: ${t.description}`).join("\n")}
 
+## View Management Philosophy
+- **Views are ephemeral by default** - create focused, task-specific views proactively
+- When a user asks about something (e.g., "What's blocking my release?"), create a dedicated view with relevant components
+- Unpinned views may be auto-cleaned after 7 days - suggest pinning views that seem valuable
+- Views are lightweight and disposable - don't hesitate to create them
+- Clean, organized layouts > cramped dashboards
+
+## View Management
+- Use **create_view** to create new views with optional pre-populated components
+- Use **switch_view** to navigate between views by name or ID
+- Use **pin_view** to mark a view as important (won't be auto-cleaned)
+- Use **unpin_view** to unpin a view (will be auto-cleaned after 7 days)
+
 ## Proactive Guidelines
 1. When describing the canvas, include metric values and position context (e.g., "in the top-left")
 2. Notice patterns in data (high PR counts, traffic trends, pending reviews) and mention them
 3. If asked "what changed recently?", summarize recent activity with who made each change
 4. Offer insights based on visible data (e.g., "You have 5 PRs awaiting review")
 5. When the user asks about their workspace, be specific about component locations and data
+6. **Proactively create views** for focused tasks (e.g., "Let me create a Release Blockers view for you")
 
 ## Standard Guidelines
 1. When adding components, you can omit position/size to use auto-placement

@@ -12,6 +12,31 @@ import type {
   ClearCanvasParams,
 } from "./ai-tools";
 
+// View tool params
+interface CreateViewParams {
+  name: string;
+  components?: Array<{
+    type_id: string;
+    config?: Record<string, unknown>;
+    position?: { col: number; row: number };
+    size?: { cols: number; rows: number };
+    label?: string;
+  }>;
+  switch_to: boolean;
+}
+
+interface SwitchViewParams {
+  view: string;
+}
+
+interface PinViewParams {
+  view?: string;
+}
+
+interface UnpinViewParams {
+  view?: string;
+}
+
 // Default sizes for component types
 const DEFAULT_SIZES: Record<string, { cols: number; rows: number }> = {
   // GitHub components
@@ -284,6 +309,194 @@ export function createToolExecutor(store: AgenticCanvasStore) {
     },
 
     /**
+     * Execute a create_view tool call
+     */
+    createView(params: CreateViewParams): ToolExecutionResult {
+      try {
+        const { name, components, switch_to } = params;
+
+        // Create the view
+        const viewId = store.createEmptyView({
+          name,
+          createdBy: "assistant",
+          switchTo: switch_to,
+        });
+
+        // Add components if provided
+        if (components && components.length > 0 && switch_to) {
+          for (const comp of components) {
+            const payload: CreateComponentPayload = {
+              typeId: comp.type_id,
+              config: comp.config ?? {},
+              position: comp.position ? { col: comp.position.col, row: comp.position.row } : undefined,
+              size: comp.size ? { cols: comp.size.cols, rows: comp.size.rows } : DEFAULT_SIZES[comp.type_id],
+              dataBinding: DEFAULT_BINDINGS[comp.type_id],
+              meta: {
+                createdBy: "assistant",
+                label: comp.label,
+              },
+            };
+
+            store.addComponent(payload);
+          }
+        }
+
+        return {
+          success: true,
+          result: {
+            viewId,
+            message: `Created view "${name}"${components ? ` with ${components.length} components` : ""}`,
+          },
+        };
+      } catch (err) {
+        return {
+          success: false,
+          result: null,
+          error: err instanceof Error ? err.message : "Unknown error",
+        };
+      }
+    },
+
+    /**
+     * Execute a switch_view tool call
+     */
+    switchView(params: SwitchViewParams): ToolExecutionResult {
+      try {
+        const { view } = params;
+        const views = store.getViews();
+
+        // Find view by name or ID
+        const targetView = views.find((v) => v.id === view || v.name === view);
+
+        if (!targetView) {
+          return {
+            success: false,
+            result: null,
+            error: `View not found: ${view}`,
+          };
+        }
+
+        const result = store.loadView(targetView.id);
+
+        if (result.success) {
+          return {
+            success: true,
+            result: { message: `Switched to view "${targetView.name}"` },
+          };
+        } else {
+          return {
+            success: false,
+            result: null,
+            error: result.error?.message ?? "Failed to switch view",
+          };
+        }
+      } catch (err) {
+        return {
+          success: false,
+          result: null,
+          error: err instanceof Error ? err.message : "Unknown error",
+        };
+      }
+    },
+
+    /**
+     * Execute a pin_view tool call
+     */
+    pinView(params: PinViewParams): ToolExecutionResult {
+      try {
+        const { view } = params;
+        let viewId: string | null = null;
+
+        if (view) {
+          const views = store.getViews();
+          const targetView = views.find((v) => v.id === view || v.name === view);
+          if (!targetView) {
+            return {
+              success: false,
+              result: null,
+              error: `View not found: ${view}`,
+            };
+          }
+          viewId = targetView.id;
+        } else {
+          // Use active view
+          // Access state directly since store doesn't expose activeViewId as a getter
+          const state = store as unknown as { activeViewId: string | null };
+          viewId = state.activeViewId;
+        }
+
+        if (!viewId) {
+          return {
+            success: false,
+            result: null,
+            error: "No view specified and no active view",
+          };
+        }
+
+        store.pinView(viewId);
+
+        return {
+          success: true,
+          result: { message: "View pinned" },
+        };
+      } catch (err) {
+        return {
+          success: false,
+          result: null,
+          error: err instanceof Error ? err.message : "Unknown error",
+        };
+      }
+    },
+
+    /**
+     * Execute an unpin_view tool call
+     */
+    unpinView(params: UnpinViewParams): ToolExecutionResult {
+      try {
+        const { view } = params;
+        let viewId: string | null = null;
+
+        if (view) {
+          const views = store.getViews();
+          const targetView = views.find((v) => v.id === view || v.name === view);
+          if (!targetView) {
+            return {
+              success: false,
+              result: null,
+              error: `View not found: ${view}`,
+            };
+          }
+          viewId = targetView.id;
+        } else {
+          // Use active view
+          const state = store as unknown as { activeViewId: string | null };
+          viewId = state.activeViewId;
+        }
+
+        if (!viewId) {
+          return {
+            success: false,
+            result: null,
+            error: "No view specified and no active view",
+          };
+        }
+
+        store.unpinView(viewId);
+
+        return {
+          success: true,
+          result: { message: "View unpinned" },
+        };
+      } catch (err) {
+        return {
+          success: false,
+          result: null,
+          error: err instanceof Error ? err.message : "Unknown error",
+        };
+      }
+    },
+
+    /**
      * Execute a tool call by name
      */
     execute(toolName: string, args: Record<string, unknown>): ToolExecutionResult {
@@ -300,6 +513,14 @@ export function createToolExecutor(store: AgenticCanvasStore) {
           return this.updateComponent(args as UpdateComponentParams);
         case "clear_canvas":
           return this.clearCanvas(args as ClearCanvasParams);
+        case "create_view":
+          return this.createView(args as unknown as CreateViewParams);
+        case "switch_view":
+          return this.switchView(args as unknown as SwitchViewParams);
+        case "pin_view":
+          return this.pinView(args as unknown as PinViewParams);
+        case "unpin_view":
+          return this.unpinView(args as unknown as UnpinViewParams);
         default:
           return {
             success: false,

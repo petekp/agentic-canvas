@@ -58,6 +58,13 @@ export interface UpdateViewPayload extends SaveViewPayload {
   viewId?: ViewId; // If provided, updates existing view instead of creating new
 }
 
+// Options for creating a view
+export interface CreateViewOptions {
+  name?: string;
+  createdBy?: "user" | "assistant";
+  switchTo?: boolean;
+}
+
 // Slice interface
 export interface WorkspaceSlice {
   workspace: Workspace;
@@ -68,10 +75,17 @@ export interface WorkspaceSlice {
   deleteView: (viewId: ViewId) => void;
   renameView: (viewId: ViewId, name: string) => void;
   duplicateView: (viewId: ViewId) => ViewId | null;
-  createEmptyView: (name?: string) => ViewId;
+  createEmptyView: (nameOrOptions?: string | CreateViewOptions) => ViewId;
   setActiveView: (viewId: ViewId | null) => void;
   updateSettings: (settings: Partial<WorkspaceSettings>) => void;
   activateTrigger: (triggerId: TriggerId) => void;
+  // Pin/unpin views
+  pinView: (viewId: ViewId) => void;
+  unpinView: (viewId: ViewId) => void;
+  // Cleanup stale unpinned views
+  cleanupStaleViews: (maxAgeMs?: number) => number;
+  // Get views list for AI context
+  getViews: () => View[];
   // Computed helper
   hasUnsavedChanges: () => boolean;
 }
@@ -136,6 +150,8 @@ export const createWorkspaceSlice: StateCreator<
       description,
       snapshot,
       triggerIds: triggerIds ?? [],
+      pinned: false,
+      createdBy: "user",
       createdAt: now,
       updatedAt: now,
     };
@@ -274,6 +290,8 @@ export const createWorkspaceSlice: StateCreator<
       description: view.description,
       snapshot: JSON.parse(JSON.stringify(view.snapshot)),
       triggerIds: [],
+      pinned: false,
+      createdBy: "user",
       createdAt: now,
       updatedAt: now,
     };
@@ -286,9 +304,16 @@ export const createWorkspaceSlice: StateCreator<
     return newViewId;
   },
 
-  createEmptyView: (name) => {
+  createEmptyView: (nameOrOptions) => {
     const now = Date.now();
     const viewId = `view_${nanoid(10)}`;
+
+    // Parse options
+    const options: CreateViewOptions =
+      typeof nameOrOptions === "string"
+        ? { name: nameOrOptions }
+        : nameOrOptions ?? {};
+    const { name, createdBy = "user", switchTo = true } = options;
 
     // Generate unique name if not provided
     const existingNames = get().workspace.views.map((v) => v.name);
@@ -311,17 +336,21 @@ export const createWorkspaceSlice: StateCreator<
       description: "",
       snapshot: emptySnapshot,
       triggerIds: [],
+      pinned: false,
+      createdBy,
       createdAt: now,
       updatedAt: now,
     };
 
-    // Clear current canvas and set new view as active
+    // Create view, optionally clear canvas and switch to it
     set((state) => {
-      state.canvas.components = [];
       state.workspace.views.push(newView);
       state.workspace.updatedAt = now;
-      state.activeViewId = viewId;
-      state.viewSnapshotHash = hashCanvas(emptySnapshot);
+      if (switchTo) {
+        state.canvas.components = [];
+        state.activeViewId = viewId;
+        state.viewSnapshotHash = hashCanvas(emptySnapshot);
+      }
     });
 
     return viewId;
@@ -374,5 +403,58 @@ export const createWorkspaceSlice: StateCreator<
     if (trigger.viewId) {
       get().loadView(trigger.viewId);
     }
+  },
+
+  pinView: (viewId) => {
+    set((state) => {
+      const view = state.workspace.views.find((v) => v.id === viewId);
+      if (view) {
+        view.pinned = true;
+        view.updatedAt = Date.now();
+        state.workspace.updatedAt = Date.now();
+      }
+    });
+  },
+
+  unpinView: (viewId) => {
+    set((state) => {
+      const view = state.workspace.views.find((v) => v.id === viewId);
+      if (view) {
+        view.pinned = false;
+        view.updatedAt = Date.now();
+        state.workspace.updatedAt = Date.now();
+      }
+    });
+  },
+
+  cleanupStaleViews: (maxAgeMs = 7 * 24 * 60 * 60 * 1000) => {
+    const now = Date.now();
+    const activeViewId = get().activeViewId;
+    let cleanedCount = 0;
+
+    set((state) => {
+      const viewsToKeep = state.workspace.views.filter((view) => {
+        // Keep pinned views
+        if (view.pinned) return true;
+        // Keep active view
+        if (view.id === activeViewId) return true;
+        // Keep views newer than maxAge
+        if (now - view.createdAt < maxAgeMs) return true;
+        // Remove stale unpinned views
+        cleanedCount++;
+        return false;
+      });
+
+      state.workspace.views = viewsToKeep;
+      if (cleanedCount > 0) {
+        state.workspace.updatedAt = now;
+      }
+    });
+
+    return cleanedCount;
+  },
+
+  getViews: () => {
+    return get().workspace.views;
   },
 });

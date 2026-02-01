@@ -77,6 +77,8 @@ export interface View {
   description?: string;
   snapshot: Canvas;
   triggerIds: TriggerId[];
+  pinned: boolean;
+  createdBy: "user" | "assistant";
   createdAt: number;
   updatedAt: number;
 }
@@ -500,6 +502,8 @@ export interface ViewSummary {
   name: string;
   description?: string;
   componentCount: number;
+  pinned: boolean;
+  createdBy: "user" | "assistant";
 }
 
 export interface ContextBudget {

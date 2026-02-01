@@ -1,120 +1,137 @@
 # Agent Changelog
 
 > This file helps coding agents understand project evolution, key decisions,
-> and deprecated patterns. Updated: 2026-01-30
+> and deprecated patterns. Updated: 2026-02-01
 
 ## Current State Summary
 
-Agentic Canvas is a greenfield project with **complete specifications ready for implementation**. Three spec documents define all types, component schemas, and store architecture. No code has been written yet—the next step is scaffolding the Next.js/React project and implementing the Zustand store.
+Agentic Canvas is a **working v0.1 implementation** with canvas + chat interface, AI-powered component manipulation, saved views with tabs, and an assistant-driven view management system. The assistant can create, switch, and manage views on behalf of users. Views are ephemeral by default with user pinning for persistence.
 
 ## Stale Information Detected
 
-None currently—this is a greenfield project with no code to contradict.
+| Location | States | Reality | Since |
+|----------|--------|---------|-------|
+| AGENT_CHANGELOG.md (previous) | "No code has been written yet" | Full implementation exists | 2026-01-30 |
+| Trajectory section (previous) | "Next: Scaffold Next.js project" | Project fully scaffolded and functional | 2026-01-30 |
 
 ## Timeline
 
-### 2026-01-30 - Store Architecture Defined (v0.1.0)
+### 2026-02-01 - Assistant-Driven View Management (uncommitted)
 
-**What changed:** Defined complete Zustand store architecture including:
-- Four slices: Canvas, History, Data, Workspace
-- Command executor bridge between LLM tools and store
-- Immer middleware for immutable updates
-- React hooks for component integration
-- Selector patterns for performance
+**What changed:** Implemented ephemeral view system where:
+- Views have `pinned`, `createdBy`, `createdAt` fields
+- Assistant can create views via `create_view` tool
+- Assistant can navigate via `switch_view` tool
+- Assistant can pin/unpin via `pin_view`, `unpin_view` tools
+- Unpinned assistant-created views auto-cleanup after 7 days
+- UI shows pin indicator and AI-created indicator on tabs
 
-**Why:** To establish the state management foundation before implementation.
+**Why:** Canvas views should be ephemeral workspaces the assistant creates on demand. Users pin views they want to keep.
 
 **Agent impact:**
-- Reference `.claude/plans/store-architecture-v0.1.md` for store implementation
-- All state mutations flow through slice actions
-- Commands produce `UndoEntry` automatically via `_pushUndo`
-- Use `shallow` from zustand for selector equality
-- Data fetching uses cache-first strategy with TTL
+- Use `create_view` to create focused, task-specific workspaces
+- Proactively create views when starting new topics/tasks
+- Views include current components in system prompt context
+- Memory service stores insight feedback for learning
 
-**Key patterns:**
-- `useStore` is the single store hook
-- `createCommandExecutor()` bridges LLM tools → store actions
-- `executeCommandWithoutHistory()` handles undo/redo without recursion
+**Files modified:**
+- `src/types/index.ts` - Extended View interface
+- `src/store/workspace-slice.ts` - Added view management actions
+- `src/app/api/chat/route.ts` - Added view tools
+- `src/lib/tool-executor.ts` - Added view tool handlers
+- `src/lib/ai-tools.ts` - Updated system prompt
+- `src/components/canvas/ViewTabs.tsx` - Added pin indicators
+
+**New file:**
+- `src/app/api/memory/feedback/route.ts` - Server-side API for memory operations
 
 ---
 
-### 2026-01-30 - Component Schemas Defined (v0.1.0)
+### 2026-01-31 - Canvas-Aware AI Assistant
 
-**What changed:** Defined complete schemas for all four v0.1 components:
-- `github.pr-list` — PR list with checks, reviewers, actions
-- `github.issue-grid` — Issue grid with labels, grouping, actions
-- `github.stat-tile` — Single metric with trend, thresholds
-- `github.activity-timeline` — Activity feed with typed payloads
+**What changed:** (commit 0b2c01c)
+- Assistant receives full canvas context in system prompt
+- Tool executor bridges AI tool calls to store actions
+- AssistantProvider component wraps chat with canvas awareness
 
-**Why:** To fully specify component contracts, data shapes, and AI actions before building.
+**Why:** Assistant needs to understand current canvas state to give relevant suggestions and manipulate components.
 
 **Agent impact:**
-- Reference `.claude/plans/component-schemas-v0.1.md` for component implementation
-- Each component has `configSchema` (JSON Schema) for validation
-- Data shapes use discriminated unions (`ActivityPayload` variants)
-- Actions define what the assistant can do with selected items
-- Summary generation templates provided for AI context
-
-**Key decisions:**
-- Computed fields (`age`, `isStale`, `priority`) derived at render, not stored
-- Activity payloads are discriminated by `type` field
-- Mock data source returns pre-shaped data (no client-side transforms in v0.1)
+- Canvas context automatically injected into prompts
+- Tool executor handles all AI tool execution
+- AssistantProvider manages chat state and tool execution
 
 ---
 
-### 2026-01-30 - Primitives Spec Revised (v0.1.1)
+### 2026-01-31 - Snapshot-Based Undo/Redo System
 
-**What changed:** After external agent review, revised the core spec:
-- Added `HistoryState`, `UndoEntry`, `HistoryAction` for undo/redo
-- Added `PlacementResult`, `LayoutEngine`, `PlacementHints` for auto-placement
-- Fixed `Canvas` to include `grid: GridConfig` (matching proposal)
-- Renamed `ComponentState` → `DataLoadingState` for clarity
-- Simplified `ProactiveTrigger` to `session_start` and `time_based` only
-- Added component-specific config schemas to LLM tools (`oneOf`)
-- Added `refresh_component`, `undo`, `redo` tools
+**What changed:** (commits ac55486, c7e9341, 8b7dea2)
+- Replaced command-based undo with snapshot-based system
+- Undo/redo preserves view context for cross-view navigation
+- Removed legacy history-slice, integrated into canvas-slice
 
-**Why:** External review identified 20+ issues; critical blocking issues were fixed.
+**Why:** Command-based approach was complex and error-prone. Snapshots are simpler and more reliable.
 
 **Agent impact:**
-- Use `DataLoadingState` not `ComponentState`
-- Undo entries store both `forward` and `inverse` commands
-- `PlacementResult.reason` indicates how position was determined
-- LLM tools have typed config schemas, not opaque objects
-- Component IDs come from `CanvasContext`, not a list tool
+- Don't use `HistorySlice` - it no longer exists
+- Undo/redo is integrated into `CanvasSlice`
+- `UndoEntry` contains full canvas snapshots, not commands
+- View context preserved - undo navigates to correct view
 
-**Deferred to v0.2:**
-- `DataTransform` (client-side filter/sort/limit)
-- `ErrorRecovery` (auto-recovery actions)
-- Cron-based and data-condition triggers
+**Deprecated:**
+- `history-slice.ts` - deleted
+- `HistoryAction`, `UndoEntry` with commands - replaced with snapshots
 
 ---
 
-### 2026-01-30 - Primitives Spec Created (v0.1.0)
+### 2026-01-31 - Saved Views with Tabs UI
 
-**What changed:** Initial specification of core TypeScript interfaces.
+**What changed:** (commits 918e63f, 4199915)
+- View tabs appear above canvas
+- Click to switch, double-click to rename
+- Right-click context menu for duplicate/delete
+- Views persist across sessions via localStorage
 
-**Why:** To establish a robust, extensible foundation before implementation.
+**Why:** Users need to save and switch between different canvas configurations.
 
-**Agent impact:** Superseded by v0.1.1—see above.
+**Agent impact:**
+- Use `useViews()` hook for view operations
+- Views stored in `WorkspaceSlice`
+- `loadView()`, `saveCurrentView()`, `deleteView()` available
 
 ---
 
-### 2026-01 - Project Proposal Drafted
+### 2026-01-30 - Chat Interface with AI Tools
 
-**What changed:** Initial technical proposal defining product vision, architecture, and phased implementation plan.
+**What changed:** (commit 1f16a23)
+- Chat panel with message history
+- AI-powered component manipulation
+- Tools: `add_component`, `move_component`, `resize_component`, `remove_component`, `update_component`
 
-**Why:** To align team on scope, validate technical approach, and define v0.1 boundaries.
+**Why:** Core feature - conversational interface for canvas manipulation.
 
 **Agent impact:**
-- Proposal is background context, not implementation spec
-- Spec documents override proposal if there's a conflict
-- Proposal's `CanvasAction` type was replaced by `CanvasCommand` in spec
+- Use Vercel AI SDK v6 patterns (see CLAUDE.md)
+- Tools use snake_case naming
+- Tool definitions in `src/lib/ai-tools.ts`
 
-**Key scope decisions:**
-- v0.1 is experience-first prototype, not production system
-- Proactive behaviors are simulated, not implemented
-- Only mock GitHub data source (no real connectors)
-- 4 component types for v0.1
+---
+
+### 2026-01-30 - Initial Implementation
+
+**What changed:** (commits f972776 through 9a8a878)
+- Next.js 15 + React 19 + TypeScript scaffold
+- Zustand store with canvas, workspace, data slices
+- react-grid-layout for drag & drop
+- Component renderers for all 4 GitHub components
+- Mock data source
+
+**Why:** Implement the v0.1 specifications.
+
+**Agent impact:**
+- Reference spec docs for detailed contracts
+- All state through Zustand store
+- Mock data, not real GitHub API
 
 ---
 
@@ -122,31 +139,28 @@ None currently—this is a greenfield project with no code to contradict.
 
 | Don't | Do Instead | Since |
 |-------|------------|-------|
+| Use `history-slice.ts` | Undo/redo is in canvas-slice | 2026-01-31 |
+| Use command-based undo | Use snapshot-based undo | 2026-01-31 |
 | Use `ComponentState` | Use `DataLoadingState` | v0.1.1 |
-| Use `DataTransform` in bindings | Handle filtering in query params or render logic | v0.1.1 (deferred) |
-| Implement cron-based triggers | Use `session_start` or `time_based` trigger types | v0.1.1 |
-| Create `ErrorRecovery` logic | Show errors to user, let assistant explain | v0.1.1 (deferred) |
-| Use `CanvasAction` (from proposal) | Use `CanvasCommand` (from spec) | v0.1.0 |
-| Store computed fields (`age`, `isStale`) | Derive at render time | v0.1.0 |
-| Create `list_components` tool | Inject component IDs via `CanvasContext` | v0.1.1 |
+| Store computed fields | Derive at render time | v0.1.0 |
+| Create `list_components` tool | Inject via `CanvasContext` | v0.1.1 |
+| Call memory service from client | Use `/api/memory/*` routes | 2026-02-01 |
 
 ## Key Documents
 
 | Document | Purpose | Authority Level |
 |----------|---------|-----------------|
-| `.claude/plans/store-architecture-v0.1.md` | Zustand slices, hooks, middleware | **Authoritative** for store |
-| `.claude/plans/component-schemas-v0.1.md` | Component configs, data shapes, actions | **Authoritative** for components |
-| `.claude/plans/primitives-spec-v0.1.md` | Core types, commands, protocols | **Authoritative** for types |
-| `agentic-canvas-proposal.md` | Product vision and architecture overview | Background context |
+| `CLAUDE.md` | Project setup, patterns, AI SDK notes | **Authoritative** for development |
+| `.claude/plans/store-architecture-v0.1.md` | Zustand slices, hooks, middleware | Reference (partially implemented) |
+| `.claude/plans/component-schemas-v0.1.md` | Component configs, data shapes | Reference |
+| `.claude/plans/primitives-spec-v0.1.md` | Core types, commands, protocols | Reference |
 
 ## Trajectory
 
-The project is ready to begin implementation:
+The project has a working v0.1 implementation. Next steps:
 
-1. **Next:** Scaffold Next.js + TypeScript project, install deps (zustand, immer, nanoid, tailwind)
-2. **Then:** Implement store slices following `store-architecture-v0.1.md`
-3. **Then:** Build canvas grid component with drag/resize
-4. **Then:** Implement `github.stat-tile` (simplest component) with mock data
-5. **Then:** Add remaining components, assistant integration
-
-**Phase 1 goal:** Canvas shell with manual component placement and basic undo/redo.
+1. **Current:** Assistant-driven view management (in progress, uncommitted)
+2. **Next:** Proactive insights system - assistant monitors data and surfaces notifications
+3. **Then:** Real GitHub API integration (replacing mock data)
+4. **Then:** User authentication and multi-user support
+5. **Future:** Additional data sources beyond GitHub

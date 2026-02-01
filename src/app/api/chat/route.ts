@@ -1,11 +1,12 @@
 // Chat API Route - handles streaming AI responses with tool calling
-// Uses Vercel AI SDK with OpenAI
+// Uses Vercel AI SDK with Supermemory middleware for automatic memory
 
 import { openai } from "@ai-sdk/openai";
+import { withSupermemory } from "@supermemory/tools/ai-sdk";
 import { streamText, convertToModelMessages, type UIMessage, stepCountIs } from "ai";
 import { z } from "zod";
 import { createSystemPrompt } from "@/lib/ai-tools";
-import type { Canvas } from "@/types";
+import type { Canvas, View } from "@/types";
 import type { RecentChange } from "@/lib/canvas-context";
 
 // Allow streaming responses up to 30 seconds
@@ -13,9 +14,11 @@ export const maxDuration = 30;
 
 interface ChatRequest {
   messages: UIMessage[];
+  system?: string; // From AssistantChatTransport (frontend system messages)
   canvas: Canvas;
   recentChanges?: RecentChange[];
   activeViewName?: string | null;
+  views?: View[];
 }
 
 // Tool parameter schemas
@@ -31,14 +34,24 @@ const sizeSchema = z.object({
 
 export async function POST(req: Request) {
   try {
-    const { messages, canvas, recentChanges, activeViewName }: ChatRequest = await req.json();
+    const { messages, system, canvas, recentChanges, activeViewName, views }: ChatRequest = await req.json();
+
+    // Extract user ID from session/auth
+    // TODO: Wire to your auth system
+    const userId = "default_user";
 
     // Build dynamic system prompt based on current canvas state and context
-    const systemPrompt = createSystemPrompt({
+    const dynamicSystemPrompt = createSystemPrompt({
       canvas,
       activeViewName,
       recentChanges,
+      views,
     });
+
+    // Combine any forwarded frontend system messages with our dynamic prompt
+    const systemPrompt = system
+      ? `${system}\n\n${dynamicSystemPrompt}`
+      : dynamicSystemPrompt;
 
     // Convert UI messages to model messages
     const modelMessages = await convertToModelMessages(messages);
@@ -150,11 +163,95 @@ Position and size are optional. For stat-tile, always include config with the me
           };
         },
       },
+      create_view: {
+        description: "Create a new canvas view/tab. Use for organizing related components into separate workspaces. Views are ephemeral by default - users can pin ones they want to keep.",
+        inputSchema: z.object({
+          name: z.string().describe("Name for the new view"),
+          components: z
+            .array(
+              z.object({
+                type_id: z.string(),
+                config: z.record(z.string(), z.unknown()).optional(),
+                position: positionSchema.optional(),
+                size: sizeSchema.optional(),
+                label: z.string().optional(),
+              })
+            )
+            .optional()
+            .describe("Components to add to the view"),
+          switch_to: z.boolean().default(true).describe("Switch to the new view after creating it"),
+        }),
+        execute: async (params: {
+          name: string;
+          components?: Array<{
+            type_id: string;
+            config?: Record<string, unknown>;
+            position?: { col: number; row: number };
+            size?: { cols: number; rows: number };
+            label?: string;
+          }>;
+          switch_to: boolean;
+        }) => {
+          return {
+            action: "create_view",
+            params,
+            success: true,
+          };
+        },
+      },
+      switch_view: {
+        description: "Switch to an existing view by name or ID.",
+        inputSchema: z.object({
+          view: z.string().describe("View name or ID to switch to"),
+        }),
+        execute: async (params: { view: string }) => {
+          return {
+            action: "switch_view",
+            params,
+            success: true,
+          };
+        },
+      },
+      pin_view: {
+        description: "Pin a view to keep it. Unpinned views may be auto-cleaned after 7 days. Use this when the user wants to keep a view.",
+        inputSchema: z.object({
+          view: z.string().optional().describe("View name or ID to pin. If not specified, pins the current view."),
+        }),
+        execute: async (params: { view?: string }) => {
+          return {
+            action: "pin_view",
+            params,
+            success: true,
+          };
+        },
+      },
+      unpin_view: {
+        description: "Unpin a view. Unpinned views may be auto-cleaned after 7 days of inactivity.",
+        inputSchema: z.object({
+          view: z.string().optional().describe("View name or ID to unpin. If not specified, unpins the current view."),
+        }),
+        execute: async (params: { view?: string }) => {
+          return {
+            action: "unpin_view",
+            params,
+            success: true,
+          };
+        },
+      },
     };
+
+    // Wrap the model with Supermemory middleware
+    // This automatically injects relevant memories and stores conversations
+    const model = withSupermemory(openai("gpt-4o"), userId, {
+      apiKey: process.env.SUPERMEMORY_API_KEY,
+      mode: "full", // Use both profile and query-based memory retrieval
+      addMemory: "always", // Automatically store conversations as memories
+      verbose: process.env.NODE_ENV === "development", // Log memory operations in dev
+    });
 
     // Stream the response with tool support
     const result = streamText({
-      model: openai("gpt-4o"),
+      model,
       system: systemPrompt,
       messages: modelMessages,
       tools,

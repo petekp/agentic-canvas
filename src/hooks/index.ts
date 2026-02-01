@@ -59,6 +59,8 @@ export function useViews() {
       createEmptyView: state.createEmptyView,
       setActiveView: state.setActiveView,
       hasUnsavedChanges: state.hasUnsavedChanges,
+      pinView: state.pinView,
+      unpinView: state.unpinView,
     }))
   );
 }
@@ -90,4 +92,27 @@ export function useSettings() {
 
 export function useTheme() {
   return useStore((state) => state.workspace.settings.theme);
+}
+
+// Polling hook
+export { usePolling } from "./usePolling";
+
+// Insight loop hook
+export { useInsightLoop, addRecentChange } from "./useInsightLoop";
+
+// Notification hooks
+export function useNotifications() {
+  return useStore(
+    useShallow((state) => ({
+      notifications: state.getActive(),
+      unreadCount: state.getUnreadCount(),
+      pollingEnabled: state.pollingEnabled,
+      markAsRead: state.markAsRead,
+      markAllAsRead: state.markAllAsRead,
+      dismiss: state.dismiss,
+      dismissAll: state.dismissAll,
+      setPollingEnabled: state.setPollingEnabled,
+      addNotification: state.addNotification,
+    }))
+  );
 }
