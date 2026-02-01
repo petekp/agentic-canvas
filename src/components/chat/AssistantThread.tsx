@@ -93,7 +93,50 @@ function Message() {
   );
 }
 
-// Composer component with send/cancel buttons
+// ============================================================================
+// Composer Action Variants
+// ============================================================================
+
+/**
+ * Send action button - shown when assistant is idle
+ */
+function ComposerSendAction() {
+  return (
+    <ComposerPrimitive.Send
+      className={cn(
+        "p-2 rounded-lg shrink-0",
+        "bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+      )}
+    >
+      <SendHorizonal className="h-4 w-4" />
+    </ComposerPrimitive.Send>
+  );
+}
+
+/**
+ * Cancel action button - shown when assistant is running
+ */
+function ComposerCancelAction() {
+  return (
+    <ComposerPrimitive.Cancel
+      className={cn(
+        "p-2 rounded-lg shrink-0",
+        "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+      )}
+    >
+      <Square className="h-4 w-4" />
+    </ComposerPrimitive.Cancel>
+  );
+}
+
+// ============================================================================
+// Composer Component
+// ============================================================================
+
+/**
+ * Chat input composer with send/cancel buttons
+ * Shows send when idle, cancel when running
+ */
 function Composer() {
   const isRunning = useAssistantState((s) => s.thread.isRunning);
 
@@ -107,26 +150,7 @@ function Composer() {
         )}
         autoFocus
       />
-      {/* Show cancel button when running, send button when idle */}
-      {isRunning ? (
-        <ComposerPrimitive.Cancel
-          className={cn(
-            "p-2 rounded-lg shrink-0",
-            "bg-destructive text-destructive-foreground hover:bg-destructive/90"
-          )}
-        >
-          <Square className="h-4 w-4" />
-        </ComposerPrimitive.Cancel>
-      ) : (
-        <ComposerPrimitive.Send
-          className={cn(
-            "p-2 rounded-lg shrink-0",
-            "bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-          )}
-        >
-          <SendHorizonal className="h-4 w-4" />
-        </ComposerPrimitive.Send>
-      )}
+      {isRunning ? <ComposerCancelAction /> : <ComposerSendAction />}
     </ComposerPrimitive.Root>
   );
 }

@@ -3,7 +3,7 @@
 // Canvas component - the main grid-based workspace
 // Uses react-grid-layout for drag & drop and resize functionality
 
-import { useEffect, useCallback, useMemo, useState } from "react";
+import { useEffect, useCallback, useMemo, useState, useRef } from "react";
 import ReactGridLayout, { useContainerWidth, type Layout, type LayoutItem } from "react-grid-layout";
 import { getCompactor } from "react-grid-layout/core";
 
@@ -24,165 +24,28 @@ import {
   DropdownMenuSeparator,
   DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
-import { Plus, Layers, User, GitPullRequest, BarChart3, MessageSquare } from "lucide-react";
+import { Plus, Layers } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { NotificationBadge } from "@/components/notifications/NotificationBadge";
 import { NotificationPanel } from "@/components/notifications/NotificationPanel";
 
+// Import component type configuration from registry
+import {
+  CATEGORIES,
+  getComponentTypesByCategory,
+  getDefaultIcon,
+  type ComponentTypeConfig,
+} from "@/lib/component-registry";
+
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
 
-// Component types available to add
-// filter: personal GitHub filter (authored, review_requested, assigned, etc.)
-// category: for grouping in dropdown
-// Component types with tuned default sizes
-// rowHeight=80, so: 2 rows=160px, 3 rows=240px, 4 rows=320px, 5 rows=400px
-const componentTypes = [
-  // === My Stuff (Personal Filters) ===
-  {
-    typeId: "github.pr-list",
-    label: "My PRs",
-    config: { repo: "assistant-ui/assistant-ui", state: "open", limit: 5, filter: "authored" },
-    size: { cols: 4, rows: 4 }, // 5 PRs @ ~50px each + padding
-    queryType: "pull_requests",
-    category: "personal",
-  },
-  {
-    typeId: "github.pr-list",
-    label: "PRs to Review",
-    config: { repo: "assistant-ui/assistant-ui", state: "open", limit: 5, filter: "review_requested" },
-    size: { cols: 4, rows: 4 },
-    queryType: "pull_requests",
-    category: "personal",
-  },
-  {
-    typeId: "github.issue-grid",
-    label: "My Issues",
-    config: { repo: "assistant-ui/assistant-ui", state: "open", limit: 6, filter: "assigned" },
-    size: { cols: 4, rows: 4 }, // 6 issues @ ~50px each
-    queryType: "issues",
-    category: "personal",
-  },
-  {
-    typeId: "github.my-activity",
-    label: "My Activity",
-    config: { timeWindow: "7d", feedLimit: 8 },
-    size: { cols: 4, rows: 5 }, // Stats row + sparkline + feed
-    queryType: "my_activity",
-    category: "personal",
-  },
-  // === GitHub (All) ===
-  {
-    typeId: "github.stat-tile",
-    label: "Stat Tile",
-    config: { repo: "assistant-ui/assistant-ui", metric: "open_prs" },
-    size: { cols: 2, rows: 2 }, // Compact: number + trend + sparkline
-    queryType: "stats",
-    category: "github",
-  },
-  {
-    typeId: "github.pr-list",
-    label: "All PRs",
-    config: { repo: "assistant-ui/assistant-ui", state: "open", limit: 5 },
-    size: { cols: 4, rows: 4 },
-    queryType: "pull_requests",
-    category: "github",
-  },
-  {
-    typeId: "github.issue-grid",
-    label: "All Issues",
-    config: { repo: "assistant-ui/assistant-ui", state: "open", limit: 6 },
-    size: { cols: 4, rows: 4 },
-    queryType: "issues",
-    category: "github",
-  },
-  {
-    typeId: "github.activity-timeline",
-    label: "Activity Timeline",
-    config: { repo: "assistant-ui/assistant-ui", limit: 8 },
-    size: { cols: 3, rows: 4 }, // Narrow feed, 8 items @ ~40px
-    queryType: "activity",
-    category: "github",
-  },
-  {
-    typeId: "github.commits",
-    label: "Commits",
-    config: { repo: "assistant-ui/assistant-ui", timeWindow: "7d", limit: 20 },
-    size: { cols: 4, rows: 4 }, // Commit list with sha + message
-    queryType: "commits",
-    category: "github",
-  },
-  {
-    typeId: "github.team-activity",
-    label: "Team Activity",
-    config: { repo: "assistant-ui/assistant-ui", timeWindow: "7d" },
-    size: { cols: 4, rows: 5 }, // Summary + sparkline + contributor cards
-    queryType: "team_activity",
-    category: "github",
-  },
-  // === PostHog Analytics ===
-  {
-    typeId: "posthog.site-health",
-    label: "Site Health",
-    config: { timeWindow: "7d" },
-    size: { cols: 3, rows: 3 }, // 3 stats + sparkline
-    queryType: "site_health",
-    source: "posthog",
-    category: "posthog",
-  },
-  {
-    typeId: "posthog.property-breakdown",
-    label: "Property Breakdown",
-    config: { timeWindow: "7d", metric: "visitors" },
-    size: { cols: 3, rows: 4 }, // Vertical bar list
-    queryType: "property_breakdown",
-    source: "posthog",
-    category: "posthog",
-  },
-  {
-    typeId: "posthog.top-pages",
-    label: "Top Pages",
-    config: { timeWindow: "7d", limit: 8 },
-    size: { cols: 4, rows: 4 }, // Page list with paths
-    queryType: "top_pages",
-    source: "posthog",
-    category: "posthog",
-  },
-  // === Slack ===
-  {
-    typeId: "slack.channel-activity",
-    label: "Channel Activity",
-    config: { channelName: "general", limit: 10 },
-    size: { cols: 4, rows: 4 }, // Messages @ ~60px each with reactions
-    queryType: "channel_activity",
-    source: "slack",
-    category: "slack",
-  },
-  {
-    typeId: "slack.mentions",
-    label: "My Mentions",
-    config: { limit: 8 },
-    size: { cols: 4, rows: 4 }, // Mentions with channel context
-    queryType: "mentions",
-    source: "slack",
-    category: "slack",
-  },
-  {
-    typeId: "slack.thread-watch",
-    label: "Thread Watch",
-    config: {},
-    size: { cols: 3, rows: 4 }, // Parent + replies, narrow
-    queryType: "thread_watch",
-    source: "slack",
-    category: "slack",
-  },
-];
-
-// Dropdown button to add components
+// Dropdown button to add components - uses registry for configuration
 function AddComponentButton() {
   const { addComponent } = useCanvas();
+  const DefaultIcon = getDefaultIcon();
 
-  const handleAdd = (type: (typeof componentTypes)[0]) => {
+  const handleAdd = (type: ComponentTypeConfig) => {
     addComponent({
       typeId: type.typeId,
       config: type.config,
@@ -198,12 +61,6 @@ function AddComponentButton() {
     });
   };
 
-  // Group components by category
-  const personalTypes = componentTypes.filter((t) => t.category === "personal");
-  const githubTypes = componentTypes.filter((t) => t.category === "github");
-  const posthogTypes = componentTypes.filter((t) => t.category === "posthog");
-  const slackTypes = componentTypes.filter((t) => t.category === "slack");
-
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -213,59 +70,29 @@ function AddComponentButton() {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-52">
-        {/* My Stuff */}
-        <DropdownMenuLabel className="text-xs text-muted-foreground flex items-center gap-1.5">
-          <User className="h-3 w-3" />
-          My Stuff
-        </DropdownMenuLabel>
-        {personalTypes.map((type, i) => (
-          <DropdownMenuItem key={`personal-${i}`} onClick={() => handleAdd(type)}>
-            <Layers className="h-4 w-4 mr-2 text-muted-foreground" />
-            {type.label}
-          </DropdownMenuItem>
-        ))}
+        {CATEGORIES.map((category, categoryIndex) => {
+          const types = getComponentTypesByCategory(category.id);
+          const CategoryIcon = category.icon;
 
-        <DropdownMenuSeparator />
-
-        {/* GitHub */}
-        <DropdownMenuLabel className="text-xs text-muted-foreground flex items-center gap-1.5">
-          <GitPullRequest className="h-3 w-3" />
-          GitHub (All)
-        </DropdownMenuLabel>
-        {githubTypes.map((type, i) => (
-          <DropdownMenuItem key={`github-${i}`} onClick={() => handleAdd(type)}>
-            <Layers className="h-4 w-4 mr-2 text-muted-foreground" />
-            {type.label}
-          </DropdownMenuItem>
-        ))}
-
-        <DropdownMenuSeparator />
-
-        {/* PostHog */}
-        <DropdownMenuLabel className="text-xs text-muted-foreground flex items-center gap-1.5">
-          <BarChart3 className="h-3 w-3" />
-          PostHog
-        </DropdownMenuLabel>
-        {posthogTypes.map((type, i) => (
-          <DropdownMenuItem key={`posthog-${i}`} onClick={() => handleAdd(type)}>
-            <Layers className="h-4 w-4 mr-2 text-muted-foreground" />
-            {type.label}
-          </DropdownMenuItem>
-        ))}
-
-        <DropdownMenuSeparator />
-
-        {/* Slack */}
-        <DropdownMenuLabel className="text-xs text-muted-foreground flex items-center gap-1.5">
-          <MessageSquare className="h-3 w-3" />
-          Slack
-        </DropdownMenuLabel>
-        {slackTypes.map((type, i) => (
-          <DropdownMenuItem key={`slack-${i}`} onClick={() => handleAdd(type)}>
-            <Layers className="h-4 w-4 mr-2 text-muted-foreground" />
-            {type.label}
-          </DropdownMenuItem>
-        ))}
+          return (
+            <div key={category.id}>
+              {categoryIndex > 0 && <DropdownMenuSeparator />}
+              <DropdownMenuLabel className="text-xs text-muted-foreground flex items-center gap-1.5">
+                <CategoryIcon className="h-3 w-3" />
+                {category.label}
+              </DropdownMenuLabel>
+              {types.map((type, typeIndex) => (
+                <DropdownMenuItem
+                  key={`${category.id}-${typeIndex}`}
+                  onClick={() => handleAdd(type)}
+                >
+                  <DefaultIcon className="h-4 w-4 mr-2 text-muted-foreground" />
+                  {type.label}
+                </DropdownMenuItem>
+              ))}
+            </div>
+          );
+        })}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -289,6 +116,19 @@ export function Canvas() {
   const { canUndo, canRedo, undo, redo } = useUndoSimple();
   const { views, activeViewId, saveView, loadView } = useViews();
   const { width, containerRef, mounted } = useContainerWidth();
+
+  // Refs for values only read inside callbacks (rerender-defer-reads)
+  // This prevents the keyboard handler effect from re-running on every state change
+  const canUndoRef = useRef(canUndo);
+  const canRedoRef = useRef(canRedo);
+  const viewsRef = useRef(views);
+  const activeViewIdRef = useRef(activeViewId);
+
+  // Keep refs in sync with state
+  canUndoRef.current = canUndo;
+  canRedoRef.current = canRedo;
+  viewsRef.current = views;
+  activeViewIdRef.current = activeViewId;
 
   // Polling for notifications and insight generation
   usePolling();
@@ -350,6 +190,7 @@ export function Canvas() {
   );
 
   // Keyboard shortcuts for undo/redo and view management
+  // Uses refs for read-only values to prevent effect re-runs (rerender-defer-reads)
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       const isMod = e.metaKey || e.ctrlKey;
@@ -357,9 +198,9 @@ export function Canvas() {
       // Undo/Redo: Cmd+Z / Cmd+Shift+Z
       if (isMod && e.key === "z") {
         e.preventDefault();
-        if (e.shiftKey && canRedo) {
+        if (e.shiftKey && canRedoRef.current) {
           redo();
-        } else if (!e.shiftKey && canUndo) {
+        } else if (!e.shiftKey && canUndoRef.current) {
           undo();
         }
         return;
@@ -368,9 +209,11 @@ export function Canvas() {
       // Save view: Cmd+S (update active) / Cmd+Shift+S (save as new)
       if (isMod && e.key === "s") {
         e.preventDefault();
-        if (e.shiftKey || !activeViewId) {
+        const currentViews = viewsRef.current;
+        const currentActiveViewId = activeViewIdRef.current;
+        if (e.shiftKey || !currentActiveViewId) {
           // Save as new view
-          const existingNames = views.map((v) => v.name);
+          const existingNames = currentViews.map((v) => v.name);
           let name = "Untitled";
           let counter = 1;
           while (existingNames.includes(name)) {
@@ -380,9 +223,9 @@ export function Canvas() {
           saveView({ name, description: "" });
         } else {
           // Update current view
-          const activeView = views.find((v) => v.id === activeViewId);
+          const activeView = currentViews.find((v) => v.id === currentActiveViewId);
           if (activeView) {
-            saveView({ viewId: activeViewId, name: activeView.name, description: activeView.description });
+            saveView({ viewId: currentActiveViewId, name: activeView.name, description: activeView.description });
           }
         }
         return;
@@ -392,8 +235,9 @@ export function Canvas() {
       if (isMod && e.key >= "1" && e.key <= "9") {
         e.preventDefault();
         const index = parseInt(e.key) - 1;
-        if (index < views.length) {
-          loadView(views[index].id);
+        const currentViews = viewsRef.current;
+        if (index < currentViews.length) {
+          loadView(currentViews[index].id);
         }
         return;
       }
@@ -401,7 +245,7 @@ export function Canvas() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [canUndo, canRedo, undo, redo, views, activeViewId, saveView, loadView]);
+  }, [undo, redo, saveView, loadView]);
 
   // Find component by ID using Map for O(1) lookup (js-index-maps)
   const getComponent = useCallback(

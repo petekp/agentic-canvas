@@ -1,77 +1,21 @@
 "use client";
 
 // Notification Panel - dropdown list of notifications with actions
+// Uses compound component pattern for flexible customization
 // See: Polling + Notifications system plan
 
 import { useCallback, useMemo } from "react";
 import { useStore } from "@/store";
-import { formatDistanceToNow } from "date-fns";
-import { X, Check, ExternalLink, MessageSquare, Bell, BellOff } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { X, Check, Bell, BellOff } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { Notification, NotificationAction } from "@/store/notification-slice";
 
+// Import compound components
+import { NotificationProvider } from "./NotificationContext";
+import { Notification as NotificationParts } from "./NotificationParts";
+
 interface NotificationPanelProps {
   onClose?: () => void;
-}
-
-function NotificationItem({
-  notification,
-  onAction,
-  onDismiss,
-}: {
-  notification: Notification;
-  onAction: (action: NotificationAction) => void;
-  onDismiss: () => void;
-}) {
-  const priorityColors = {
-    low: "border-l-muted-foreground",
-    medium: "border-l-blue-500",
-    high: "border-l-amber-500",
-    urgent: "border-l-red-500",
-  };
-
-  return (
-    <div
-      className={cn(
-        "p-3 border-l-2 bg-card rounded-r-lg",
-        priorityColors[notification.priority],
-        !notification.read && "bg-muted/50"
-      )}
-    >
-      <div className="flex items-start gap-2">
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium truncate">{notification.title}</p>
-          <p className="text-xs text-muted-foreground mt-0.5">{notification.message}</p>
-          <p className="text-[10px] text-muted-foreground mt-1">
-            {formatDistanceToNow(notification.createdAt, { addSuffix: true })}
-          </p>
-        </div>
-        <button onClick={onDismiss} className="p-1 hover:bg-muted rounded shrink-0">
-          <X className="h-3 w-3" />
-        </button>
-      </div>
-
-      {notification.actions && notification.actions.length > 0 && (
-        <div className="flex gap-2 mt-2">
-          {notification.actions.map((action, i) => (
-            <Button
-              key={i}
-              size="sm"
-              variant={action.variant === "primary" ? "default" : "outline"}
-              className="h-7 text-xs"
-              onClick={() => onAction(action)}
-            >
-              {action.action.type === "open_url" && <ExternalLink className="h-3 w-3 mr-1" />}
-              {action.action.type === "send_chat" && <MessageSquare className="h-3 w-3 mr-1" />}
-              {action.label}
-            </Button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
 }
 
 export function NotificationPanel({ onClose }: NotificationPanelProps) {
@@ -193,12 +137,22 @@ export function NotificationPanel({ onClose }: NotificationPanelProps) {
         ) : (
           <div className="p-2 space-y-2">
             {notifications.map((notification) => (
-              <NotificationItem
+              <NotificationProvider
                 key={notification.id}
                 notification={notification}
                 onAction={(action) => handleAction(notification, action)}
                 onDismiss={() => handleDismiss(notification)}
-              />
+              >
+                <NotificationParts.Root>
+                  <NotificationParts.Header>
+                    <NotificationParts.Title />
+                    <NotificationParts.Dismiss />
+                  </NotificationParts.Header>
+                  <NotificationParts.Message />
+                  <NotificationParts.Timestamp />
+                  <NotificationParts.Actions />
+                </NotificationParts.Root>
+              </NotificationProvider>
             ))}
           </div>
         )}
