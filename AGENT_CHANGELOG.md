@@ -5,45 +5,82 @@
 
 ## Current State Summary
 
-Agentic Canvas is a **working v0.1 implementation** with canvas + chat interface, AI-powered component manipulation, saved views with tabs, and an assistant-driven view management system. The assistant can create, switch, and manage views on behalf of users. Views are ephemeral by default with user pinning for persistence.
+Agentic Canvas is a **working v0.1 implementation** with canvas + chat interface, AI-powered component manipulation, saved views with tabs, assistant-driven view management, and multi-source data integrations. Supports GitHub (stats, PRs, issues, activity, commits, team analysis), PostHog analytics, and Slack (channel activity, thread watch). The assistant creates ephemeral, task-focused views and provides proactive insights based on data patterns.
 
 ## Stale Information Detected
 
 | Location | States | Reality | Since |
 |----------|--------|---------|-------|
-| AGENT_CHANGELOG.md (previous) | "No code has been written yet" | Full implementation exists | 2026-01-30 |
-| Trajectory section (previous) | "Next: Scaffold Next.js project" | Project fully scaffolded and functional | 2026-01-30 |
+| `CLAUDE.md` file structure | Lists `history-slice.ts` | File deleted, undo/redo in canvas-slice | 2026-01-31 |
+| `CLAUDE.md` file structure | Lists `mock-github.ts` | Real GitHub API via `/api/github` route | 2026-01-31 |
 
 ## Timeline
 
-### 2026-02-01 - Assistant-Driven View Management (uncommitted)
+### 2026-02-01 - Slack Integration & GitHub Commit Analysis
 
-**What changed:** Implemented ephemeral view system where:
+**What changed:** (commit 9d488d0)
+- New Slack API route with channel activity, mentions (docs only), thread watch
+- New GitHub commit analysis: `commits` and `team_activity` query types
+- Team Activity extracts work themes from commit messages (features, bugs, refactoring, etc.)
+- 5 new component types added
+
+**Why:** Enable cross-source insights. Slack provides communication context, commit analysis reveals what teams are working on.
+
+**Agent impact:**
+- Slack components: `slack.channel-activity`, `slack.mentions`, `slack.thread-watch`
+- GitHub components: `github.commits`, `github.team-activity`
+- `mentions` requires user token (bot token limitation) - returns helpful error
+- Bot must be invited to Slack channels to read them
+- Theme extraction uses regex patterns on commit messages
+
+**Files added:**
+- `src/app/api/slack/route.ts`
+
+**Files modified:**
+- `src/app/api/github/route.ts` - added commits, team_activity
+- `src/lib/tool-executor.ts` - DEFAULT_SIZES, DEFAULT_BINDINGS
+- `src/lib/canvas-context.ts` - component metadata
+- `src/components/canvas/ComponentContent.tsx` - renderers
+- `src/components/canvas/Canvas.tsx` - dropdown menu
+- `src/lib/ai-tools.ts` - system prompt
+
+---
+
+### 2026-02-01 - Proactive Insights & Notifications System
+
+**What changed:** (commit 6eda00a)
+- Insight engine generates contextual notifications from canvas data
+- Server-side insight generation via `/api/insights`
+- Memory service for feedback storage
+- UI notifications for surfacing insights
+
+**Why:** Assistant should proactively notice patterns and alert users.
+
+**Agent impact:**
+- Use `/api/insights` route, not client-side insight-engine
+- `src/lib/insights/deprecated-engine.ts` is deprecated
+- Memory feedback stored via `/api/memory/feedback`
+
+**Deprecated:**
+- Client-side `InsightEngine` class - use server route instead
+
+---
+
+### 2026-02-01 - Assistant-Driven View Management
+
+**What changed:** (committed with 6eda00a)
 - Views have `pinned`, `createdBy`, `createdAt` fields
 - Assistant can create views via `create_view` tool
 - Assistant can navigate via `switch_view` tool
 - Assistant can pin/unpin via `pin_view`, `unpin_view` tools
 - Unpinned assistant-created views auto-cleanup after 7 days
-- UI shows pin indicator and AI-created indicator on tabs
 
-**Why:** Canvas views should be ephemeral workspaces the assistant creates on demand. Users pin views they want to keep.
+**Why:** Canvas views should be ephemeral workspaces the assistant creates on demand.
 
 **Agent impact:**
 - Use `create_view` to create focused, task-specific workspaces
 - Proactively create views when starting new topics/tasks
 - Views include current components in system prompt context
-- Memory service stores insight feedback for learning
-
-**Files modified:**
-- `src/types/index.ts` - Extended View interface
-- `src/store/workspace-slice.ts` - Added view management actions
-- `src/app/api/chat/route.ts` - Added view tools
-- `src/lib/tool-executor.ts` - Added view tool handlers
-- `src/lib/ai-tools.ts` - Updated system prompt
-- `src/components/canvas/ViewTabs.tsx` - Added pin indicators
-
-**New file:**
-- `src/app/api/memory/feedback/route.ts` - Server-side API for memory operations
 
 ---
 
@@ -54,12 +91,11 @@ Agentic Canvas is a **working v0.1 implementation** with canvas + chat interface
 - Tool executor bridges AI tool calls to store actions
 - AssistantProvider component wraps chat with canvas awareness
 
-**Why:** Assistant needs to understand current canvas state to give relevant suggestions and manipulate components.
+**Why:** Assistant needs to understand current canvas state.
 
 **Agent impact:**
 - Canvas context automatically injected into prompts
-- Tool executor handles all AI tool execution
-- AssistantProvider manages chat state and tool execution
+- Tool executor in `src/lib/tool-executor.ts`
 
 ---
 
@@ -68,36 +104,31 @@ Agentic Canvas is a **working v0.1 implementation** with canvas + chat interface
 **What changed:** (commits ac55486, c7e9341, 8b7dea2)
 - Replaced command-based undo with snapshot-based system
 - Undo/redo preserves view context for cross-view navigation
-- Removed legacy history-slice, integrated into canvas-slice
+- Removed `history-slice.ts`, integrated into `canvas-slice.ts`
 
-**Why:** Command-based approach was complex and error-prone. Snapshots are simpler and more reliable.
+**Why:** Command-based approach was complex and error-prone.
 
 **Agent impact:**
-- Don't use `HistorySlice` - it no longer exists
-- Undo/redo is integrated into `CanvasSlice`
-- `UndoEntry` contains full canvas snapshots, not commands
-- View context preserved - undo navigates to correct view
+- Don't look for `history-slice.ts` - it no longer exists
+- Undo/redo is in `canvas-slice.ts`
+- `UndoEntry` contains full canvas snapshots
 
 **Deprecated:**
 - `history-slice.ts` - deleted
-- `HistoryAction`, `UndoEntry` with commands - replaced with snapshots
+- Command-based undo patterns
 
 ---
 
 ### 2026-01-31 - Saved Views with Tabs UI
 
 **What changed:** (commits 918e63f, 4199915)
-- View tabs appear above canvas
+- View tabs above canvas
 - Click to switch, double-click to rename
-- Right-click context menu for duplicate/delete
-- Views persist across sessions via localStorage
-
-**Why:** Users need to save and switch between different canvas configurations.
+- Views persist via localStorage
 
 **Agent impact:**
-- Use `useViews()` hook for view operations
-- Views stored in `WorkspaceSlice`
-- `loadView()`, `saveCurrentView()`, `deleteView()` available
+- Use `useViews()` hook
+- Views in `WorkspaceSlice`
 
 ---
 
@@ -105,33 +136,21 @@ Agentic Canvas is a **working v0.1 implementation** with canvas + chat interface
 
 **What changed:** (commit 1f16a23)
 - Chat panel with message history
-- AI-powered component manipulation
-- Tools: `add_component`, `move_component`, `resize_component`, `remove_component`, `update_component`
-
-**Why:** Core feature - conversational interface for canvas manipulation.
+- Tools: `add_component`, `move_component`, `resize_component`, `remove_component`, `update_component`, `clear_canvas`
 
 **Agent impact:**
 - Use Vercel AI SDK v6 patterns (see CLAUDE.md)
 - Tools use snake_case naming
-- Tool definitions in `src/lib/ai-tools.ts`
 
 ---
 
 ### 2026-01-30 - Initial Implementation
 
 **What changed:** (commits f972776 through 9a8a878)
-- Next.js 15 + React 19 + TypeScript scaffold
-- Zustand store with canvas, workspace, data slices
+- Next.js 15 + React 19 + TypeScript
+- Zustand store with slices
 - react-grid-layout for drag & drop
-- Component renderers for all 4 GitHub components
-- Mock data source
-
-**Why:** Implement the v0.1 specifications.
-
-**Agent impact:**
-- Reference spec docs for detailed contracts
-- All state through Zustand store
-- Mock data, not real GitHub API
+- GitHub and PostHog data sources
 
 ---
 
@@ -141,26 +160,40 @@ Agentic Canvas is a **working v0.1 implementation** with canvas + chat interface
 |-------|------------|-------|
 | Use `history-slice.ts` | Undo/redo is in canvas-slice | 2026-01-31 |
 | Use command-based undo | Use snapshot-based undo | 2026-01-31 |
-| Use `ComponentState` | Use `DataLoadingState` | v0.1.1 |
+| Use `ComponentState` type | Use `DataLoadingState` | v0.1.1 |
 | Store computed fields | Derive at render time | v0.1.0 |
 | Create `list_components` tool | Inject via `CanvasContext` | v0.1.1 |
+| Use client-side `InsightEngine` | Use `/api/insights` route | 2026-02-01 |
 | Call memory service from client | Use `/api/memory/*` routes | 2026-02-01 |
 
-## Key Documents
+## Data Sources
 
-| Document | Purpose | Authority Level |
-|----------|---------|-----------------|
-| `CLAUDE.md` | Project setup, patterns, AI SDK notes | **Authoritative** for development |
-| `.claude/plans/store-architecture-v0.1.md` | Zustand slices, hooks, middleware | Reference (partially implemented) |
-| `.claude/plans/component-schemas-v0.1.md` | Component configs, data shapes | Reference |
-| `.claude/plans/primitives-spec-v0.1.md` | Core types, commands, protocols | Reference |
+| Source | Route | Components |
+|--------|-------|------------|
+| GitHub | `/api/github` | stat-tile, pr-list, issue-grid, activity-timeline, my-activity, commits, team-activity |
+| PostHog | `/api/posthog` | site-health, property-breakdown, top-pages |
+| Slack | `/api/slack` | channel-activity, mentions*, thread-watch |
+
+*mentions requires user token, not bot token
+
+## Environment Variables
+
+```bash
+OPENAI_API_KEY=        # Required for AI
+GITHUB_TOKEN=          # For GitHub API
+GITHUB_REPO=           # owner/repo format
+GITHUB_USERNAME=       # For personal filters
+POSTHOG_API_KEY=       # For PostHog
+POSTHOG_PROJECT_ID=    # PostHog project
+SLACK_BOT_TOKEN=       # xoxb-... token
+```
 
 ## Trajectory
 
-The project has a working v0.1 implementation. Next steps:
+Current trajectory based on recent commits:
 
-1. **Current:** Assistant-driven view management (in progress, uncommitted)
-2. **Next:** Proactive insights system - assistant monitors data and surfaces notifications
-3. **Then:** Real GitHub API integration (replacing mock data)
-4. **Then:** User authentication and multi-user support
-5. **Future:** Additional data sources beyond GitHub
+1. **Completed:** Multi-source data (GitHub, PostHog, Slack)
+2. **Completed:** Commit analysis and team activity insights
+3. **Next likely:** Real-time updates / WebSocket support
+4. **Future:** User authentication, multi-user support
+5. **Future:** Additional data sources (Linear, Jira, etc.)
