@@ -344,7 +344,7 @@ export function Canvas() {
   );
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex h-full w-full flex-col">
       {/* View tabs */}
       <ViewTabs />
 

@@ -137,18 +137,31 @@ function ComposerCancelAction() {
  * Chat input composer with send/cancel buttons
  * Shows send when idle, cancel when running
  */
-function Composer() {
+interface AssistantComposerProps {
+  onFocus?: () => void;
+  placeholder?: string;
+  className?: string;
+}
+
+export function AssistantComposer({
+  onFocus,
+  placeholder = "Ask about your canvas...",
+  className,
+}: AssistantComposerProps) {
   const isRunning = useAssistantState((s) => s.thread.isRunning);
 
   return (
-    <ComposerPrimitive.Root className="flex items-end gap-2 p-3 border-t border-border">
+    <ComposerPrimitive.Root
+      className={cn("flex items-end gap-2 p-3 border-t border-border", className)}
+    >
       <ComposerPrimitive.Input
-        placeholder="Ask about your canvas..."
+        placeholder={placeholder}
+        data-aui-composer-input
         className={cn(
           "flex-1 min-h-10 max-h-32 resize-none rounded-lg border bg-background px-3 py-2 text-sm",
           "focus:outline-none focus:ring-2 focus:ring-ring"
         )}
-        autoFocus
+        onFocus={onFocus}
       />
       {isRunning ? <ComposerCancelAction /> : <ComposerSendAction />}
     </ComposerPrimitive.Root>
@@ -184,9 +197,9 @@ function LoadingIndicator() {
 }
 
 // Main thread component
-export function AssistantThread() {
+export function AssistantThreadMessages() {
   return (
-    <ThreadPrimitive.Root className="flex flex-col h-full">
+    <div className="flex min-h-0 flex-1 flex-col">
       {/* Messages area with auto-scroll viewport */}
       <ThreadPrimitive.Viewport className="flex-1 overflow-y-auto p-3">
         {/* Empty state */}
@@ -200,9 +213,15 @@ export function AssistantThread() {
         {/* Loading indicator */}
         <LoadingIndicator />
       </ThreadPrimitive.Viewport>
+    </div>
+  );
+}
 
-      {/* Composer */}
-      <Composer />
+export function AssistantThread() {
+  return (
+    <ThreadPrimitive.Root className="flex flex-col h-full">
+      <AssistantThreadMessages />
+      <AssistantComposer />
     </ThreadPrimitive.Root>
   );
 }
