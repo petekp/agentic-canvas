@@ -1,11 +1,11 @@
 # Agent Changelog
 
 > This file helps coding agents understand project evolution, key decisions,
-> and deprecated patterns. Updated: 2026-02-01
+> and deprecated patterns. Updated: 2026-02-03
 
 ## Current State Summary
 
-Agentic Canvas is a **working v0.1 implementation** with canvas + chat interface, AI-powered component manipulation, saved views with tabs, assistant-driven view management, and multi-source data integrations. Uses **assistant-ui's native `makeAssistantTool` pattern** for tool execution. Supports GitHub (stats, PRs, issues, activity, commits, team analysis), PostHog analytics, and Slack (channel activity, thread watch). The assistant creates ephemeral, task-focused views and provides proactive insights based on data patterns.
+Agentic Canvas is a **working v0.1 implementation** with canvas + chat interface, AI-powered component manipulation, saved views with tabs, assistant-driven view management, and multi-source data integrations. It now includes a **template generation engine** with state-signal inference and a toolbar-driven generation UI. Undo/redo is snapshot-based with view-aware restoration, audit logging, and policy hooks, and now covers view operations as first-class undoable actions.
 
 ## Stale Information Detected
 
@@ -14,8 +14,31 @@ Agentic Canvas is a **working v0.1 implementation** with canvas + chat interface
 | `CLAUDE.md` file structure | Lists `history-slice.ts` | File deleted, undo/redo in canvas-slice | 2026-01-31 |
 | `CLAUDE.md` file structure | Lists `mock-github.ts` | Real GitHub API via `/api/github` route | 2026-01-31 |
 | `CLAUDE.md` file structure | Lists `tool-executor.ts` | File deleted, tools in canvas-tools.tsx | 2026-02-01 |
+| `.claude/plans/primitives-spec-v0.1.md` | View lacks `pinned`, `createdBy`, `updatedAt`; ComponentMeta lacks `template` | Runtime types include these fields | 2026-02-03 |
+| `.claude/plans/component-schemas-v0.1.md` | Documents only 4 GitHub components | Runtime supports GitHub + PostHog + Slack + personal filters + commit/team analysis | 2026-02-01 |
+| `.claude/plans/store-architecture-v0.1.md` | References `history-slice.ts` | Undo/redo implemented in `undo-slice.ts` with snapshots | 2026-01-31 |
 
 ## Timeline
+
+### 2026-02-03 - Template Engine + View-Undo Coverage
+
+**What changed:** (commit 7f57636)
+- Added template system (`src/lib/templates/*`) with selection, parameter resolution, state signals, and compilation
+- Added toolbar menu and state debug panel for generation workflows
+- Made view operations (create, rename, delete, pin/unpin, load) fully undoable via view-state snapshots
+- Improved undo semantics for data binding updates and added undo test coverage
+
+**Why:** Provide state-aware, repeatable component generation and ensure undo/redo covers AI-native view workflows end-to-end.
+
+**Agent impact:**
+- Use template APIs in `src/lib/templates/*` for generation; register defaults before selection
+- Undo entries may include view state; undo/redo restores view lists + active view
+- View operations now produce undo entries (no manual “undo missing” workarounds)
+- New tests in `src/store/undo-system.test.ts` guard undo invariants
+
+**Deprecated:** None
+
+---
 
 ### 2026-02-01 - Native assistant-ui Tool Pattern
 
