@@ -41,6 +41,12 @@ When working on this project, read specs in this order:
    - Zustand slices and how they compose
    - Command → action → history flow
 
+4. **Templates:** `.claude/plans/template-primitives-v0.1.md`
+   - State-aware template generation
+
+5. **Undo/Redo:** `.claude/plans/undo-redo-system-v2.md`
+   - Snapshot-based undo with policies + audit log
+
 ## Key Architecture Decisions
 
 ### Why Zustand over Redux?
@@ -52,8 +58,9 @@ Every change goes through `CanvasCommand` so we can:
 - Let AI and users share the same mutation path
 - Validate before applying
 
-### Why mock data instead of real GitHub API?
-v0.1 is about validating the UX. Mock data lets us control scenarios and iterate fast.
+### Why API routes instead of direct client calls?
+We route data access through `/api/github`, `/api/posthog`, and `/api/slack` to centralize auth,
+cache/TTL behavior, and response shaping for the canvas.
 
 ### Why grid-based instead of infinite canvas?
 Cognitive load. Fixed grids constrain layout decisions, making both user placement and AI suggestions simpler.
@@ -132,14 +139,18 @@ z.record(z.string(), z.unknown())
 src/
 ├── app/
 │   ├── api/chat/route.ts    # Streaming chat API with tools
+│   ├── api/github/route.ts  # GitHub data source
+│   ├── api/posthog/route.ts # PostHog data source
+│   ├── api/slack/route.ts   # Slack data source
 │   └── page.tsx             # Main layout (canvas + chat)
 ├── store/
 │   ├── index.ts             # Combined store
 │   ├── canvas-slice.ts      # Canvas state
-│   ├── history-slice.ts     # Undo/redo
-│   ├── data-slice.ts        # Mock data loading
-│   ├── workspace-slice.ts   # UI state
-│   └── chat-slice.ts        # Chat messages
+│   ├── workspace-slice.ts   # Views, settings, triggers
+│   ├── data-slice.ts        # Data fetching + cache
+│   ├── undo-slice.ts        # Snapshot-based undo/redo + batching
+│   ├── chat-slice.ts        # Chat messages
+│   └── notification-slice.ts# Notifications + polling
 ├── components/
 │   ├── canvas/              # Grid and layout
 │   └── chat/                # Chat UI components
@@ -148,16 +159,19 @@ src/
 ├── lib/
 │   ├── ai-tools.ts          # Tool definitions + system prompt
 │   ├── canvas-context.ts    # Serialize canvas for AI
-│   ├── tool-executor.ts     # Execute tool calls on store
-│   ├── registry.ts          # Component registry
-│   └── mock-github.ts       # Mock data source
+│   ├── canvas-tools.tsx     # assistant-ui makeAssistantTool definitions
+│   ├── canvas-defaults.ts   # Default sizes/bindings
+│   ├── component-registry.ts# Component registry
+│   ├── templates/           # Template engine + state signals
+│   ├── undo/                # Undo types, policies, audit hooks
+│   ├── insights/            # Proactive insights
+│   └── audit/               # Audit log implementation
 └── hooks/
     └── index.ts             # useCanvas, useHistory, etc.
 ```
 
 ## Testing
 
-Not yet implemented. Plan to use:
-- Vitest for unit tests
+Vitest is configured and used for template/undo tests. Future plans:
 - React Testing Library for components
 - Playwright for E2E
