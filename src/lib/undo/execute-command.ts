@@ -90,6 +90,12 @@ export function describeCanvasCommand(command: UndoCanvasCommand): string {
     case "view_load":
       return `Load view: ${command.viewName}`;
 
+    case "view_pin":
+      return `Pin view: ${command.viewName}`;
+
+    case "view_unpin":
+      return `Unpin view: ${command.viewName}`;
+
     case "canvas_clear":
       return `Clear canvas (${command.removedCount} components)`;
 
@@ -207,6 +213,20 @@ export function invertCanvasCommand(command: UndoCanvasCommand): UndoCanvasComma
         viewId: command.viewId,
         from: command.to,
         to: command.from,
+      };
+
+    case "view_pin":
+      return {
+        type: "view_unpin",
+        viewId: command.viewId,
+        viewName: command.viewName,
+      };
+
+    case "view_unpin":
+      return {
+        type: "view_pin",
+        viewId: command.viewId,
+        viewName: command.viewName,
       };
 
     // These commands are not easily invertible without more context

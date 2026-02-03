@@ -10,24 +10,41 @@ import { getCompactor } from "react-grid-layout/core";
 // Allow overlap - items can stack freely, no pushing behavior
 // This works well with undo/redo and future agent-driven layouts
 const overlapCompactor = getCompactor(null, true, false);
-import { useCanvas, useViews, useUndoSimple, usePolling, useInsightLoop } from "@/hooks";
+import {
+  useCanvas,
+  useViews,
+  useUndoSimple,
+  usePolling,
+  useInsightLoop,
+  useStateSignals,
+  useStateDebugSnapshot,
+} from "@/hooks";
 import { ComponentContent } from "./ComponentContent";
 import { ViewTabs } from "./ViewTabs";
 import { UndoRedoControls } from "@/components/UndoRedoControls";
 import type { ComponentInstance } from "@/types";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-  DropdownMenuLabel,
-} from "@/components/ui/dropdown-menu";
-import { Plus, Layers } from "lucide-react";
+import { Plus, Layers, Sparkles } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { NotificationBadge } from "@/components/notifications/NotificationBadge";
 import { NotificationPanel } from "@/components/notifications/NotificationPanel";
+import { ToolbarMenu } from "@/components/canvas/ToolbarMenu";
+import { StateDebugPanel } from "@/components/canvas/StateDebugPanel";
+import { useStore } from "@/store";
+import { createUserSource } from "@/lib/undo/types";
+import { serializeCanvasContext } from "@/lib/canvas-context";
+import { getDefaultBinding } from "@/lib/canvas-defaults";
+import {
+  compileTemplateToCommands,
+  deriveIntent,
+  getAllTemplates,
+  getDefaultTemplates,
+  getTemplate,
+  registerDefaultTemplates,
+  selectTopTemplate,
+} from "@/lib/templates";
+import { buildStateSnapshotFromSignals } from "@/lib/templates/state-signals";
+import { executeCanvasCommand, validateCanvasCommand } from "@/lib/templates/execution";
 
 // Import component type configuration from registry
 import {
@@ -62,39 +79,100 @@ function AddComponentButton() {
   };
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="default" size="sm">
-          <Plus className="h-4 w-4 mr-1.5" />
-          Add Component
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-52">
+    <ToolbarMenu.Root>
+      <ToolbarMenu.Trigger icon={Plus} label="Add Component" variant="default" />
+      <ToolbarMenu.Content className="w-52">
         {CATEGORIES.map((category, categoryIndex) => {
           const types = getComponentTypesByCategory(category.id);
           const CategoryIcon = category.icon;
 
           return (
             <div key={category.id}>
-              {categoryIndex > 0 && <DropdownMenuSeparator />}
-              <DropdownMenuLabel className="text-xs text-muted-foreground flex items-center gap-1.5">
+              {categoryIndex > 0 && <ToolbarMenu.Separator />}
+              <ToolbarMenu.Label className="text-xs text-muted-foreground flex items-center gap-1.5">
                 <CategoryIcon className="h-3 w-3" />
                 {category.label}
-              </DropdownMenuLabel>
+              </ToolbarMenu.Label>
               {types.map((type, typeIndex) => (
-                <DropdownMenuItem
+                <ToolbarMenu.Item
                   key={`${category.id}-${typeIndex}`}
                   onClick={() => handleAdd(type)}
                 >
                   <DefaultIcon className="h-4 w-4 mr-2 text-muted-foreground" />
                   {type.label}
-                </DropdownMenuItem>
+                </ToolbarMenu.Item>
               ))}
             </div>
           );
         })}
-      </DropdownMenuContent>
-    </DropdownMenu>
+      </ToolbarMenu.Content>
+    </ToolbarMenu.Root>
+  );
+}
+
+function GenerateTemplateButton() {
+  const templates = getDefaultTemplates();
+
+  const handleGenerate = useCallback((templateId?: string) => {
+    const store = useStore.getState();
+
+    registerDefaultTemplates();
+    const context = serializeCanvasContext(store.canvas);
+    const snapshot = buildStateSnapshotFromSignals();
+    const intent = deriveIntent(snapshot, context);
+    const availableTemplates = getAllTemplates();
+
+    const ranked = templateId
+      ? { template: getTemplate(templateId), reasons: [] as string[] }
+      : selectTopTemplate(availableTemplates, snapshot, context, {
+          category: intent.category,
+        });
+
+    if (!ranked?.template) {
+      console.warn("No template available for generation.");
+      return;
+    }
+
+    const compilation = compileTemplateToCommands({
+      template: ranked.template,
+      intent,
+      state: snapshot,
+      context,
+      defaultBindings: getDefaultBinding,
+      createdBy: "assistant",
+    });
+
+    const validationError = validateCanvasCommand(compilation.command);
+    if (validationError) {
+      console.warn(validationError);
+      return;
+    }
+
+    store.startBatch(createUserSource("menu"), "UI: generate_template");
+    try {
+      executeCanvasCommand(store, compilation.command);
+      store.commitBatch();
+    } catch (err) {
+      store.abortBatch();
+      console.warn("Template generation failed", err);
+    }
+  }, []);
+
+  return (
+    <ToolbarMenu.Root>
+      <ToolbarMenu.Trigger icon={Sparkles} label="Generate" variant="secondary" />
+      <ToolbarMenu.Content>
+        <ToolbarMenu.Item onClick={() => handleGenerate()}>
+          Auto (based on state)
+        </ToolbarMenu.Item>
+        <ToolbarMenu.Separator />
+        {templates.map((template) => (
+          <ToolbarMenu.Item key={template.id} onClick={() => handleGenerate(template.id)}>
+            {template.name}
+          </ToolbarMenu.Item>
+        ))}
+      </ToolbarMenu.Content>
+    </ToolbarMenu.Root>
   );
 }
 
@@ -116,6 +194,11 @@ export function Canvas() {
   const { canUndo, canRedo, undo, redo } = useUndoSimple();
   const { views, activeViewId, saveView, loadView } = useViews();
   const { width, containerRef, mounted } = useContainerWidth();
+  const [showStateDebug, setShowStateDebug] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return new URLSearchParams(window.location.search).has("stateDebug");
+  });
+  const stateSnapshot = useStateDebugSnapshot(showStateDebug);
 
   // Refs for values only read inside callbacks (rerender-defer-reads)
   // This prevents the keyboard handler effect from re-running on every state change
@@ -133,6 +216,7 @@ export function Canvas() {
   // Polling for notifications and insight generation
   usePolling();
   useInsightLoop();
+  useStateSignals();
   const [notificationsOpen, setNotificationsOpen] = useState(false);
 
   // Handle click on canvas background to deselect
@@ -241,6 +325,12 @@ export function Canvas() {
         }
         return;
       }
+
+      // Toggle state debug overlay: Cmd/Ctrl+Shift+D
+      if (isMod && e.shiftKey && e.key.toLowerCase() === "d") {
+        e.preventDefault();
+        setShowStateDebug((prev) => !prev);
+      }
     }
 
     window.addEventListener("keydown", handleKeyDown);
@@ -275,6 +365,7 @@ export function Canvas() {
               <NotificationPanel onClose={() => setNotificationsOpen(false)} />
             </PopoverContent>
           </Popover>
+          <GenerateTemplateButton />
           <AddComponentButton />
         </div>
 
@@ -284,6 +375,11 @@ export function Canvas() {
           className="h-full overflow-auto pt-16 px-4 pb-4"
           onClick={handleCanvasClick}
         >
+        <StateDebugPanel
+          open={showStateDebug}
+          snapshot={stateSnapshot}
+          onClose={() => setShowStateDebug(false)}
+        />
         {/* Empty state */}
         {components.length === 0 && (
           <div className="flex items-center justify-center h-full pointer-events-none">

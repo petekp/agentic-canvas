@@ -22,6 +22,7 @@
 
 import { z } from "zod";
 import { getAvailableComponentTypes, describeCanvas, type RecentChange } from "./canvas-context";
+import { getDefaultTemplates } from "@/lib/templates";
 import type { Canvas, View } from "@/types";
 
 // ============================================================================
@@ -45,6 +46,18 @@ const positionSchema = z.object({
 const sizeSchema = z.object({
   cols: z.number().int().min(1).max(12).meta({ description: "Width in grid columns (1-12)" }),
   rows: z.number().int().min(1).max(8).meta({ description: "Height in grid rows (1-8)" }),
+});
+
+const stateSchema = z.object({
+  focus: z.number().min(0).max(1).optional(),
+  energy: z.number().min(0).max(1).optional(),
+  stress: z.number().min(0).max(1).optional(),
+  time_pressure: z.number().min(0).max(1).optional(),
+  interruptibility: z.number().min(0).max(1).optional(),
+  mode: z.enum(["execute", "review", "explore", "recover", "monitor"]).optional(),
+  ambient_light: z.enum(["low", "normal", "bright"]).optional(),
+  noise_level: z.enum(["quiet", "moderate", "loud"]).optional(),
+  motion_context: z.enum(["still", "moving"]).optional(),
 });
 
 // Tool schemas - used both for validation and type inference
@@ -81,11 +94,24 @@ export const clearCanvasSchema = z.object({
   preserve_pinned: z.boolean().default(true).meta({ description: "If true, keep pinned components" }),
 });
 
+export const generateTemplateSchema = z.object({
+  template_id: z.string().optional().meta({ description: "Template ID to force, if known" }),
+  category: z.enum(["focus", "review", "explore", "monitor", "recover"]).optional(),
+  params: z
+    .record(z.string(), z.unknown())
+    .optional()
+    .meta({ description: "Template parameter overrides" }),
+  state: stateSchema.optional().meta({ description: "Partial cognitive/perceptual state snapshot" }),
+});
+
 // Tool definitions for streamText (inputSchema format)
 export function getToolDefinitions() {
   const componentTypes = getAvailableComponentTypes();
   const typeDescriptions = componentTypes
     .map((t) => `"${t.typeId}" (${t.description})`)
+    .join(", ");
+  const templateDescriptions = getDefaultTemplates()
+    .map((t) => `"${t.id}" (${t.name})`)
     .join(", ");
 
   return {
@@ -113,6 +139,10 @@ export function getToolDefinitions() {
       description: "Clear all components from the canvas. Use preserve_pinned to keep pinned components.",
       inputSchema: clearCanvasSchema,
     },
+    generate_template: {
+      description: `Generate a component set from a template. Available templates: ${templateDescriptions}. Use state to guide selection when template_id is omitted.`,
+      inputSchema: generateTemplateSchema,
+    },
   };
 }
 
@@ -123,6 +153,7 @@ export type MoveComponentParams = z.infer<typeof moveComponentSchema>;
 export type ResizeComponentParams = z.infer<typeof resizeComponentSchema>;
 export type UpdateComponentParams = z.infer<typeof updateComponentSchema>;
 export type ClearCanvasParams = z.infer<typeof clearCanvasSchema>;
+export type GenerateTemplateParams = z.infer<typeof generateTemplateSchema>;
 
 // Format recent changes for system prompt
 function formatRecentChangesForPrompt(changes: RecentChange[]): string {

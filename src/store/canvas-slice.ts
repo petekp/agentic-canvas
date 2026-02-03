@@ -112,6 +112,7 @@ export const createCanvasSlice: StateCreator<
         createdBy: meta?.createdBy ?? "assistant",
         pinned: meta?.pinned ?? false,
         label: meta?.label,
+        template: meta?.template,
       },
     };
 
@@ -168,6 +169,7 @@ export const createCanvasSlice: StateCreator<
     // Capture BEFORE snapshot
     const beforeSnapshot = createSnapshot(get().canvas.components);
     const beforeBinding = component.dataBinding;
+    const beforeConfig = component.config as Record<string, unknown>;
 
     // Perform mutation
     set((state) => {
@@ -183,12 +185,23 @@ export const createCanvasSlice: StateCreator<
     const afterSnapshot = createSnapshot(get().canvas.components);
 
     // Create undo command
-    const command: UndoCanvasCommand = {
-      type: "component_update_config",
-      componentId,
-      from: component.config as Record<string, unknown>,
-      to: { ...component.config, ...config } as Record<string, unknown>,
-    };
+    const nextConfig = config ? { ...beforeConfig, ...config } : beforeConfig;
+    const bindingChanged =
+      dataBinding !== undefined &&
+      JSON.stringify(dataBinding) !== JSON.stringify(beforeBinding);
+    const command: UndoCanvasCommand = bindingChanged
+      ? {
+          type: "component_update_binding",
+          componentId,
+          from: beforeBinding ?? null,
+          to: dataBinding ?? null,
+        }
+      : {
+          type: "component_update_config",
+          componentId,
+          from: beforeConfig,
+          to: nextConfig,
+        };
 
     // Push to undo stack
     get().pushUndo({
@@ -207,7 +220,9 @@ export const createCanvasSlice: StateCreator<
     return {
       success: true,
       undoId: componentId,
-      explanation: `Updated component configuration`,
+      explanation: bindingChanged
+        ? "Updated component data binding"
+        : "Updated component configuration",
       affectedComponentIds: [componentId],
     };
   },

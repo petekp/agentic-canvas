@@ -8,6 +8,7 @@ import type {
   Size,
   DataBinding,
   ViewId,
+  View,
   CanvasSnapshot,
 } from "@/types";
 
@@ -101,6 +102,8 @@ export type UndoCanvasCommand =
   | { type: "view_delete"; viewId: string; viewName: string }
   | { type: "view_rename"; viewId: string; from: string; to: string }
   | { type: "view_switch"; from: string | null; to: string }
+  | { type: "view_pin"; viewId: string; viewName: string }
+  | { type: "view_unpin"; viewId: string; viewName: string }
   | { type: "canvas_clear"; removedCount: number }
   | { type: "view_load"; viewId: string; viewName: string };
 
@@ -156,6 +159,17 @@ export interface UndoViewContext {
 }
 
 // ============================================================================
+// View State Snapshot - for undoing view-level operations
+// ============================================================================
+
+export interface ViewStateSnapshot {
+  views: View[];
+  activeViewId: ViewId | null;
+  viewSnapshotHash: string | null;
+  workspaceUpdatedAt: number;
+}
+
+// ============================================================================
 // Retention Hold - For compliance/admin lockdown
 // ============================================================================
 
@@ -199,6 +213,10 @@ export interface EnhancedUndoEntry {
   // Snapshot-based restoration (keeping existing pattern)
   beforeSnapshot: CanvasSnapshot;
   afterSnapshot: CanvasSnapshot;
+
+  // Optional view state snapshots (for undoing view operations)
+  beforeViewState?: ViewStateSnapshot;
+  afterViewState?: ViewStateSnapshot;
 
   // The semantic command (for audit/display purposes)
   commandType: "canvas" | "filesystem" | "hybrid";

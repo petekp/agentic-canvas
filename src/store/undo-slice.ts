@@ -40,6 +40,7 @@ import {
   generateAuditId,
   generateBatchId,
   createUserSource,
+  ViewStateSnapshot,
 } from "@/lib/undo/types";
 import { UndoPolicy, evaluatePolicies, canUndoEntry, defaultPolicies } from "@/lib/undo/policies";
 import { emitToAuditLog, emitBatchEvent } from "@/lib/audit/audit-log";
@@ -81,6 +82,8 @@ export interface UndoActions {
     beforeSnapshot: CanvasSnapshot;
     afterSnapshot: CanvasSnapshot;
     viewContext?: Partial<UndoViewContext>;
+    beforeViewState?: ViewStateSnapshot;
+    afterViewState?: ViewStateSnapshot;
   }) => EnhancedUndoEntry;
 
   undo: (steps?: number) => EnhancedUndoEntry | null;
@@ -147,6 +150,15 @@ function getDefaultViewContext(get: () => AgenticCanvasStore): UndoViewContext {
   };
 }
 
+function cloneViewStateSnapshot(snapshot: ViewStateSnapshot): ViewStateSnapshot {
+  return {
+    views: structuredClone(snapshot.views),
+    activeViewId: snapshot.activeViewId,
+    viewSnapshotHash: snapshot.viewSnapshotHash,
+    workspaceUpdatedAt: snapshot.workspaceUpdatedAt,
+  };
+}
+
 // ============================================================================
 // Slice Creator
 // ============================================================================
@@ -192,6 +204,13 @@ export const createUndoSlice: StateCreator<
       ...params.viewContext,
     };
 
+    const beforeViewState = params.beforeViewState
+      ? cloneViewStateSnapshot(params.beforeViewState)
+      : undefined;
+    const afterViewState = params.afterViewState
+      ? cloneViewStateSnapshot(params.afterViewState)
+      : undefined;
+
     // Create the entry
     const entry: EnhancedUndoEntry = {
       id,
@@ -202,6 +221,8 @@ export const createUndoSlice: StateCreator<
       viewContext,
       beforeSnapshot: params.beforeSnapshot,
       afterSnapshot: params.afterSnapshot,
+      beforeViewState,
+      afterViewState,
       commandType: "canvas",
       command: params.command,
       visibility: "user",
@@ -284,11 +305,19 @@ export const createUndoSlice: StateCreator<
 
       lastEntry = entry;
 
-      // Navigate to the view where this action was performed
-      if (
+      if (entry.beforeViewState) {
+        const snapshot = cloneViewStateSnapshot(entry.beforeViewState);
+        set((draft) => {
+          draft.workspace.views = snapshot.views;
+          draft.activeViewId = snapshot.activeViewId;
+          draft.viewSnapshotHash = snapshot.viewSnapshotHash;
+          draft.workspace.updatedAt = snapshot.workspaceUpdatedAt;
+        });
+      } else if (
         entry.viewContext.activeViewId !== state.activeViewId &&
         entry.viewContext.activeViewId !== null
       ) {
+        // Navigate to the view where this action was performed
         set((draft) => {
           draft.activeViewId = entry.viewContext.activeViewId;
         });
@@ -341,11 +370,19 @@ export const createUndoSlice: StateCreator<
 
       lastEntry = entry;
 
-      // Navigate to the view where this action was performed
-      if (
+      if (entry.afterViewState) {
+        const snapshot = cloneViewStateSnapshot(entry.afterViewState);
+        set((draft) => {
+          draft.workspace.views = snapshot.views;
+          draft.activeViewId = snapshot.activeViewId;
+          draft.viewSnapshotHash = snapshot.viewSnapshotHash;
+          draft.workspace.updatedAt = snapshot.workspaceUpdatedAt;
+        });
+      } else if (
         entry.viewContext.activeViewId !== state.activeViewId &&
         entry.viewContext.activeViewId !== null
       ) {
+        // Navigate to the view where this action was performed
         set((draft) => {
           draft.activeViewId = entry.viewContext.activeViewId;
         });
@@ -456,6 +493,11 @@ export const createUndoSlice: StateCreator<
     // Combine all entries into one
     const firstEntry = entries[0];
     const lastEntry = entries[entries.length - 1];
+    const beforeViewState =
+      entries.find((entry) => entry.beforeViewState)?.beforeViewState ?? undefined;
+    const afterViewState =
+      [...entries].reverse().find((entry) => entry.afterViewState)?.afterViewState ??
+      undefined;
 
     const combinedEntry: EnhancedUndoEntry = {
       id: generateUndoId(),
@@ -466,6 +508,8 @@ export const createUndoSlice: StateCreator<
       viewContext: firstEntry.viewContext,
       beforeSnapshot: firstEntry.beforeSnapshot,
       afterSnapshot: lastEntry.afterSnapshot,
+      beforeViewState: beforeViewState ? cloneViewStateSnapshot(beforeViewState) : undefined,
+      afterViewState: afterViewState ? cloneViewStateSnapshot(afterViewState) : undefined,
       commandType: "canvas",
       command: {
         type: "layout_bulk_update",

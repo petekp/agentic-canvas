@@ -100,6 +100,10 @@ export { usePolling } from "./usePolling";
 // Insight loop hook
 export { useInsightLoop, addRecentChange } from "./useInsightLoop";
 
+// State signal adapter hook
+export { useStateSignals } from "./useStateSignals";
+export { useStateDebugSnapshot } from "./useStateDebug";
+
 // Notification hooks
 export function useNotifications() {
   return useStore(

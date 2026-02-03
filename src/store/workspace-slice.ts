@@ -17,7 +17,7 @@ import type {
   CanvasSnapshot,
 } from "@/types";
 import { createUserSource } from "@/lib/undo/types";
-import type { UndoCanvasCommand } from "@/lib/undo/types";
+import type { UndoCanvasCommand, ViewStateSnapshot } from "@/lib/undo/types";
 
 // Create initial default view
 const defaultViewId = `view_${nanoid(10)}`;
@@ -132,6 +132,15 @@ function createSnapshot(components: ComponentInstance[]): CanvasSnapshot {
   return { components: structuredClone(components) };
 }
 
+function createViewStateSnapshot(state: AgenticCanvasStore): ViewStateSnapshot {
+  return {
+    views: structuredClone(state.workspace.views),
+    activeViewId: state.activeViewId,
+    viewSnapshotHash: state.viewSnapshotHash,
+    workspaceUpdatedAt: state.workspace.updatedAt,
+  };
+}
+
 // Slice creator
 export const createWorkspaceSlice: StateCreator<
   AgenticCanvasStore,
@@ -205,6 +214,7 @@ export const createWorkspaceSlice: StateCreator<
 
     // Capture BEFORE snapshot
     const beforeSnapshot = createSnapshot(get().canvas.components);
+    const beforeViewState = createViewStateSnapshot(get());
 
     // Capture current state for pinned components
     const currentComponents = get().canvas.components;
@@ -233,6 +243,7 @@ export const createWorkspaceSlice: StateCreator<
 
     // Capture AFTER snapshot
     const afterSnapshot = createSnapshot(get().canvas.components);
+    const afterViewState = createViewStateSnapshot(get());
 
     // Create undo command
     const command: UndoCanvasCommand = {
@@ -248,6 +259,8 @@ export const createWorkspaceSlice: StateCreator<
       command,
       beforeSnapshot,
       afterSnapshot,
+      beforeViewState,
+      afterViewState,
     });
 
     // Trigger data fetches for loaded components
@@ -269,7 +282,13 @@ export const createWorkspaceSlice: StateCreator<
   },
 
   deleteView: (viewId) => {
+    const view = get().workspace.views.find((v) => v.id === viewId);
+    if (!view) return;
+
+    const beforeSnapshot = createSnapshot(get().canvas.components);
+    const beforeViewState = createViewStateSnapshot(get());
     const isActiveView = get().activeViewId === viewId;
+
     set((state) => {
       state.workspace.views = state.workspace.views.filter((v) => v.id !== viewId);
       state.workspace.updatedAt = Date.now();
@@ -279,22 +298,84 @@ export const createWorkspaceSlice: StateCreator<
         state.viewSnapshotHash = null;
       }
     });
+
+    const afterSnapshot = createSnapshot(get().canvas.components);
+    const afterViewState = createViewStateSnapshot(get());
+
+    const command: UndoCanvasCommand = {
+      type: "view_delete",
+      viewId,
+      viewName: view.name,
+    };
+
+    get().pushUndo({
+      source: createUserSource(),
+      description: `Deleted view: ${view.name}`,
+      command,
+      beforeSnapshot,
+      afterSnapshot,
+      beforeViewState,
+      afterViewState,
+      viewContext: {
+        activeViewId: get().activeViewId,
+        activeViewName: get().workspace.views.find((v) => v.id === get().activeViewId)?.name ?? "Default",
+        affectedViewIds: [viewId],
+        wasViewSpecificOp: true,
+      },
+    });
   },
 
   renameView: (viewId, name) => {
+    const beforeSnapshot = createSnapshot(get().canvas.components);
+    const beforeViewState = createViewStateSnapshot(get());
+    const view = get().workspace.views.find((v) => v.id === viewId);
+    if (!view) return;
+
+    const from = view.name;
+    const now = Date.now();
+
     set((state) => {
-      const view = state.workspace.views.find((v) => v.id === viewId);
-      if (view) {
-        view.name = name;
-        view.updatedAt = Date.now();
-        state.workspace.updatedAt = Date.now();
+      const target = state.workspace.views.find((v) => v.id === viewId);
+      if (target) {
+        target.name = name;
+        target.updatedAt = now;
+        state.workspace.updatedAt = now;
       }
+    });
+
+    const afterSnapshot = createSnapshot(get().canvas.components);
+    const afterViewState = createViewStateSnapshot(get());
+
+    const command: UndoCanvasCommand = {
+      type: "view_rename",
+      viewId,
+      from,
+      to: name,
+    };
+
+    get().pushUndo({
+      source: createUserSource(),
+      description: `Renamed view: ${from} → ${name}`,
+      command,
+      beforeSnapshot,
+      afterSnapshot,
+      beforeViewState,
+      afterViewState,
+      viewContext: {
+        activeViewId: get().activeViewId,
+        activeViewName: get().workspace.views.find((v) => v.id === get().activeViewId)?.name ?? "Default",
+        affectedViewIds: [viewId],
+        wasViewSpecificOp: true,
+      },
     });
   },
 
   duplicateView: (viewId) => {
     const view = get().workspace.views.find((v) => v.id === viewId);
     if (!view) return null;
+
+    const beforeSnapshot = createSnapshot(get().canvas.components);
+    const beforeViewState = createViewStateSnapshot(get());
 
     const newViewId = `view_${nanoid(10)}`;
     const now = Date.now();
@@ -326,12 +407,39 @@ export const createWorkspaceSlice: StateCreator<
       state.workspace.updatedAt = now;
     });
 
+    const afterSnapshot = createSnapshot(get().canvas.components);
+    const afterViewState = createViewStateSnapshot(get());
+
+    const command: UndoCanvasCommand = {
+      type: "view_create",
+      viewId: newViewId,
+      viewName: newView.name,
+    };
+
+    get().pushUndo({
+      source: createUserSource(),
+      description: `Duplicated view: ${view.name}`,
+      command,
+      beforeSnapshot,
+      afterSnapshot,
+      beforeViewState,
+      afterViewState,
+      viewContext: {
+        activeViewId: get().activeViewId,
+        activeViewName: get().workspace.views.find((v) => v.id === get().activeViewId)?.name ?? "Default",
+        affectedViewIds: [newViewId],
+        wasViewSpecificOp: true,
+      },
+    });
+
     return newViewId;
   },
 
   createEmptyView: (nameOrOptions) => {
     const now = Date.now();
     const viewId = `view_${nanoid(10)}`;
+    const beforeSnapshot = createSnapshot(get().canvas.components);
+    const beforeViewState = createViewStateSnapshot(get());
 
     // Parse options
     const options: CreateViewOptions =
@@ -376,6 +484,31 @@ export const createWorkspaceSlice: StateCreator<
         state.activeViewId = viewId;
         state.viewSnapshotHash = hashCanvas(emptySnapshot);
       }
+    });
+
+    const afterSnapshot = createSnapshot(get().canvas.components);
+    const afterViewState = createViewStateSnapshot(get());
+
+    const command: UndoCanvasCommand = {
+      type: "view_create",
+      viewId,
+      viewName: viewName,
+    };
+
+    get().pushUndo({
+      source: createUserSource(),
+      description: `Created view: ${viewName}`,
+      command,
+      beforeSnapshot,
+      afterSnapshot,
+      beforeViewState,
+      afterViewState,
+      viewContext: {
+        activeViewId: get().activeViewId,
+        activeViewName: get().workspace.views.find((v) => v.id === get().activeViewId)?.name ?? "Default",
+        affectedViewIds: [viewId],
+        wasViewSpecificOp: true,
+      },
     });
 
     return viewId;
@@ -431,24 +564,86 @@ export const createWorkspaceSlice: StateCreator<
   },
 
   pinView: (viewId) => {
+    const view = get().workspace.views.find((v) => v.id === viewId);
+    if (!view || view.pinned) return;
+
+    const beforeSnapshot = createSnapshot(get().canvas.components);
+    const beforeViewState = createViewStateSnapshot(get());
+
     set((state) => {
-      const view = state.workspace.views.find((v) => v.id === viewId);
-      if (view) {
-        view.pinned = true;
-        view.updatedAt = Date.now();
+      const target = state.workspace.views.find((v) => v.id === viewId);
+      if (target) {
+        target.pinned = true;
+        target.updatedAt = Date.now();
         state.workspace.updatedAt = Date.now();
       }
+    });
+
+    const afterSnapshot = createSnapshot(get().canvas.components);
+    const afterViewState = createViewStateSnapshot(get());
+
+    const command: UndoCanvasCommand = {
+      type: "view_pin",
+      viewId,
+      viewName: view.name,
+    };
+
+    get().pushUndo({
+      source: createUserSource(),
+      description: `Pinned view: ${view.name}`,
+      command,
+      beforeSnapshot,
+      afterSnapshot,
+      beforeViewState,
+      afterViewState,
+      viewContext: {
+        activeViewId: get().activeViewId,
+        activeViewName: get().workspace.views.find((v) => v.id === get().activeViewId)?.name ?? "Default",
+        affectedViewIds: [viewId],
+        wasViewSpecificOp: true,
+      },
     });
   },
 
   unpinView: (viewId) => {
+    const view = get().workspace.views.find((v) => v.id === viewId);
+    if (!view || !view.pinned) return;
+
+    const beforeSnapshot = createSnapshot(get().canvas.components);
+    const beforeViewState = createViewStateSnapshot(get());
+
     set((state) => {
-      const view = state.workspace.views.find((v) => v.id === viewId);
-      if (view) {
-        view.pinned = false;
-        view.updatedAt = Date.now();
+      const target = state.workspace.views.find((v) => v.id === viewId);
+      if (target) {
+        target.pinned = false;
+        target.updatedAt = Date.now();
         state.workspace.updatedAt = Date.now();
       }
+    });
+
+    const afterSnapshot = createSnapshot(get().canvas.components);
+    const afterViewState = createViewStateSnapshot(get());
+
+    const command: UndoCanvasCommand = {
+      type: "view_unpin",
+      viewId,
+      viewName: view.name,
+    };
+
+    get().pushUndo({
+      source: createUserSource(),
+      description: `Unpinned view: ${view.name}`,
+      command,
+      beforeSnapshot,
+      afterSnapshot,
+      beforeViewState,
+      afterViewState,
+      viewContext: {
+        activeViewId: get().activeViewId,
+        activeViewName: get().workspace.views.find((v) => v.id === get().activeViewId)?.name ?? "Default",
+        affectedViewIds: [viewId],
+        wasViewSpecificOp: true,
+      },
     });
   },
 

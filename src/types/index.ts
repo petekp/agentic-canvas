@@ -124,6 +124,7 @@ export interface ComponentMeta {
   createdBy: "user" | "assistant";
   pinned: boolean;
   label?: string;
+  template?: TemplateInstanceMeta;
 }
 
 export type DataLoadingState =
@@ -535,7 +536,241 @@ export interface ContextBudget {
 }
 
 // ============================================================================
-// 13. Canvas Events
+// 13. Template Primitives & State Model
+// ============================================================================
+
+export type TemplateId = string;
+export type TemplateNodeId = string;
+
+export type TemplateCategory = "focus" | "review" | "explore" | "monitor" | "recover";
+
+export type TemplateParamType = "string" | "number" | "boolean" | "enum" | "json";
+
+export interface TemplateParamDefinition {
+  key: string;
+  type: TemplateParamType;
+  default?: unknown;
+  required?: boolean;
+  enumValues?: string[];
+  min?: number;
+  max?: number;
+  description?: string;
+  suggested?: (state: StateSnapshot, context: CanvasContext) => unknown;
+}
+
+export interface TemplateConstraints {
+  minSize?: Size;
+  maxSize?: Size;
+  preferredAspect?: "square" | "wide" | "tall";
+  maxCognitiveLoad?: Normalized;
+  maxVisualDensity?: Normalized;
+  prefersLowMotion?: boolean;
+  maxItems?: number;
+  maxTextLines?: number;
+}
+
+export interface TemplateOutput {
+  primaryTypeId?: TypeId;
+  components?: TemplateComponentOutput[];
+}
+
+export interface TemplateComponentOutput {
+  typeId: TypeId;
+  config: Record<string, unknown>;
+  dataBinding?: DataBinding;
+  size?: Size;
+  position?: Position;
+  meta?: Partial<ComponentMeta>;
+}
+
+export interface TemplateDefinition {
+  id: TemplateId;
+  version: string;
+  name: string;
+  description: string;
+  category: TemplateCategory;
+  parameters: TemplateParamDefinition[];
+  root: TemplateNode;
+  output: TemplateOutput;
+  constraints: TemplateConstraints;
+  selection: TemplateSelection;
+}
+
+export interface TemplateSelection {
+  baseScore?: number;
+  rules: TemplateScoreRule[];
+}
+
+export interface TemplateScoreRule {
+  when: ConditionExpression;
+  weight: number;
+  reason: string;
+}
+
+export type Normalized = number; // 0.0 - 1.0
+
+export interface StateSnapshot {
+  timestamp: number;
+  timezone: string;
+  focus: Normalized;
+  energy: Normalized;
+  stress: Normalized;
+  timePressure: Normalized;
+  interruptibility: Normalized;
+  ambientLight: "low" | "normal" | "bright";
+  noiseLevel: "quiet" | "moderate" | "loud";
+  motionContext: "still" | "moving";
+  mode: "execute" | "review" | "explore" | "recover" | "monitor";
+  signals: StateSignal[];
+}
+
+export interface StateSignal {
+  source: "calendar" | "device" | "interaction" | "self_report" | "inference";
+  key: string;
+  value: number | string | boolean;
+  confidence: Normalized;
+  capturedAt: number;
+}
+
+export interface GenerationIntent {
+  id: string;
+  label: string;
+  category: TemplateCategory;
+  priority: "low" | "medium" | "high";
+  focusArea?: "left" | "right" | "top" | "bottom" | "center";
+  dataSources?: DataSourceId[];
+  reason: string;
+}
+
+export interface TemplateInstanceMeta {
+  templateId: TemplateId;
+  templateVersion: string;
+  seed: number;
+  resolvedParams: Record<string, unknown>;
+  intentId: string;
+  generatedAt: number;
+}
+
+export type TemplateNode =
+  | ContainerNode
+  | TextNode
+  | MetricNode
+  | ListNode
+  | TimelineNode
+  | ChartNode
+  | MediaNode
+  | ActionNode
+  | DividerNode
+  | SpacerNode
+  | SlotNode;
+
+export interface TemplateNodeBase {
+  id: TemplateNodeId;
+  type: string;
+  props?: Record<string, unknown>;
+  children?: TemplateNode[];
+  dataRef?: string;
+  when?: ConditionExpression;
+}
+
+export interface ContainerNode extends TemplateNodeBase {
+  type: "container" | "stack" | "grid";
+  props?: {
+    direction?: "row" | "column";
+    gap?: number;
+    padding?: number;
+    align?: "start" | "center" | "end" | "stretch";
+    distribution?: "start" | "center" | "space-between";
+    background?: "none" | "subtle" | "emphasis";
+  };
+}
+
+export interface TextNode extends TemplateNodeBase {
+  type: "text" | "label" | "heading";
+  props?: {
+    content?: string;
+    maxLines?: number;
+    tone?: "neutral" | "positive" | "warning" | "urgent";
+  };
+}
+
+export interface MetricNode extends TemplateNodeBase {
+  type: "metric";
+  props?: {
+    label?: string;
+    value?: string | number;
+    delta?: string | number;
+    trend?: "up" | "down" | "flat";
+  };
+}
+
+export interface ListNode extends TemplateNodeBase {
+  type: "list";
+  props?: {
+    limit?: number;
+    density?: "compact" | "normal" | "relaxed";
+  };
+  children?: TemplateNode[];
+}
+
+export interface TimelineNode extends TemplateNodeBase {
+  type: "timeline";
+  props?: {
+    limit?: number;
+  };
+  children?: TemplateNode[];
+}
+
+export interface ChartNode extends TemplateNodeBase {
+  type: "chart";
+  props?: {
+    kind?: "line" | "bar" | "spark";
+    xKey?: string;
+    yKey?: string;
+  };
+}
+
+export interface MediaNode extends TemplateNodeBase {
+  type: "icon" | "image";
+  props?: {
+    src?: string;
+    name?: string;
+    size?: number;
+  };
+}
+
+export interface ActionNode extends TemplateNodeBase {
+  type: "button" | "link";
+  props?: {
+    label?: string;
+    actionId?: string;
+  };
+}
+
+export interface DividerNode extends TemplateNodeBase {
+  type: "divider";
+}
+
+export interface SpacerNode extends TemplateNodeBase {
+  type: "spacer";
+  props?: {
+    size?: number;
+  };
+}
+
+export interface SlotNode extends TemplateNodeBase {
+  type: "slot";
+  props?: {
+    name: string;
+  };
+}
+
+export type ConditionExpression =
+  | { op: "gt" | "lt" | "eq"; left: string; right: number | string }
+  | { op: "and" | "or"; conditions: ConditionExpression[] };
+
+// ============================================================================
+// 14. Canvas Events
 // ============================================================================
 
 export type CanvasEvent =
@@ -600,7 +835,7 @@ export interface TriggerActivatedPayload {
 }
 
 // ============================================================================
-// 14. Proactive Triggers
+// 15. Proactive Triggers
 // ============================================================================
 
 export interface ProactiveTrigger {
@@ -621,7 +856,7 @@ export interface SimulatedTimeTrigger extends ProactiveTrigger {
 }
 
 // ============================================================================
-// 15. Errors
+// 16. Errors
 // ============================================================================
 
 export interface AgenticCanvasError {
