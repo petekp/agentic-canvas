@@ -32,7 +32,7 @@ import type { CanvasSnapshot, ComponentInstance } from "@/types";
 import {
   EnhancedUndoEntry,
   CommandSource,
-  UndoViewContext,
+  UndoSpaceContext,
   UndoCanvasCommand,
   ActiveBatch,
   BatchId,
@@ -40,7 +40,7 @@ import {
   generateAuditId,
   generateBatchId,
   createUserSource,
-  ViewStateSnapshot,
+  SpaceStateSnapshot,
 } from "@/lib/undo/types";
 import { UndoPolicy, evaluatePolicies, canUndoEntry, defaultPolicies } from "@/lib/undo/policies";
 import { emitToAuditLog, emitBatchEvent } from "@/lib/audit/audit-log";
@@ -81,9 +81,15 @@ export interface UndoActions {
     command: UndoCanvasCommand;
     beforeSnapshot: CanvasSnapshot;
     afterSnapshot: CanvasSnapshot;
-    viewContext?: Partial<UndoViewContext>;
-    beforeViewState?: ViewStateSnapshot;
-    afterViewState?: ViewStateSnapshot;
+    spaceContext?: Partial<UndoSpaceContext>;
+    beforeSpaceState?: SpaceStateSnapshot;
+    afterSpaceState?: SpaceStateSnapshot;
+    /** @deprecated Use spaceContext instead */
+    viewContext?: Partial<UndoSpaceContext>;
+    /** @deprecated Use beforeSpaceState instead */
+    beforeViewState?: SpaceStateSnapshot;
+    /** @deprecated Use afterSpaceState instead */
+    afterViewState?: SpaceStateSnapshot;
   }) => EnhancedUndoEntry;
 
   undo: (steps?: number) => EnhancedUndoEntry | null;
@@ -138,23 +144,23 @@ function createSnapshot(components: ComponentInstance[]): CanvasSnapshot {
   return { components: structuredClone(components) };
 }
 
-function getDefaultViewContext(get: () => AgenticCanvasStore): UndoViewContext {
+function getDefaultSpaceContext(get: () => AgenticCanvasStore): UndoSpaceContext {
   const state = get();
-  const activeView = state.workspace.views.find((v) => v.id === state.activeViewId);
+  const activeSpace = state.workspace.spaces.find((s) => s.id === state.activeSpaceId);
 
   return {
-    activeViewId: state.activeViewId,
-    activeViewName: activeView?.name ?? "Default",
-    affectedViewIds: state.activeViewId ? [state.activeViewId] : [],
-    wasViewSpecificOp: false,
+    activeSpaceId: state.activeSpaceId,
+    activeSpaceName: activeSpace?.name ?? "Default",
+    affectedSpaceIds: state.activeSpaceId ? [state.activeSpaceId] : [],
+    wasSpaceSpecificOp: false,
   };
 }
 
-function cloneViewStateSnapshot(snapshot: ViewStateSnapshot): ViewStateSnapshot {
+function cloneSpaceStateSnapshot(snapshot: SpaceStateSnapshot): SpaceStateSnapshot {
   return {
-    views: structuredClone(snapshot.views),
-    activeViewId: snapshot.activeViewId,
-    viewSnapshotHash: snapshot.viewSnapshotHash,
+    spaces: structuredClone(snapshot.spaces),
+    activeSpaceId: snapshot.activeSpaceId,
+    spaceSnapshotHash: snapshot.spaceSnapshotHash,
     workspaceUpdatedAt: snapshot.workspaceUpdatedAt,
   };
 }
@@ -199,17 +205,24 @@ export const createUndoSlice: StateCreator<
     const auditCorrelationId = generateAuditId();
     const timestamp = Date.now();
 
-    const viewContext: UndoViewContext = {
-      ...getDefaultViewContext(get),
-      ...params.viewContext,
+    // Support both new spaceContext and deprecated viewContext
+    const spaceContext: UndoSpaceContext = {
+      ...getDefaultSpaceContext(get),
+      ...params.spaceContext,
+      ...params.viewContext, // Backwards compat
     };
 
-    const beforeViewState = params.beforeViewState
-      ? cloneViewStateSnapshot(params.beforeViewState)
-      : undefined;
-    const afterViewState = params.afterViewState
-      ? cloneViewStateSnapshot(params.afterViewState)
-      : undefined;
+    // Support both new beforeSpaceState and deprecated beforeViewState
+    const beforeSpaceState = params.beforeSpaceState
+      ? cloneSpaceStateSnapshot(params.beforeSpaceState)
+      : params.beforeViewState
+        ? cloneSpaceStateSnapshot(params.beforeViewState)
+        : undefined;
+    const afterSpaceState = params.afterSpaceState
+      ? cloneSpaceStateSnapshot(params.afterSpaceState)
+      : params.afterViewState
+        ? cloneSpaceStateSnapshot(params.afterViewState)
+        : undefined;
 
     // Create the entry
     const entry: EnhancedUndoEntry = {
@@ -218,11 +231,11 @@ export const createUndoSlice: StateCreator<
       timestamp,
       source: params.source,
       description: params.description,
-      viewContext,
+      spaceContext,
       beforeSnapshot: params.beforeSnapshot,
       afterSnapshot: params.afterSnapshot,
-      beforeViewState,
-      afterViewState,
+      beforeSpaceState,
+      afterSpaceState,
       commandType: "canvas",
       command: params.command,
       visibility: "user",
@@ -305,21 +318,21 @@ export const createUndoSlice: StateCreator<
 
       lastEntry = entry;
 
-      if (entry.beforeViewState) {
-        const snapshot = cloneViewStateSnapshot(entry.beforeViewState);
+      if (entry.beforeSpaceState) {
+        const snapshot = cloneSpaceStateSnapshot(entry.beforeSpaceState);
         set((draft) => {
-          draft.workspace.views = snapshot.views;
-          draft.activeViewId = snapshot.activeViewId;
-          draft.viewSnapshotHash = snapshot.viewSnapshotHash;
+          draft.workspace.spaces = snapshot.spaces;
+          draft.activeSpaceId = snapshot.activeSpaceId;
+          draft.spaceSnapshotHash = snapshot.spaceSnapshotHash;
           draft.workspace.updatedAt = snapshot.workspaceUpdatedAt;
         });
       } else if (
-        entry.viewContext.activeViewId !== state.activeViewId &&
-        entry.viewContext.activeViewId !== null
+        entry.spaceContext.activeSpaceId !== state.activeSpaceId &&
+        entry.spaceContext.activeSpaceId !== null
       ) {
-        // Navigate to the view where this action was performed
+        // Navigate to the space where this action was performed
         set((draft) => {
-          draft.activeViewId = entry.viewContext.activeViewId;
+          draft.activeSpaceId = entry.spaceContext.activeSpaceId;
         });
       }
 
@@ -370,21 +383,21 @@ export const createUndoSlice: StateCreator<
 
       lastEntry = entry;
 
-      if (entry.afterViewState) {
-        const snapshot = cloneViewStateSnapshot(entry.afterViewState);
+      if (entry.afterSpaceState) {
+        const snapshot = cloneSpaceStateSnapshot(entry.afterSpaceState);
         set((draft) => {
-          draft.workspace.views = snapshot.views;
-          draft.activeViewId = snapshot.activeViewId;
-          draft.viewSnapshotHash = snapshot.viewSnapshotHash;
+          draft.workspace.spaces = snapshot.spaces;
+          draft.activeSpaceId = snapshot.activeSpaceId;
+          draft.spaceSnapshotHash = snapshot.spaceSnapshotHash;
           draft.workspace.updatedAt = snapshot.workspaceUpdatedAt;
         });
       } else if (
-        entry.viewContext.activeViewId !== state.activeViewId &&
-        entry.viewContext.activeViewId !== null
+        entry.spaceContext.activeSpaceId !== state.activeSpaceId &&
+        entry.spaceContext.activeSpaceId !== null
       ) {
-        // Navigate to the view where this action was performed
+        // Navigate to the space where this action was performed
         set((draft) => {
-          draft.activeViewId = entry.viewContext.activeViewId;
+          draft.activeSpaceId = entry.spaceContext.activeSpaceId;
         });
       }
 
@@ -493,10 +506,10 @@ export const createUndoSlice: StateCreator<
     // Combine all entries into one
     const firstEntry = entries[0];
     const lastEntry = entries[entries.length - 1];
-    const beforeViewState =
-      entries.find((entry) => entry.beforeViewState)?.beforeViewState ?? undefined;
-    const afterViewState =
-      [...entries].reverse().find((entry) => entry.afterViewState)?.afterViewState ??
+    const beforeSpaceState =
+      entries.find((entry) => entry.beforeSpaceState)?.beforeSpaceState ?? undefined;
+    const afterSpaceState =
+      [...entries].reverse().find((entry) => entry.afterSpaceState)?.afterSpaceState ??
       undefined;
 
     const combinedEntry: EnhancedUndoEntry = {
@@ -505,11 +518,11 @@ export const createUndoSlice: StateCreator<
       timestamp: Date.now(),
       source,
       description,
-      viewContext: firstEntry.viewContext,
+      spaceContext: firstEntry.spaceContext,
       beforeSnapshot: firstEntry.beforeSnapshot,
       afterSnapshot: lastEntry.afterSnapshot,
-      beforeViewState: beforeViewState ? cloneViewStateSnapshot(beforeViewState) : undefined,
-      afterViewState: afterViewState ? cloneViewStateSnapshot(afterViewState) : undefined,
+      beforeSpaceState: beforeSpaceState ? cloneSpaceStateSnapshot(beforeSpaceState) : undefined,
+      afterSpaceState: afterSpaceState ? cloneSpaceStateSnapshot(afterSpaceState) : undefined,
       commandType: "canvas",
       command: {
         type: "layout_bulk_update",

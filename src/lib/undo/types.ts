@@ -7,8 +7,8 @@ import type {
   Position,
   Size,
   DataBinding,
-  ViewId,
-  View,
+  SpaceId,
+  Space,
   CanvasSnapshot,
 } from "@/types";
 
@@ -98,14 +98,22 @@ export type UndoCanvasCommand =
       to: DataBinding | null;
     }
   | { type: "layout_bulk_update"; componentIds: string[]; changes: LayoutChange[] }
+  | { type: "space_create"; spaceId: string; spaceName: string }
+  | { type: "space_delete"; spaceId: string; spaceName: string }
+  | { type: "space_rename"; spaceId: string; from: string; to: string }
+  | { type: "space_switch"; from: string | null; to: string }
+  | { type: "space_pin"; spaceId: string; spaceName: string }
+  | { type: "space_unpin"; spaceId: string; spaceName: string }
+  | { type: "space_load"; spaceId: string; spaceName: string }
+  // Deprecated aliases for backwards compatibility
   | { type: "view_create"; viewId: string; viewName: string }
   | { type: "view_delete"; viewId: string; viewName: string }
   | { type: "view_rename"; viewId: string; from: string; to: string }
   | { type: "view_switch"; from: string | null; to: string }
   | { type: "view_pin"; viewId: string; viewName: string }
   | { type: "view_unpin"; viewId: string; viewName: string }
-  | { type: "canvas_clear"; removedCount: number }
-  | { type: "view_load"; viewId: string; viewName: string };
+  | { type: "view_load"; viewId: string; viewName: string }
+  | { type: "canvas_clear"; removedCount: number };
 
 export interface LayoutChange {
   componentId: string;
@@ -148,26 +156,32 @@ export interface HybridCommand {
 }
 
 // ============================================================================
-// View Context - Which view was active when the change occurred
+// Space Context - Which space was active when the change occurred
 // ============================================================================
 
-export interface UndoViewContext {
-  activeViewId: ViewId | null;
-  activeViewName: string;
-  affectedViewIds: string[];
-  wasViewSpecificOp: boolean;
+export interface UndoSpaceContext {
+  activeSpaceId: SpaceId | null;
+  activeSpaceName: string;
+  affectedSpaceIds: string[];
+  wasSpaceSpecificOp: boolean;
 }
 
+/** @deprecated Use UndoSpaceContext instead */
+export type UndoViewContext = UndoSpaceContext;
+
 // ============================================================================
-// View State Snapshot - for undoing view-level operations
+// Space State Snapshot - for undoing space-level operations
 // ============================================================================
 
-export interface ViewStateSnapshot {
-  views: View[];
-  activeViewId: ViewId | null;
-  viewSnapshotHash: string | null;
+export interface SpaceStateSnapshot {
+  spaces: Space[];
+  activeSpaceId: SpaceId | null;
+  spaceSnapshotHash: string | null;
   workspaceUpdatedAt: number;
 }
+
+/** @deprecated Use SpaceStateSnapshot instead */
+export type ViewStateSnapshot = SpaceStateSnapshot;
 
 // ============================================================================
 // Retention Hold - For compliance/admin lockdown
@@ -207,16 +221,22 @@ export interface EnhancedUndoEntry {
   // Human-readable description
   description: string;
 
-  // View context
-  viewContext: UndoViewContext;
+  // Space context
+  spaceContext: UndoSpaceContext;
+  /** @deprecated Use spaceContext instead */
+  viewContext?: UndoSpaceContext;
 
   // Snapshot-based restoration (keeping existing pattern)
   beforeSnapshot: CanvasSnapshot;
   afterSnapshot: CanvasSnapshot;
 
-  // Optional view state snapshots (for undoing view operations)
-  beforeViewState?: ViewStateSnapshot;
-  afterViewState?: ViewStateSnapshot;
+  // Optional space state snapshots (for undoing space operations)
+  beforeSpaceState?: SpaceStateSnapshot;
+  afterSpaceState?: SpaceStateSnapshot;
+  /** @deprecated Use beforeSpaceState instead */
+  beforeViewState?: SpaceStateSnapshot;
+  /** @deprecated Use afterSpaceState instead */
+  afterViewState?: SpaceStateSnapshot;
 
   // The semantic command (for audit/display purposes)
   commandType: "canvas" | "filesystem" | "hybrid";

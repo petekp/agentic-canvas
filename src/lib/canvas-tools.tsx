@@ -512,10 +512,10 @@ export const GenerateTemplateTool = makeAssistantTool({
   ),
 });
 
-// Create View Tool
-const createViewToolDef = tool({
+// Create Space Tool
+const createSpaceToolDef = tool({
   description:
-    "Create a new canvas view/tab. Use for organizing related components into separate workspaces. Views are ephemeral by default.",
+    "Create a new space. Use for organizing related components into separate workspaces. Spaces are ephemeral by default.",
   parameters: z.object({
     name: z.string(),
     components: z
@@ -535,9 +535,9 @@ const createViewToolDef = tool({
     const store = useStore.getState();
     const source = createToolSource();
 
-    store.startBatch(source, "AI: create_view");
+    store.startBatch(source, "AI: create_space");
     try {
-      const viewId = store.createEmptyView({
+      const spaceId = store.createEmptySpace({
         name,
         createdBy: "assistant",
         switchTo: switch_to,
@@ -565,8 +565,8 @@ const createViewToolDef = tool({
 
       return {
         success: true,
-        viewId,
-        message: `Created view "${name}"${components ? ` with ${components.length} components` : ""}`,
+        spaceId,
+        message: `Created space "${name}"${components ? ` with ${components.length} components` : ""}`,
       };
     } catch (err) {
       store.abortBatch();
@@ -578,14 +578,14 @@ const createViewToolDef = tool({
   },
 });
 
-export const CreateViewTool = makeAssistantTool({
-  ...createViewToolDef,
-  toolName: "create_view",
+export const CreateSpaceTool = makeAssistantTool({
+  ...createSpaceToolDef,
+  toolName: "create_space",
   render: ({ args, status }) => (
     <div className="flex items-center gap-2 text-xs bg-muted/50 rounded px-2 py-1.5 my-1">
       <LayoutGrid className="h-3 w-3 text-blue-500" />
       <span>
-        Create view &quot;{args.name}&quot;
+        Create space &quot;{args.name}&quot;
         {args.components?.length ? ` with ${args.components.length} components` : ""}
       </span>
       <ToolStatus status={status} />
@@ -593,33 +593,33 @@ export const CreateViewTool = makeAssistantTool({
   ),
 });
 
-// Switch View Tool
-const switchViewToolDef = tool({
-  description: "Switch to an existing view by name or ID",
+// Switch Space Tool
+const switchSpaceToolDef = tool({
+  description: "Switch to an existing space by name or ID",
   parameters: z.object({
-    view: z.string(),
+    space: z.string(),
   }),
-  execute: async ({ view }) => {
+  execute: async ({ space }) => {
     const store = useStore.getState();
     const source = createToolSource();
-    const views = store.getViews();
+    const spaces = store.getSpaces();
 
-    const targetView = views.find((v) => v.id === view || v.name === view);
-    if (!targetView) {
+    const targetSpace = spaces.find((s) => s.id === space || s.name === space);
+    if (!targetSpace) {
       return {
         success: false,
-        error: `View not found: ${view}`,
+        error: `Space not found: ${space}`,
       };
     }
 
-    store.startBatch(source, "AI: switch_view");
+    store.startBatch(source, "AI: switch_space");
     try {
-      const result = store.loadView(targetView.id);
+      const result = store.loadSpace(targetSpace.id);
       store.commitBatch();
 
       return {
         success: result.success,
-        message: `Switched to view "${targetView.name}"`,
+        message: `Switched to space "${targetSpace.name}"`,
       };
     } catch (err) {
       store.abortBatch();
@@ -631,60 +631,60 @@ const switchViewToolDef = tool({
   },
 });
 
-export const SwitchViewTool = makeAssistantTool({
-  ...switchViewToolDef,
-  toolName: "switch_view",
+export const SwitchSpaceTool = makeAssistantTool({
+  ...switchSpaceToolDef,
+  toolName: "switch_space",
   render: ({ args, status }) => (
     <div className="flex items-center gap-2 text-xs bg-muted/50 rounded px-2 py-1.5 my-1">
       <ArrowRightLeft className="h-3 w-3 text-cyan-500" />
-      <span>Switch to &quot;{args.view}&quot;</span>
+      <span>Switch to &quot;{args.space}&quot;</span>
       <ToolStatus status={status} />
     </div>
   ),
 });
 
-// Pin View Tool
-const pinViewToolDef = tool({
-  description: "Pin a view to keep it. Unpinned views may be auto-cleaned after 7 days.",
+// Pin Space Tool
+const pinSpaceToolDef = tool({
+  description: "Pin a space to keep it. Unpinned spaces may be auto-cleaned after 7 days.",
   parameters: z.object({
-    view: z.string().optional(),
+    space: z.string().optional(),
   }),
-  execute: async ({ view }) => {
+  execute: async ({ space }) => {
     const store = useStore.getState();
     const source = createToolSource();
 
-    let viewId: string | null = null;
+    let spaceId: string | null = null;
 
-    if (view) {
-      const views = store.getViews();
-      const targetView = views.find((v) => v.id === view || v.name === view);
-      if (!targetView) {
+    if (space) {
+      const spaces = store.getSpaces();
+      const targetSpace = spaces.find((s) => s.id === space || s.name === space);
+      if (!targetSpace) {
         return {
           success: false,
-          error: `View not found: ${view}`,
+          error: `Space not found: ${space}`,
         };
       }
-      viewId = targetView.id;
+      spaceId = targetSpace.id;
     } else {
-      const state = store as unknown as { activeViewId: string | null };
-      viewId = state.activeViewId;
+      const state = store as unknown as { activeSpaceId: string | null };
+      spaceId = state.activeSpaceId;
     }
 
-    if (!viewId) {
+    if (!spaceId) {
       return {
         success: false,
-        error: "No view specified and no active view",
+        error: "No space specified and no active space",
       };
     }
 
-    store.startBatch(source, "AI: pin_view");
+    store.startBatch(source, "AI: pin_space");
     try {
-      store.pinView(viewId);
+      store.pinSpace(spaceId);
       store.commitBatch();
 
       return {
         success: true,
-        message: "View pinned",
+        message: "Space pinned",
       };
     } catch (err) {
       store.abortBatch();
@@ -696,60 +696,60 @@ const pinViewToolDef = tool({
   },
 });
 
-export const PinViewTool = makeAssistantTool({
-  ...pinViewToolDef,
-  toolName: "pin_view",
+export const PinSpaceTool = makeAssistantTool({
+  ...pinSpaceToolDef,
+  toolName: "pin_space",
   render: ({ args, status }) => (
     <div className="flex items-center gap-2 text-xs bg-muted/50 rounded px-2 py-1.5 my-1">
       <Pin className="h-3 w-3 text-yellow-500" />
-      <span>Pin {args.view ? `"${args.view}"` : "current view"}</span>
+      <span>Pin {args.space ? `"${args.space}"` : "current space"}</span>
       <ToolStatus status={status} />
     </div>
   ),
 });
 
-// Unpin View Tool
-const unpinViewToolDef = tool({
-  description: "Unpin a view. Unpinned views may be auto-cleaned after 7 days of inactivity.",
+// Unpin Space Tool
+const unpinSpaceToolDef = tool({
+  description: "Unpin a space. Unpinned spaces may be auto-cleaned after 7 days of inactivity.",
   parameters: z.object({
-    view: z.string().optional(),
+    space: z.string().optional(),
   }),
-  execute: async ({ view }) => {
+  execute: async ({ space }) => {
     const store = useStore.getState();
     const source = createToolSource();
 
-    let viewId: string | null = null;
+    let spaceId: string | null = null;
 
-    if (view) {
-      const views = store.getViews();
-      const targetView = views.find((v) => v.id === view || v.name === view);
-      if (!targetView) {
+    if (space) {
+      const spaces = store.getSpaces();
+      const targetSpace = spaces.find((s) => s.id === space || s.name === space);
+      if (!targetSpace) {
         return {
           success: false,
-          error: `View not found: ${view}`,
+          error: `Space not found: ${space}`,
         };
       }
-      viewId = targetView.id;
+      spaceId = targetSpace.id;
     } else {
-      const state = store as unknown as { activeViewId: string | null };
-      viewId = state.activeViewId;
+      const state = store as unknown as { activeSpaceId: string | null };
+      spaceId = state.activeSpaceId;
     }
 
-    if (!viewId) {
+    if (!spaceId) {
       return {
         success: false,
-        error: "No view specified and no active view",
+        error: "No space specified and no active space",
       };
     }
 
-    store.startBatch(source, "AI: unpin_view");
+    store.startBatch(source, "AI: unpin_space");
     try {
-      store.unpinView(viewId);
+      store.unpinSpace(spaceId);
       store.commitBatch();
 
       return {
         success: true,
-        message: "View unpinned",
+        message: "Space unpinned",
       };
     } catch (err) {
       store.abortBatch();
@@ -761,13 +761,13 @@ const unpinViewToolDef = tool({
   },
 });
 
-export const UnpinViewTool = makeAssistantTool({
-  ...unpinViewToolDef,
-  toolName: "unpin_view",
+export const UnpinSpaceTool = makeAssistantTool({
+  ...unpinSpaceToolDef,
+  toolName: "unpin_space",
   render: ({ args, status }) => (
     <div className="flex items-center gap-2 text-xs bg-muted/50 rounded px-2 py-1.5 my-1">
       <PinOff className="h-3 w-3 text-gray-500" />
-      <span>Unpin {args.view ? `"${args.view}"` : "current view"}</span>
+      <span>Unpin {args.space ? `"${args.space}"` : "current space"}</span>
       <ToolStatus status={status} />
     </div>
   ),
@@ -791,10 +791,10 @@ export function CanvasTools() {
       <UpdateComponentTool />
       <ClearCanvasTool />
       <GenerateTemplateTool />
-      <CreateViewTool />
-      <SwitchViewTool />
-      <PinViewTool />
-      <UnpinViewTool />
+      <CreateSpaceTool />
+      <SwitchSpaceTool />
+      <PinSpaceTool />
+      <UnpinSpaceTool />
     </>
   );
 }

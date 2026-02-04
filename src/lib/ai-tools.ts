@@ -23,7 +23,7 @@
 import { z } from "zod";
 import { getAvailableComponentTypes, describeCanvas, type RecentChange } from "./canvas-context";
 import { getDefaultTemplates } from "@/lib/templates";
-import type { Canvas, View } from "@/types";
+import type { Canvas, Space } from "@/types";
 
 // ============================================================================
 // System Prompt Context
@@ -31,9 +31,9 @@ import type { Canvas, View } from "@/types";
 
 export interface SystemPromptContext {
   canvas: Canvas;
-  activeViewName?: string | null;
+  activeSpaceName?: string | null;
   recentChanges?: RecentChange[];
-  views?: View[];
+  spaces?: Space[];
 }
 
 // Tool parameter schemas (using snake_case per project convention)
@@ -174,36 +174,36 @@ function formatRecentChangesForPrompt(changes: RecentChange[]): string {
     .join("\n");
 }
 
-// Format views for system prompt
-function formatViewsForPrompt(views: View[], activeViewName?: string | null): string {
-  if (views.length === 0) {
-    return "No saved views.";
+// Format spaces for system prompt
+function formatSpacesForPrompt(spaces: Space[], activeSpaceName?: string | null): string {
+  if (spaces.length === 0) {
+    return "No saved spaces.";
   }
 
-  return views
-    .map((view) => {
-      const pinStatus = view.pinned ? " (pinned)" : "";
-      const activeStatus = view.name === activeViewName ? " **[ACTIVE]**" : "";
-      const createdBy = view.createdBy === "assistant" ? " (AI-created)" : "";
-      return `- ${view.name}${pinStatus}${createdBy}${activeStatus}: ${view.snapshot.components.length} components`;
+  return spaces
+    .map((space) => {
+      const pinStatus = space.pinned ? " (pinned)" : "";
+      const activeStatus = space.name === activeSpaceName ? " **[ACTIVE]**" : "";
+      const createdBy = space.createdBy === "assistant" ? " (AI-created)" : "";
+      return `- ${space.name}${pinStatus}${createdBy}${activeStatus}: ${space.snapshot.components.length} components`;
     })
     .join("\n");
 }
 
 // System prompt generator
 export function createSystemPrompt(context: SystemPromptContext): string {
-  const { canvas, activeViewName, recentChanges, views } = context;
+  const { canvas, activeSpaceName, recentChanges, spaces } = context;
   const componentTypes = getAvailableComponentTypes();
   const canvasDescription = describeCanvas(canvas);
 
   // Build optional sections
-  const activeViewSection = activeViewName
-    ? `\n## Active View\nCurrently viewing: "${activeViewName}"\n`
+  const activeSpaceSection = activeSpaceName
+    ? `\n## Active Space\nCurrently viewing: "${activeSpaceName}"\n`
     : "";
 
-  const viewsSection =
-    views && views.length > 0
-      ? `\n## All Views\n${formatViewsForPrompt(views, activeViewName)}\n`
+  const spacesSection =
+    spaces && spaces.length > 0
+      ? `\n## All Spaces\n${formatSpacesForPrompt(spaces, activeSpaceName)}\n`
       : "";
 
   const recentActivitySection =
@@ -212,7 +212,7 @@ export function createSystemPrompt(context: SystemPromptContext): string {
       : "";
 
   return `You are an AI assistant that helps users manage a canvas workspace with GitHub and PostHog analytics widgets. You can add, remove, move, resize, and update components on the canvas.
-${activeViewSection}${viewsSection}
+${activeSpaceSection}${spacesSection}
 ## Canvas State
 ${canvasDescription}
 
@@ -225,18 +225,18 @@ ${recentActivitySection}
 ## Available Component Types
 ${componentTypes.map((t) => `- **${t.typeId}**: ${t.description}`).join("\n")}
 
-## View Management Philosophy
-- **Views are ephemeral by default** - create focused, task-specific views proactively
-- When a user asks about something (e.g., "What's blocking my release?"), create a dedicated view with relevant components
-- Unpinned views may be auto-cleaned after 7 days - suggest pinning views that seem valuable
-- Views are lightweight and disposable - don't hesitate to create them
+## Space Management Philosophy
+- **Spaces are ephemeral by default** - create focused, task-specific spaces proactively
+- When a user asks about something (e.g., "What's blocking my release?"), create a dedicated space with relevant components
+- Unpinned spaces may be auto-cleaned after 7 days - suggest pinning spaces that seem valuable
+- Spaces are lightweight and disposable - don't hesitate to create them
 - Clean, organized layouts > cramped dashboards
 
-## View Management
-- Use **create_view** to create new views with optional pre-populated components
-- Use **switch_view** to navigate between views by name or ID
-- Use **pin_view** to mark a view as important (won't be auto-cleaned)
-- Use **unpin_view** to unpin a view (will be auto-cleaned after 7 days)
+## Space Management
+- Use **create_space** to create new spaces with optional pre-populated components
+- Use **switch_space** to navigate between spaces by name or ID
+- Use **pin_space** to mark a space as important (won't be auto-cleaned)
+- Use **unpin_space** to unpin a space (will be auto-cleaned after 7 days)
 
 ## Proactive Guidelines
 1. When describing the canvas, include metric values and position context (e.g., "in the top-left")
@@ -244,7 +244,7 @@ ${componentTypes.map((t) => `- **${t.typeId}**: ${t.description}`).join("\n")}
 3. If asked "what changed recently?", summarize recent activity with who made each change
 4. Offer insights based on visible data (e.g., "You have 5 PRs awaiting review")
 5. When the user asks about their workspace, be specific about component locations and data
-6. **Proactively create views** for focused tasks (e.g., "Let me create a Release Blockers view for you")
+6. **Proactively create spaces** for focused tasks (e.g., "Let me create a Release Blockers space for you")
 
 ## Standard Guidelines
 1. When adding components, you can omit position/size to use auto-placement

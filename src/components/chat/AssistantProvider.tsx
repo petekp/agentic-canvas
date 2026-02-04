@@ -31,12 +31,12 @@ export function AssistantProvider({ children }: AssistantProviderProps) {
             [...state.undoStack].reverse().slice(0, 10),
             5
           ),
-          activeViewName: (() => {
-            if (!state.activeViewId) return null;
-            const view = state.workspace.views.find((v) => v.id === state.activeViewId);
-            return view?.name ?? null;
+          activeSpaceName: (() => {
+            if (!state.activeSpaceId) return null;
+            const space = state.workspace.spaces.find((s) => s.id === state.activeSpaceId);
+            return space?.name ?? null;
           })(),
-          views: state.workspace.views,
+          spaces: state.workspace.spaces,
         };
       },
     });

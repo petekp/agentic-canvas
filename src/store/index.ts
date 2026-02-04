@@ -24,6 +24,36 @@ export type AgenticCanvasStore = CanvasSlice &
   UndoSlice &
   NotificationSlice;
 
+// Partialize function extracted for type reference
+const partialize = (state: AgenticCanvasStore) => ({
+  canvas: {
+    grid: state.canvas.grid,
+    components: state.canvas.components.map((c) => ({
+      ...c,
+      // Reset data state - will be re-fetched on load
+      dataState: { status: "idle" as const },
+    })),
+  },
+  workspace: {
+    spaces: state.workspace.spaces.map((s) => ({
+      ...s,
+      // Reset data state in snapshots - will be re-fetched on load
+      snapshot: {
+        ...s.snapshot,
+        components: s.snapshot.components.map((c) => ({
+          ...c,
+          dataState: { status: "idle" as const },
+        })),
+      },
+    })),
+    settings: state.workspace.settings,
+  },
+  activeSpaceId: state.activeSpaceId,
+  lastSpaceId: state.lastSpaceId,
+});
+
+type PersistedState = ReturnType<typeof partialize>;
+
 // Create the store with middleware
 export const useStore = create<AgenticCanvasStore>()(
   subscribeWithSelector(
@@ -38,22 +68,24 @@ export const useStore = create<AgenticCanvasStore>()(
       })),
       {
         name: "agentic-canvas",
-        // Only persist canvas components, not transient state
-        partialize: (state) => ({
-          canvas: {
-            grid: state.canvas.grid,
-            components: state.canvas.components.map((c) => ({
-              ...c,
-              // Reset data state - will be re-fetched on load
-              dataState: { status: "idle" as const },
-            })),
-          },
-        }),
+        version: 2, // Bump version to trigger migration for spaces
+        // Persist canvas, workspace (spaces), and navigation state
+        partialize,
         // Re-fetch data for all components after rehydration
         onRehydrateStorage: () => (state) => {
           if (state) {
             state.initializeData();
           }
+        },
+        // Migration from v1 (views) to v2 (spaces)
+        migrate: (persistedState: unknown, version: number): PersistedState => {
+          if (version < 2) {
+            // Clean slate migration - start fresh with new space system
+            // Old view data is intentionally not migrated
+            // Return empty object - zustand will merge with defaults
+            return {} as PersistedState;
+          }
+          return persistedState as PersistedState;
         },
       }
     )

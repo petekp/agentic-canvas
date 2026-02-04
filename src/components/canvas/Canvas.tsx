@@ -12,18 +12,17 @@ import { getCompactor } from "react-grid-layout/core";
 const overlapCompactor = getCompactor(null, true, false);
 import {
   useCanvas,
-  useViews,
   useUndoSimple,
   usePolling,
   useInsightLoop,
   useStateSignals,
   useStateDebugSnapshot,
 } from "@/hooks";
+import { useSpaceNavigation } from "@/hooks/useSpaceNavigation";
 import { ComponentContent } from "./ComponentContent";
-import { ViewTabs } from "./ViewTabs";
+import { CanvasHeader } from "./CanvasHeader";
 import { UndoRedoControls } from "@/components/UndoRedoControls";
 import type { ComponentInstance } from "@/types";
-import { Button } from "@/components/ui/button";
 import { Plus, Layers, Sparkles } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { NotificationBadge } from "@/components/notifications/NotificationBadge";
@@ -192,7 +191,7 @@ function componentsToLayout(components: ComponentInstance[]) {
 export function Canvas() {
   const { components, grid, moveComponent, resizeComponent, selectedComponentId, selectComponent } = useCanvas();
   const { canUndo, canRedo, undo, redo } = useUndoSimple();
-  const { views, activeViewId, saveView, loadView } = useViews();
+  const { navigateToGrid } = useSpaceNavigation();
   const { width, containerRef, mounted } = useContainerWidth();
   const [showStateDebug, setShowStateDebug] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -204,14 +203,10 @@ export function Canvas() {
   // This prevents the keyboard handler effect from re-running on every state change
   const canUndoRef = useRef(canUndo);
   const canRedoRef = useRef(canRedo);
-  const viewsRef = useRef(views);
-  const activeViewIdRef = useRef(activeViewId);
 
   // Keep refs in sync with state
   canUndoRef.current = canUndo;
   canRedoRef.current = canRedo;
-  viewsRef.current = views;
-  activeViewIdRef.current = activeViewId;
 
   // Polling for notifications and insight generation
   usePolling();
@@ -273,7 +268,7 @@ export function Canvas() {
     [resizeComponent]
   );
 
-  // Keyboard shortcuts for undo/redo and view management
+  // Keyboard shortcuts for undo/redo and navigation
   // Uses refs for read-only values to prevent effect re-runs (rerender-defer-reads)
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -290,52 +285,24 @@ export function Canvas() {
         return;
       }
 
-      // Save view: Cmd+S (update active) / Cmd+Shift+S (save as new)
-      if (isMod && e.key === "s") {
-        e.preventDefault();
-        const currentViews = viewsRef.current;
-        const currentActiveViewId = activeViewIdRef.current;
-        if (e.shiftKey || !currentActiveViewId) {
-          // Save as new view
-          const existingNames = currentViews.map((v) => v.name);
-          let name = "Untitled";
-          let counter = 1;
-          while (existingNames.includes(name)) {
-            name = `Untitled ${counter}`;
-            counter++;
-          }
-          saveView({ name, description: "" });
-        } else {
-          // Update current view
-          const activeView = currentViews.find((v) => v.id === currentActiveViewId);
-          if (activeView) {
-            saveView({ viewId: currentActiveViewId, name: activeView.name, description: activeView.description });
-          }
-        }
-        return;
-      }
-
-      // Switch views: Cmd+1-9
-      if (isMod && e.key >= "1" && e.key <= "9") {
-        e.preventDefault();
-        const index = parseInt(e.key) - 1;
-        const currentViews = viewsRef.current;
-        if (index < currentViews.length) {
-          loadView(currentViews[index].id);
-        }
-        return;
-      }
-
       // Toggle state debug overlay: Cmd/Ctrl+Shift+D
       if (isMod && e.shiftKey && e.key.toLowerCase() === "d") {
         e.preventDefault();
         setShowStateDebug((prev) => !prev);
+        return;
+      }
+
+      // Return to Spaces grid: Cmd/Ctrl+Shift+H
+      if (isMod && e.shiftKey && e.key.toLowerCase() === "h") {
+        e.preventDefault();
+        navigateToGrid();
+        return;
       }
     }
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [undo, redo, saveView, loadView]);
+  }, [undo, redo, navigateToGrid]);
 
   // Find component by ID using Map for O(1) lookup (js-index-maps)
   const getComponent = useCallback(
@@ -345,8 +312,8 @@ export function Canvas() {
 
   return (
     <div className="flex h-full w-full flex-col">
-      {/* View tabs */}
-      <ViewTabs />
+      {/* Canvas header with back button */}
+      <CanvasHeader />
 
       {/* Main canvas area */}
       <div className="relative flex-1 min-h-0">

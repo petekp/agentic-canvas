@@ -30,8 +30,8 @@ const baseContext: CanvasContext = {
   workspace: {
     id: "ws_1",
     name: "Test",
-    activeViewId: null,
-    savedViews: [],
+    activeSpaceId: null,
+    savedSpaces: [],
     componentCount: 0,
     gridUtilization: 0,
   },

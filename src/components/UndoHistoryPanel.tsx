@@ -96,10 +96,10 @@ function HistoryEntry({
           <span>{sourceLabel}</span>
           <span>&middot;</span>
           <span>{formatRelativeTime(entry.timestamp)}</span>
-          {entry.viewContext.activeViewName !== "Default" && (
+          {entry.spaceContext.activeSpaceName !== "Default" && (
             <>
               <span>&middot;</span>
-              <span className="text-zinc-400">{entry.viewContext.activeViewName}</span>
+              <span className="text-zinc-400">{entry.spaceContext.activeSpaceName}</span>
             </>
           )}
         </div>

@@ -38,8 +38,8 @@ export const maxDuration = 30;
 // tools?: unknown - Frontend tool definitions from client
 // canvas: Canvas - Current canvas state
 // recentChanges?: RecentChange[] - Recent canvas changes
-// activeViewName?: string | null - Currently active view name
-// views?: View[] - Available views
+// activeSpaceName?: string | null - Currently active space name
+// spaces?: Space[] - Available spaces
 
 /**
  * Normalizes incoming messages to AI SDK v6's parts-based format.
@@ -94,7 +94,7 @@ function normalizeMessages(messages: unknown[]): UIMessage[] {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { messages: rawMessages, system, tools, canvas, recentChanges, activeViewName, views } = body;
+    const { messages: rawMessages, system, tools, canvas, recentChanges, activeSpaceName, spaces } = body;
 
     // Normalize messages to ensure parts array format (handles legacy content format)
     const messages = normalizeMessages(rawMessages ?? []);
@@ -102,9 +102,9 @@ export async function POST(req: Request) {
     // Build dynamic system prompt based on current canvas state and context
     const dynamicSystemPrompt = createSystemPrompt({
       canvas,
-      activeViewName,
+      activeSpaceName,
       recentChanges,
-      views,
+      spaces,
     });
 
     // Combine any forwarded frontend system messages with our dynamic prompt

@@ -45,24 +45,42 @@ export {
   useUndoHistoryViewer,
 } from "./useUndo";
 
-// View hooks
-export function useViews() {
+// Space hooks
+export function useSpaces() {
   return useStore(
     useShallow((state) => ({
-      views: state.workspace.views,
-      activeViewId: state.activeViewId,
-      saveView: state.saveView,
-      loadView: state.loadView,
-      deleteView: state.deleteView,
-      renameView: state.renameView,
-      duplicateView: state.duplicateView,
-      createEmptyView: state.createEmptyView,
-      setActiveView: state.setActiveView,
+      spaces: state.workspace.spaces,
+      activeSpaceId: state.activeSpaceId,
+      lastSpaceId: state.lastSpaceId,
+      saveSpace: state.saveSpace,
+      loadSpace: state.loadSpace,
+      deleteSpace: state.deleteSpace,
+      renameSpace: state.renameSpace,
+      duplicateSpace: state.duplicateSpace,
+      createEmptySpace: state.createEmptySpace,
+      setActiveSpace: state.setActiveSpace,
       hasUnsavedChanges: state.hasUnsavedChanges,
-      pinView: state.pinView,
-      unpinView: state.unpinView,
+      pinSpace: state.pinSpace,
+      unpinSpace: state.unpinSpace,
+      // Deprecated aliases
+      views: state.workspace.spaces, // Backwards compat
+      activeViewId: state.activeSpaceId, // Backwards compat
+      saveView: state.saveSpace,
+      loadView: state.loadSpace,
+      deleteView: state.deleteSpace,
+      renameView: state.renameSpace,
+      duplicateView: state.duplicateSpace,
+      createEmptyView: state.createEmptySpace,
+      setActiveView: state.setActiveSpace,
+      pinView: state.pinSpace,
+      unpinView: state.unpinSpace,
     }))
   );
+}
+
+/** @deprecated Use useSpaces instead */
+export function useViews() {
+  return useSpaces();
 }
 
 // Data hooks
@@ -103,6 +121,9 @@ export { useInsightLoop, addRecentChange } from "./useInsightLoop";
 // State signal adapter hook
 export { useStateSignals } from "./useStateSignals";
 export { useStateDebugSnapshot } from "./useStateDebug";
+
+// Space navigation hook
+export { useSpaceNavigation } from "./useSpaceNavigation";
 
 // Notification hooks
 export function useNotifications() {

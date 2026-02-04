@@ -331,12 +331,12 @@ function calculateGridUtilization(canvas: Canvas): number {
 
 // Options for workspace context creation
 export interface WorkspaceContextOptions {
-  activeViewId?: string | null;
-  activeViewName?: string;
+  activeSpaceId?: string | null;
+  activeSpaceName?: string;
 }
 
 /**
- * Creates workspace context with optional view information
+ * Creates workspace context with optional space information
  */
 function createWorkspaceContext(
   canvas: Canvas,
@@ -344,9 +344,9 @@ function createWorkspaceContext(
 ): WorkspaceContext {
   return {
     id: "default",
-    name: options?.activeViewName ?? "Default Workspace",
-    activeViewId: options?.activeViewId ?? null,
-    savedViews: [], // Views are managed by workspace slice
+    name: options?.activeSpaceName ?? "Default Workspace",
+    activeSpaceId: options?.activeSpaceId ?? null,
+    savedSpaces: [], // Spaces are managed by workspace slice
     componentCount: canvas.components.length,
     gridUtilization: calculateGridUtilization(canvas),
   };
