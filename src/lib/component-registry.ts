@@ -29,6 +29,7 @@ import {
   BarChart3,
   MessageSquare,
   Layers,
+  Triangle,
 } from "lucide-react";
 
 // ============================================================================
@@ -48,7 +49,7 @@ export type ContentRenderer = LazyExoticComponent<ComponentType<any>>;
 export interface ComponentTypeConfig {
   typeId: string;
   label: string;
-  category: "personal" | "github" | "posthog" | "slack";
+  category: "personal" | "github" | "posthog" | "slack" | "vercel";
   config: Record<string, unknown>;
   size: { cols: number; rows: number };
   queryType: string;
@@ -59,7 +60,7 @@ export interface ComponentTypeConfig {
  * Category metadata for grouping in dropdown
  */
 export interface CategoryConfig {
-  id: "personal" | "github" | "posthog" | "slack";
+  id: "personal" | "github" | "posthog" | "slack" | "vercel";
   label: string;
   icon: LucideIcon;
 }
@@ -117,6 +118,14 @@ export const CONTENT_RENDERERS: Record<string, ContentRenderer> = {
   "slack.thread-watch": lazy(
     () => import("@/components/canvas/renderers/ThreadWatchContent")
   ),
+
+  // Vercel components
+  "vercel.deployments": lazy(
+    () => import("@/components/canvas/renderers/DeploymentsContent")
+  ),
+  "vercel.project-status": lazy(
+    () => import("@/components/canvas/renderers/ProjectStatusContent")
+  ),
 };
 
 // ============================================================================
@@ -131,6 +140,7 @@ export const CATEGORIES: CategoryConfig[] = [
   { id: "github", label: "GitHub (All)", icon: GitPullRequest },
   { id: "posthog", label: "PostHog", icon: BarChart3 },
   { id: "slack", label: "Slack", icon: MessageSquare },
+  { id: "vercel", label: "Vercel", icon: Triangle },
 ];
 
 /**
@@ -293,6 +303,26 @@ export const COMPONENT_TYPES: ComponentTypeConfig[] = [
     size: { cols: 3, rows: 4 },
     queryType: "thread_watch",
     source: "slack",
+  },
+
+  // === Vercel ===
+  {
+    typeId: "vercel.deployments",
+    label: "Deployments",
+    category: "vercel",
+    config: { limit: 10 },
+    size: { cols: 4, rows: 3 },
+    queryType: "deployments",
+    source: "vercel",
+  },
+  {
+    typeId: "vercel.project-status",
+    label: "Project Status",
+    category: "vercel",
+    config: {},
+    size: { cols: 2, rows: 2 },
+    queryType: "project_info",
+    source: "vercel",
   },
 ];
 

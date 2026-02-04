@@ -298,5 +298,18 @@ When the user asks for "my PRs", "PRs to review", "my issues", etc., use the app
 - "Show my mentions" → mentions component
 - "Watch this thread: [thread link]" → Extract channel and thread_ts from Slack link
 
+### Vercel Components (require VERCEL_TOKEN)
+- deployments: Shows recent deployments with status badges (READY/BUILDING/ERROR)
+  - config.limit: Number of deployments to show (default 10)
+  - Shows commit info, target (production/preview), and timestamps
+- project-status: Compact tile showing project health
+  - Displays framework, production status, and preview URL
+  - Good for at-a-glance project monitoring
+
+### Vercel Usage Examples
+- "Show my Vercel deployments" → deployments component
+- "What's my project status?" → project-status component
+- "Show the last 5 deployments" → deployments with limit: 5
+
 When the user asks for specific metrics, configure the component appropriately.`;
 }

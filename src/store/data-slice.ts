@@ -206,6 +206,8 @@ async function fetchDataFromSource(binding: DataBinding): Promise<{ data: unknow
       return fetchPostHogData(binding);
     case "slack":
       return fetchSlackData(binding);
+    case "vercel":
+      return fetchVercelData(binding);
     case "mock-github":
     default:
       return fetchGitHubData(binding);
@@ -259,6 +261,27 @@ async function fetchSlackData(binding: DataBinding): Promise<{ data: unknown; tt
   const { query } = binding;
 
   const response = await fetch("/api/slack", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      type: query.type,
+      params: query.params,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error ?? `API error: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+// Fetch data from Vercel API route
+async function fetchVercelData(binding: DataBinding): Promise<{ data: unknown; ttl: number }> {
+  const { query } = binding;
+
+  const response = await fetch("/api/vercel", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

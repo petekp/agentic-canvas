@@ -187,3 +187,71 @@ export interface SlackThreadData {
   }>;
   replyCount: number;
 }
+
+// Vercel Types
+// ============================================================================
+
+/** API response shape for Vercel deployments */
+export interface VercelDeploymentData {
+  id: string;
+  name: string;
+  url: string | null;
+  state: "BUILDING" | "ERROR" | "INITIALIZING" | "QUEUED" | "READY" | "CANCELED";
+  createdAt: number;
+  buildingAt?: number;
+  readyAt?: number;
+  target: "production" | "preview";
+  inspectorUrl?: string;
+  commit: {
+    sha: string;
+    message: string;
+    ref: string;
+    author: string;
+  } | null;
+  creator: string;
+}
+
+/** API response shape for Vercel project info */
+export interface VercelProjectData {
+  id: string;
+  name: string;
+  framework: string;
+  nodeVersion?: string;
+  buildCommand?: string;
+  outputDirectory?: string;
+  rootDirectory?: string;
+  link: {
+    type: string;
+    repo: string;
+    repoId?: string;
+    org: string;
+  } | null;
+  latestProduction: {
+    id: string;
+    url: string | null;
+    state: string;
+    createdAt: number;
+  } | null;
+  updatedAt: number;
+  createdAt: number;
+}
+
+/** API response shape for Vercel deployment events */
+export interface VercelDeploymentEventsData {
+  id: string;
+  name: string;
+  url: string | null;
+  state: string;
+  target: "production" | "preview";
+  createdAt: number;
+  buildingAt?: number;
+  readyAt?: number;
+  errorCode?: string;
+  errorMessage?: string;
+  events: Array<{
+    id: string;
+    type: string;
+    text: string;
+    timestamp: number;
+  }>;
+}

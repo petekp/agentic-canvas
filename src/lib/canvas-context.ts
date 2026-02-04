@@ -152,6 +152,9 @@ const TYPE_METADATA: Record<string, { name: string; category: "data" | "metric" 
   "slack.channel-activity": { name: "Channel Activity", category: "timeline" },
   "slack.mentions": { name: "Mentions", category: "data" },
   "slack.thread-watch": { name: "Thread Watch", category: "timeline" },
+  // Vercel components
+  "vercel.deployments": { name: "Deployments", category: "timeline" },
+  "vercel.project-status": { name: "Project Status", category: "metric" },
 };
 
 /**
@@ -244,6 +247,22 @@ function summarizeComponent(
     } else if (component.typeId === "slack.thread-watch" && data.parent) {
       const thread = data as { replyCount: number };
       summary = `${typeMeta.name} with ${thread.replyCount} replies`;
+    }
+    // Vercel components
+    else if (component.typeId === "vercel.deployments" && Array.isArray(data)) {
+      const deployments = data as Array<{ state: string; target: string }>;
+      summary = `${typeMeta.name} showing ${deployments.length} deployments`;
+      const building = deployments.filter((d) => d.state === "BUILDING").length;
+      const errored = deployments.filter((d) => d.state === "ERROR").length;
+      if (building > 0) highlights.push(`${building} building`);
+      if (errored > 0) highlights.push(`${errored} failed`);
+      const prodCount = deployments.filter((d) => d.target === "production").length;
+      if (prodCount > 0) highlights.push(`${prodCount} production`);
+    } else if (component.typeId === "vercel.project-status" && data.name) {
+      const project = data as { name: string; framework: string; latestProduction?: { state: string } };
+      summary = `${typeMeta.name} for ${project.name}`;
+      if (project.framework) highlights.push(project.framework);
+      if (project.latestProduction?.state) highlights.push(`Status: ${project.latestProduction.state}`);
     }
   } else if (component.dataState.status === "loading") {
     summary += " (loading data...)";
@@ -491,6 +510,36 @@ function extractDataDetails(component: ComponentInstance): string[] {
     details.push(`  - Thread by ${thread.parent.user}: "${parentText}"`);
     details.push(`  - ${thread.replyCount} replies`);
   }
+  // Vercel components
+  else if (component.typeId === "vercel.deployments" && Array.isArray(data)) {
+    const deployments = data as Array<{
+      id: string;
+      state: string;
+      target: string;
+      commit?: { sha: string; message: string; author: string };
+      createdAt: number;
+    }>;
+    for (const d of deployments.slice(0, 5)) {
+      const target = d.target === "production" ? "[prod]" : "[preview]";
+      const commit = d.commit ? `${d.commit.sha} by ${d.commit.author}` : "no commit";
+      details.push(`  - ${d.state} ${target}: ${commit}`);
+    }
+    if (deployments.length > 5) details.push(`  ... and ${deployments.length - 5} more deployments`);
+  } else if (component.typeId === "vercel.project-status") {
+    const project = data as {
+      name: string;
+      framework: string;
+      latestProduction?: { state: string; url: string | null; createdAt: number };
+    };
+    details.push(`  - Project: ${project.name}`);
+    details.push(`  - Framework: ${project.framework ?? "unknown"}`);
+    if (project.latestProduction) {
+      details.push(`  - Production: ${project.latestProduction.state}`);
+      if (project.latestProduction.url) {
+        details.push(`  - URL: ${project.latestProduction.url}`);
+      }
+    }
+  }
 
   return details;
 }
@@ -597,6 +646,17 @@ export function getAvailableComponentTypes(): { typeId: string; name: string; de
       typeId: "slack.thread-watch",
       name: "Thread Watch",
       description: "Monitors a specific Slack thread for replies (3x4 default). Requires Slack Bot Token.",
+    },
+    // Vercel
+    {
+      typeId: "vercel.deployments",
+      name: "Deployments",
+      description: "Shows recent deployments with status badges (ready/building/error) and commit info (4x3 default). Requires Vercel Token.",
+    },
+    {
+      typeId: "vercel.project-status",
+      name: "Project Status",
+      description: "Compact tile showing project health with production status and preview URL (2x2 default). Requires Vercel Token.",
     },
   ];
 }

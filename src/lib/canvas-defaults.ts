@@ -14,6 +14,8 @@ export const DEFAULT_SIZES: Record<string, { cols: number; rows: number }> = {
   "slack.channel-activity": { cols: 4, rows: 4 },
   "slack.mentions": { cols: 4, rows: 3 },
   "slack.thread-watch": { cols: 3, rows: 4 },
+  "vercel.deployments": { cols: 4, rows: 3 },
+  "vercel.project-status": { cols: 2, rows: 2 },
 };
 
 export const DEFAULT_BINDINGS: Record<string, DataBinding> = {
@@ -81,6 +83,16 @@ export const DEFAULT_BINDINGS: Record<string, DataBinding> = {
     source: "slack",
     query: { type: "thread_watch", params: {} },
     refreshInterval: 30000,
+  },
+  "vercel.deployments": {
+    source: "vercel",
+    query: { type: "deployments", params: { limit: 10 } },
+    refreshInterval: 30000,
+  },
+  "vercel.project-status": {
+    source: "vercel",
+    query: { type: "project_info", params: {} },
+    refreshInterval: 120000,
   },
 };
 
