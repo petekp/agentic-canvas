@@ -179,7 +179,7 @@ function FloatingChat() {
   return (
     <div
       ref={constraintsRef}
-      className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center px-4 sm:px-6"
+      className="fixed inset-x-0 bottom-6 z-50 flex justify-center px-4 sm:px-6"
     >
       <motion.div
         ref={containerRef}
