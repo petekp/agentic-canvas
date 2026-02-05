@@ -37,6 +37,7 @@ export type TypeId = string;
 export type DataSourceId = string;
 export type UndoId = string;
 export type TriggerId = string;
+export type TransformId = string;
 
 // ============================================================================
 // 2. Grid & Layout
@@ -78,6 +79,7 @@ export interface Workspace {
   /** @deprecated Use spaces instead */
   views?: Space[];
   triggers: ProactiveTrigger[];
+  transforms: Map<TransformId, TransformDefinition>;
   settings: WorkspaceSettings;
   createdAt: number;
   updatedAt: number;
@@ -351,6 +353,31 @@ export interface DataBinding {
   source: DataSourceId;
   query: DataQuery;
   refreshInterval: number | null;
+  transformId?: TransformId; // Reference to a stored transform
+}
+
+// ============================================================================
+// 10a. Data Transforms
+// ============================================================================
+
+export interface TransformDefinition {
+  id: TransformId;
+  name: string;
+  description: string;
+  /**
+   * The actual transform code - a function body that receives `data` and returns transformed data.
+   * Example: "return data.filter(m => m.text.toLowerCase().includes('@pete'))"
+   */
+  code: string;
+  /** What data sources/query types this transform is compatible with */
+  compatibleWith: TransformCompatibility[];
+  createdAt: number;
+  createdBy: "user" | "assistant";
+}
+
+export interface TransformCompatibility {
+  source: DataSourceId;
+  queryType: string;
 }
 
 export interface DataQuery {
@@ -740,7 +767,7 @@ export interface MetricNode extends TemplateNodeBase {
 export interface ListNode extends TemplateNodeBase {
   type: "list";
   props?: {
-    limit?: number;
+    limit?: number | string;
     density?: "compact" | "normal" | "relaxed";
   };
   children?: TemplateNode[];
@@ -749,7 +776,7 @@ export interface ListNode extends TemplateNodeBase {
 export interface TimelineNode extends TemplateNodeBase {
   type: "timeline";
   props?: {
-    limit?: number;
+    limit?: number | string;
   };
   children?: TemplateNode[];
 }

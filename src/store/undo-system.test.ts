@@ -60,9 +60,11 @@ describe("undo batching", () => {
 describe("undo view context", () => {
   it("switches back to the view where the change occurred", () => {
     const store = createTestStore();
-    const defaultViewId = store.getState().activeViewId;
+    const defaultSpaceId = store.getState().activeSpaceId;
 
-    const viewId = store.getState().createEmptyView({ name: "Focus", switchTo: true });
+    const spaceId = store
+      .getState()
+      .createEmptySpace({ name: "Focus", switchTo: true });
 
     store.getState().addComponent({
       typeId: "github.stat-tile",
@@ -70,24 +72,24 @@ describe("undo view context", () => {
     });
 
     // Switch away from the view before undo.
-    store.getState().setActiveView(defaultViewId);
+    store.getState().setActiveSpace(defaultSpaceId);
 
     store.getState().undo();
 
-    expect(store.getState().activeViewId).toBe(viewId);
+    expect(store.getState().activeSpaceId).toBe(spaceId);
   });
 });
 
 describe("view operations", () => {
   it("renames should be undoable", () => {
     const store = createTestStore();
-    const viewId = store.getState().activeViewId;
+    const spaceId = store.getState().activeSpaceId;
 
     const originalName = store
       .getState()
-      .workspace.views.find((view) => view.id === viewId)?.name;
+      .workspace.spaces.find((space) => space.id === spaceId)?.name;
 
-    store.getState().renameView(viewId!, "Renamed");
+    store.getState().renameSpace(spaceId!, "Renamed");
 
     expect(store.getState().undoStack.length).toBeGreaterThan(0);
 
@@ -95,7 +97,7 @@ describe("view operations", () => {
 
     const nameAfterUndo = store
       .getState()
-      .workspace.views.find((view) => view.id === viewId)?.name;
+      .workspace.spaces.find((space) => space.id === spaceId)?.name;
 
     expect(nameAfterUndo).toBe(originalName);
   });

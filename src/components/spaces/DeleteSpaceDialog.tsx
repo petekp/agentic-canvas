@@ -33,7 +33,7 @@ export function DeleteSpaceDialog({
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Delete "{spaceName}"?</AlertDialogTitle>
+          <AlertDialogTitle>Delete &quot;{spaceName}&quot;?</AlertDialogTitle>
           <AlertDialogDescription>
             This will remove all {componentCount} component{componentCount !== 1 ? "s" : ""} in this space.
             This action can be undone.

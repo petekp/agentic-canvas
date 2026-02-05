@@ -10,6 +10,8 @@ import type {
   Space,
   SpaceId,
   TriggerId,
+  TransformId,
+  TransformDefinition,
   Canvas,
   ComponentInstance,
   SaveSpacePayload,
@@ -62,6 +64,7 @@ const initialWorkspace: Workspace = {
   threadId: "",
   spaces: [defaultSpace], // Start with default space
   triggers: [],
+  transforms: new Map(), // Start with no transforms
   settings: {
     theme: "system",
     voiceEnabled: false,
@@ -121,6 +124,12 @@ export interface WorkspaceSlice {
   getSpaces: () => Space[];
   // Computed helper
   hasUnsavedChanges: () => boolean;
+  // Transform management
+  createTransform: (transform: Omit<TransformDefinition, "id" | "createdAt">) => TransformId;
+  updateTransform: (id: TransformId, updates: Partial<TransformDefinition>) => void;
+  deleteTransform: (id: TransformId) => void;
+  getTransform: (id: TransformId) => TransformDefinition | undefined;
+  getTransforms: () => TransformDefinition[];
 
   // Deprecated method aliases for backwards compatibility
   /** @deprecated Use saveSpace instead */
@@ -730,6 +739,53 @@ export const createWorkspaceSlice: StateCreator<
 
   getSpaces: () => {
     return get().workspace.spaces;
+  },
+
+  // Transform management methods
+  createTransform: (transform) => {
+    const id = `transform_${nanoid(10)}`;
+    const now = Date.now();
+
+    set((state) => {
+      state.workspace.transforms.set(id, {
+        ...transform,
+        id,
+        createdAt: now,
+      });
+      state.workspace.updatedAt = now;
+    });
+
+    return id;
+  },
+
+  updateTransform: (id, updates) => {
+    const existing = get().workspace.transforms.get(id);
+    if (!existing) return;
+
+    set((state) => {
+      const transform = state.workspace.transforms.get(id);
+      if (transform) {
+        Object.assign(transform, updates);
+        state.workspace.updatedAt = Date.now();
+      }
+    });
+  },
+
+  deleteTransform: (id) => {
+    if (!get().workspace.transforms.has(id)) return;
+
+    set((state) => {
+      state.workspace.transforms.delete(id);
+      state.workspace.updatedAt = Date.now();
+    });
+  },
+
+  getTransform: (id) => {
+    return get().workspace.transforms.get(id);
+  },
+
+  getTransforms: () => {
+    return Array.from(get().workspace.transforms.values());
   },
 
   // Deprecated method aliases - delegate to new methods

@@ -138,6 +138,25 @@ function buildPrompt(
   feedbackPatterns: unknown[],
   userProfile: unknown
 ): string {
+  function formatContentList(items: unknown[]): string {
+    const lines: string[] = [];
+    for (const item of items) {
+      if (item && typeof item === "object" && "content" in item) {
+        const content = (item as { content?: unknown }).content;
+        if (typeof content === "string" && content.trim().length > 0) {
+          lines.push(`- ${content}`);
+          continue;
+        }
+      }
+      try {
+        lines.push(`- ${JSON.stringify(item)}`);
+      } catch {
+        lines.push("- [unserializable]");
+      }
+    }
+    return lines.join("\n");
+  }
+
   const canvasSummary = context.canvasComponents
     .map((c) => {
       const dataPreview = c.data
@@ -154,16 +173,14 @@ function buildPrompt(
           .join("\n")
       : "No recent changes detected.";
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recentInsightsSummary =
     recentInsights.length > 0
-      ? recentInsights.map((i: any) => `- ${i.content}`).join("\n")
+      ? formatContentList(recentInsights)
       : "No recent insights shared.";
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const feedbackSummary =
     feedbackPatterns.length > 0
-      ? feedbackPatterns.map((f: any) => `- ${f.content}`).join("\n")
+      ? formatContentList(feedbackPatterns)
       : "No feedback yet.";
 
   return `

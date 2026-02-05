@@ -5,15 +5,25 @@ import { NextRequest } from "next/server";
 
 const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN;
 const SLACK_API = "https://slack.com/api";
+const SLACK_USER_MENTION_REGEX = /<@([A-Z0-9]+)>/g;
 
 interface SlackRequest {
-  type: "channel_activity" | "mentions" | "thread_watch";
+  type:
+    | "channel_activity"
+    | "mentions"
+    | "thread_watch"
+    | "user_lookup"
+    | "user_list"
+    | "channel_list";
   params: {
     channelId?: string;
     channelName?: string;
     userId?: string;
     threadTs?: string;
     limit?: number;
+    includeThreadReplies?: boolean;
+    threadRepliesLimit?: number;
+    query?: string;
   };
 }
 
@@ -22,9 +32,12 @@ interface SlackUser {
   id: string;
   name: string;
   real_name?: string;
+  deleted?: boolean;
+  is_bot?: boolean;
   profile?: {
     display_name?: string;
     image_48?: string;
+    email?: string;
   };
 }
 
@@ -45,10 +58,18 @@ interface SlackMessage {
   bot_id?: string;
 }
 
+interface SlackMentionInfo {
+  userId: string;
+  username?: string;
+  displayName?: string;
+}
+
 interface SlackChannel {
   id: string;
   name: string;
   is_private?: boolean;
+  is_member?: boolean;
+  is_archived?: boolean;
 }
 
 export async function POST(req: NextRequest) {
@@ -82,6 +103,18 @@ export async function POST(req: NextRequest) {
         data = await fetchThreadReplies(params, headers);
         ttl = 30000; // 30 second cache for threads
         break;
+      case "user_lookup":
+        data = await fetchUsersByQuery(params, headers);
+        ttl = 300000;
+        break;
+      case "user_list":
+        data = await fetchUserList(params, headers);
+        ttl = 300000;
+        break;
+      case "channel_list":
+        data = await fetchChannelList(params, headers);
+        ttl = 300000;
+        break;
       default:
         return Response.json({ error: "Unknown query type" }, { status: 400 });
     }
@@ -101,9 +134,12 @@ async function resolveChannelId(
   channelName: string,
   headers: HeadersInit
 ): Promise<string | undefined> {
-  const res = await fetch(`${SLACK_API}/conversations.list?limit=200`, {
-    headers,
-  });
+  const res = await fetch(
+    `${SLACK_API}/conversations.list?limit=200&types=public_channel,private_channel`,
+    {
+      headers,
+    }
+  );
 
   if (!res.ok) return undefined;
 
@@ -114,6 +150,37 @@ async function resolveChannelId(
     (c: SlackChannel) => c.name === channelName.replace(/^#/, "")
   );
   return channel?.id;
+}
+
+async function fetchChannelList(
+  params: SlackRequest["params"],
+  headers: HeadersInit
+) {
+  const limit = params.limit ?? 200;
+  const res = await fetch(
+    `${SLACK_API}/conversations.list?limit=${limit}&exclude_archived=true&types=public_channel,private_channel`,
+    { headers }
+  );
+
+  if (!res.ok) {
+    throw new Error(`Slack API error: ${res.status} ${res.statusText}`);
+  }
+
+  const data = await res.json();
+  if (!data.ok) {
+    throw new Error(`Slack API error: ${data.error}`);
+  }
+
+  const channels: SlackChannel[] = data.channels ?? [];
+  return channels
+    .filter((channel) => !channel.is_archived)
+    .map((channel) => ({
+      id: channel.id,
+      name: channel.name,
+      isMember: Boolean(channel.is_member),
+      isPrivate: Boolean(channel.is_private),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 // Fetch user info for display names
@@ -133,6 +200,37 @@ async function fetchUserInfo(
   }
 }
 
+async function fetchUsersList(
+  headers: HeadersInit
+): Promise<SlackUser[] | null> {
+  try {
+    const res = await fetch(`${SLACK_API}/users.list?limit=200`, { headers });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data.ok) return null;
+    return data.members ?? [];
+  } catch {
+    return null;
+  }
+}
+
+function scoreUserMatch(query: string, user: SlackUser): number {
+  const normalized = query.toLowerCase();
+  const username = user.name?.toLowerCase() ?? "";
+  const displayName = user.profile?.display_name?.toLowerCase() ?? "";
+  const realName = user.real_name?.toLowerCase() ?? "";
+  const email = user.profile?.email?.toLowerCase() ?? "";
+
+  if (username === normalized) return 100;
+  if (displayName === normalized || realName === normalized) return 90;
+  if (username.startsWith(normalized)) return 70;
+  if (displayName.startsWith(normalized) || realName.startsWith(normalized)) return 60;
+  if (username.includes(normalized)) return 50;
+  if (displayName.includes(normalized) || realName.includes(normalized)) return 40;
+  if (email && email.startsWith(normalized)) return 30;
+  return 0;
+}
+
 // Build user cache for batch lookups
 async function buildUserCache(
   userIds: string[],
@@ -140,6 +238,7 @@ async function buildUserCache(
 ): Promise<Map<string, SlackUser>> {
   const cache = new Map<string, SlackUser>();
   const uniqueIds = [...new Set(userIds.filter(Boolean))];
+  const missing = new Set(uniqueIds);
 
   // Fetch in parallel (up to 10 at a time to avoid rate limits)
   const batches: string[][] = [];
@@ -152,8 +251,23 @@ async function buildUserCache(
       batch.map((id) => fetchUserInfo(id, headers))
     );
     results.forEach((user, idx) => {
-      if (user) cache.set(batch[idx], user);
+      if (user) {
+        cache.set(batch[idx], user);
+        missing.delete(batch[idx]);
+      }
     });
+  }
+
+  if (missing.size > 0) {
+    const users = await fetchUsersList(headers);
+    if (users) {
+      users.forEach((user) => {
+        if (missing.has(user.id)) {
+          cache.set(user.id, user);
+          missing.delete(user.id);
+        }
+      });
+    }
   }
 
   return cache;
@@ -167,6 +281,67 @@ function getUserDisplayName(user: SlackUser | undefined): string {
     user.name ||
     "Unknown"
   );
+}
+
+function extractMentionIds(text: string | undefined): string[] {
+  if (!text) return [];
+  return [...text.matchAll(SLACK_USER_MENTION_REGEX)]
+    .map((match) => match[1])
+    .filter(Boolean);
+}
+
+function buildMentionMetadata(
+  text: string | undefined,
+  userCache: Map<string, SlackUser>
+): SlackMentionInfo[] {
+  const ids = extractMentionIds(text);
+  const uniqueIds = [...new Set(ids)];
+
+  return uniqueIds.map((id) => {
+    const user = userCache.get(id);
+    return {
+      userId: id,
+      username: user?.name,
+      displayName: user ? getUserDisplayName(user) : undefined,
+    };
+  });
+}
+
+function replaceMentionsWithNames(
+  text: string,
+  userCache: Map<string, SlackUser>
+): string {
+  return text.replace(SLACK_USER_MENTION_REGEX, (_, id) => {
+    const user = userCache.get(id);
+    if (!user) return `<@${id}>`;
+    const name = getUserDisplayName(user);
+    return name && name !== "Unknown" ? `@${name}` : `<@${id}>`;
+  });
+}
+
+async function fetchThreadReplyMessages(
+  channelId: string,
+  threadTs: string,
+  limit: number | undefined,
+  headers: HeadersInit
+): Promise<SlackMessage[]> {
+  try {
+    const limitParam = limit ? `&limit=${limit}` : "";
+    const res = await fetch(
+      `${SLACK_API}/conversations.replies?channel=${channelId}&ts=${threadTs}${limitParam}`,
+      { headers }
+    );
+
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (!data.ok) return [];
+
+    const messages: SlackMessage[] = data.messages ?? [];
+    // First message is the parent, rest are replies
+    return messages.filter((msg) => msg.ts !== threadTs);
+  } catch {
+    return [];
+  }
 }
 
 async function fetchChannelActivity(
@@ -199,22 +374,64 @@ async function fetchChannelActivity(
 
   const data = await res.json();
   if (!data.ok) {
+    if (data.error === "not_in_channel") {
+      const channelLabel = params.channelName ? `#${params.channelName.replace(/^#/, "")}` : "the channel";
+      throw new Error(
+        `Slack bot is not a member of ${channelLabel}. Invite the app to the channel or choose another channel.`
+      );
+    }
     throw new Error(`Slack API error: ${data.error}`);
   }
 
   const messages: SlackMessage[] = data.messages ?? [];
+  const includeThreadReplies = Boolean(params.includeThreadReplies);
+  const threadRepliesLimit = params.threadRepliesLimit ?? 20;
 
-  // Build user cache for display names
-  const userIds = messages.map((m) => m.user).filter(Boolean) as string[];
-  const userCache = await buildUserCache(userIds, headers);
+  let expandedMessages = messages;
 
-  return messages
+  if (includeThreadReplies) {
+    const parents = messages.filter((m) => (m.reply_count ?? 0) > 0);
+    const repliesByParent = new Map<string, SlackMessage[]>();
+
+    for (const parent of parents) {
+      const replies = await fetchThreadReplyMessages(
+        channelId,
+        parent.ts,
+        threadRepliesLimit,
+        headers
+      );
+      if (replies.length > 0) {
+        repliesByParent.set(parent.ts, replies);
+      }
+    }
+
+    expandedMessages = messages.flatMap((msg) => [
+      msg,
+      ...(repliesByParent.get(msg.ts) ?? []),
+    ]);
+  }
+
+  const seen = new Set<string>();
+  const dedupedMessages = expandedMessages.filter((msg) => {
+    if (seen.has(msg.ts)) return false;
+    seen.add(msg.ts);
+    return true;
+  });
+
+  // Build user cache for display names (authors + mentions)
+  const userIds = dedupedMessages.map((m) => m.user).filter(Boolean) as string[];
+  const mentionIds = dedupedMessages.flatMap((m) => extractMentionIds(m.text));
+  const lookupIds = [...userIds, ...mentionIds];
+  const userCache = await buildUserCache(lookupIds, headers);
+
+  return dedupedMessages
     .filter((m) => !m.subtype || m.subtype === "bot_message")
     .map((msg) => ({
       ts: msg.ts,
       user: getUserDisplayName(userCache.get(msg.user ?? "")),
       userId: msg.user,
-      text: msg.text,
+      text: replaceMentionsWithNames(msg.text, userCache),
+      mentions: buildMentionMetadata(msg.text, userCache),
       threadTs: msg.thread_ts,
       replyCount: msg.reply_count ?? 0,
       reactions: msg.reactions?.map((r) => ({
@@ -290,6 +507,93 @@ async function fetchMentions(
   }));
 }
 
+async function fetchUsersByQuery(
+  params: SlackRequest["params"],
+  headers: HeadersInit
+) {
+  const query = params.query?.trim();
+  const limit = params.limit ?? 5;
+
+  if (!query) {
+    throw new Error("User lookup requires a query string.");
+  }
+
+  const res = await fetch(`${SLACK_API}/users.list?limit=200`, { headers });
+  if (!res.ok) {
+    throw new Error(`Slack API error: ${res.status} ${res.statusText}`);
+  }
+
+  const data = await res.json();
+  if (!data.ok) {
+    if (data.error === "missing_scope") {
+      throw new Error("Slack user lookup requires the users:read scope.");
+    }
+    if (data.error === "not_allowed_token_type") {
+      throw new Error("Slack user lookup requires a token with users:read scope.");
+    }
+    throw new Error(`Slack API error: ${data.error}`);
+  }
+
+  const members: SlackUser[] = data.members ?? [];
+  const normalizedQuery = query.replace(/^@/, "").toLowerCase();
+
+  return members
+    .filter((user) => !user.deleted)
+    .map((user) => ({
+      user,
+      score: scoreUserMatch(normalizedQuery, user),
+    }))
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map(({ user }) => {
+      const displayName = getUserDisplayName(user);
+      return {
+        userId: user.id,
+        username: user.name,
+        displayName: displayName !== "Unknown" ? displayName : undefined,
+      };
+    });
+}
+
+async function fetchUserList(
+  params: SlackRequest["params"],
+  headers: HeadersInit
+) {
+  const limit = params.limit ?? 30;
+  const res = await fetch(`${SLACK_API}/users.list?limit=200`, { headers });
+  if (!res.ok) {
+    throw new Error(`Slack API error: ${res.status} ${res.statusText}`);
+  }
+
+  const data = await res.json();
+  if (!data.ok) {
+    if (data.error === "missing_scope") {
+      throw new Error("Slack user lookup requires the users:read scope.");
+    }
+    if (data.error === "not_allowed_token_type") {
+      throw new Error("Slack user lookup requires a token with users:read scope.");
+    }
+    throw new Error(`Slack API error: ${data.error}`);
+  }
+
+  const members: SlackUser[] = data.members ?? [];
+
+  return members
+    .filter((user) => !user.deleted && !user.is_bot)
+    .map((user) => ({
+      userId: user.id,
+      username: user.name,
+      displayName: getUserDisplayName(user) !== "Unknown" ? getUserDisplayName(user) : undefined,
+    }))
+    .sort((a, b) => {
+      const left = (a.displayName || a.username || "").toLowerCase();
+      const right = (b.displayName || b.username || "").toLowerCase();
+      return left.localeCompare(right);
+    })
+    .slice(0, limit);
+}
+
 async function fetchThreadReplies(
   params: SlackRequest["params"],
   headers: HeadersInit
@@ -324,6 +628,12 @@ async function fetchThreadReplies(
 
   const data = await res.json();
   if (!data.ok) {
+    if (data.error === "not_in_channel") {
+      const channelLabel = params.channelName ? `#${params.channelName.replace(/^#/, "")}` : "the channel";
+      throw new Error(
+        `Slack bot is not a member of ${channelLabel}. Invite the app to the channel or choose another channel.`
+      );
+    }
     throw new Error(`Slack API error: ${data.error}`);
   }
 

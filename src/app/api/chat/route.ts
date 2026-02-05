@@ -94,7 +94,7 @@ function normalizeMessages(messages: unknown[]): UIMessage[] {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { messages: rawMessages, system, tools, canvas, recentChanges, activeSpaceName, spaces } = body;
+    const { messages: rawMessages, system, tools, canvas, recentChanges, activeSpaceName, spaces, transforms } = body;
 
     // Normalize messages to ensure parts array format (handles legacy content format)
     const messages = normalizeMessages(rawMessages ?? []);
@@ -105,6 +105,7 @@ export async function POST(req: Request) {
       activeSpaceName,
       recentChanges,
       spaces,
+      transforms,
     });
 
     // Combine any forwarded frontend system messages with our dynamic prompt

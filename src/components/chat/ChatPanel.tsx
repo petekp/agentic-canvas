@@ -42,13 +42,13 @@ function KeyboardShortcutHandler() {
 }
 
 // Handler for pending chat messages from notifications
-function PendingChatMessageHandler() {
-  const threadRuntime = useThreadRuntime();
+export function PendingChatMessageHandler() {
+  const threadRuntime = useThreadRuntime({ optional: true });
   const pendingMessage = useStore((state) => state.pendingChatMessage);
   const clearPendingChatMessage = useStore((state) => state.clearPendingChatMessage);
 
   useEffect(() => {
-    if (pendingMessage) {
+    if (pendingMessage && threadRuntime) {
       // Send the message via the thread composer
       const composer = threadRuntime.composer;
       composer.setText(pendingMessage);
@@ -171,8 +171,8 @@ function FloatingChat() {
   const trayTransition = useMemo(
     () =>
       isResizing
-        ? { duration: 0 }
-        : { type: "spring", stiffness: 520, damping: 42, mass: 0.8 },
+        ? ({ duration: 0 } as const)
+        : ({ type: "spring", stiffness: 520, damping: 42, mass: 0.8 } as const),
     [isResizing]
   );
 

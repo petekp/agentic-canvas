@@ -4,5 +4,6 @@
 export * from "./table";
 export * from "./badge";
 export * from "./button";
+export * from "./separator";
 export * from "./tooltip";
 export * from "./accordion";

@@ -3,12 +3,21 @@
 // AssistantProvider - wraps useChatRuntime with canvas context
 // Uses AssistantChatTransport to forward system messages and body data to the API
 
-import { AssistantRuntimeProvider } from "@assistant-ui/react";
+import { AssistantRuntimeProvider, useAssistantState } from "@assistant-ui/react";
 import { useChatRuntime, AssistantChatTransport } from "@assistant-ui/react-ai-sdk";
 import type { UIMessage } from "@ai-sdk/react";
 import { useStore } from "@/store";
 import { formatRecentChanges } from "@/lib/canvas-context";
-import { useRef } from "react";
+import { createUIMessageFromAppendMessage } from "@/lib/ai-sdk-message";
+import { useEffect, useMemo, useRef } from "react";
+
+type SendRequestBody = {
+  canvas: unknown;
+  recentChanges: unknown;
+  activeSpaceName: string | null;
+  spaces: unknown;
+  transforms: unknown;
+};
 
 interface AssistantProviderProps {
   children: React.ReactNode;
@@ -37,7 +46,8 @@ export function AssistantProvider({ children }: AssistantProviderProps) {
             return space?.name ?? null;
           })(),
           spaces: state.workspace.spaces,
-        };
+          transforms: state.getTransforms(),
+        } satisfies SendRequestBody;
       },
     });
   }
@@ -45,11 +55,45 @@ export function AssistantProvider({ children }: AssistantProviderProps) {
   // Create runtime with the stable transport
   const runtime = useChatRuntime({
     transport: transportRef.current,
+    toCreateMessage: createUIMessageFromAppendMessage,
   });
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
+      <AssistantMessageSync />
       {children}
     </AssistantRuntimeProvider>
   );
+}
+
+function AssistantMessageSync() {
+  const messages = useAssistantState((s) => s.thread.messages);
+  const setMessages = useStore((s) => s.setMessages);
+
+  const normalized = useMemo(
+    () =>
+      messages.map((message) => {
+        const parts = Array.isArray(message.content)
+          ? message.content
+          : [];
+        const text = parts
+          .filter((part) => part.type === "text" && typeof part.text === "string")
+          .map((part) => part.text)
+          .join("");
+
+        return {
+          id: message.id ?? `msg_${message.role}_${message.createdAt?.getTime() ?? Date.now()}`,
+          role: message.role as "user" | "assistant",
+          content: text,
+          createdAt: message.createdAt?.getTime() ?? Date.now(),
+        };
+      }),
+    [messages]
+  );
+
+  useEffect(() => {
+    setMessages(normalized);
+  }, [normalized, setMessages]);
+
+  return null;
 }

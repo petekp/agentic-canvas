@@ -33,7 +33,7 @@ export function SpacesEmptyState({ onCreateSpace }: SpacesEmptyStateProps) {
       </Button>
 
       <p className="text-xs text-muted-foreground/60 mt-4">
-        Or just say "Create a space for tracking PRs" in the chat
+        Or just say &quot;Create a space for tracking PRs&quot; in the chat
       </p>
     </div>
   );

@@ -125,7 +125,8 @@ SLACK_TEAM_ID=T01234567
 
 ### Slack App Setup
 1. Create app at api.slack.com/apps
-2. Add Bot Token Scopes: channels:history, channels:read, search:read, users:read
+2. Add Bot Token Scopes: channels:history, channels:read, users:read
+   Note: Slack mentions require a User OAuth token (xoxp-) with search:read. Bot tokens cannot use the search API.
 3. Install to workspace
 4. Copy Bot User OAuth Token
 

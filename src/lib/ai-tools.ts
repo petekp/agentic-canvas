@@ -23,7 +23,7 @@
 import { z } from "zod";
 import { getAvailableComponentTypes, describeCanvas, type RecentChange } from "./canvas-context";
 import { getDefaultTemplates } from "@/lib/templates";
-import type { Canvas, Space } from "@/types";
+import type { Canvas, Space, TransformDefinition } from "@/types";
 
 // ============================================================================
 // System Prompt Context
@@ -34,6 +34,7 @@ export interface SystemPromptContext {
   activeSpaceName?: string | null;
   recentChanges?: RecentChange[];
   spaces?: Space[];
+  transforms?: TransformDefinition[];
 }
 
 // Tool parameter schemas (using snake_case per project convention)
@@ -190,9 +191,42 @@ function formatSpacesForPrompt(spaces: Space[], activeSpaceName?: string | null)
     .join("\n");
 }
 
+// Format transforms for system prompt
+function formatTransformsForPrompt(transforms: TransformDefinition[]): string {
+  if (transforms.length === 0) {
+    return "No transforms defined yet.";
+  }
+
+  return transforms
+    .map((t) => {
+      const sources = t.compatibleWith.map((c) => `${c.source}/${c.queryType}`).join(", ");
+      return `- "${t.name}" (${t.id}): ${t.description} [works with: ${sources}]`;
+    })
+    .join("\n");
+}
+
+function formatIntegrationsForPrompt(): string {
+  const slackBot = Boolean(process.env.SLACK_BOT_TOKEN);
+  const slackUser = Boolean(process.env.SLACK_USER_TOKEN);
+  const posthog = Boolean(process.env.POSTHOG_API_KEY && process.env.POSTHOG_PROJECT_ID);
+  const vercel = Boolean(process.env.VERCEL_TOKEN);
+  const github = Boolean(process.env.GITHUB_TOKEN);
+
+  const availability = (value: boolean) => (value ? "available" : "unavailable");
+
+  return [
+    "## Integrations",
+    `- Slack bot token: ${availability(slackBot)}`,
+    `- Slack user token: ${availability(slackUser)}`,
+    `- GitHub: ${availability(github)}`,
+    `- PostHog: ${availability(posthog)}`,
+    `- Vercel: ${availability(vercel)}`,
+  ].join("\n");
+}
+
 // System prompt generator
 export function createSystemPrompt(context: SystemPromptContext): string {
-  const { canvas, activeSpaceName, recentChanges, spaces } = context;
+  const { canvas, activeSpaceName, recentChanges, spaces, transforms } = context;
   const componentTypes = getAvailableComponentTypes();
   const canvasDescription = describeCanvas(canvas);
 
@@ -211,8 +245,15 @@ export function createSystemPrompt(context: SystemPromptContext): string {
       ? `\n## Recent Activity\n${formatRecentChangesForPrompt(recentChanges)}\n`
       : "";
 
+  const transformsSection =
+    transforms && transforms.length > 0
+      ? `\n## Available Transforms\n${formatTransformsForPrompt(transforms)}\n`
+      : "";
+
+  const integrationsSection = `\n${formatIntegrationsForPrompt()}\n`;
+
   return `You are an AI assistant that helps users manage a canvas workspace with GitHub and PostHog analytics widgets. You can add, remove, move, resize, and update components on the canvas.
-${activeSpaceSection}${spacesSection}
+${activeSpaceSection}${spacesSection}${transformsSection}${integrationsSection}
 ## Canvas State
 ${canvasDescription}
 
@@ -252,6 +293,55 @@ ${componentTypes.map((t) => `- **${t.typeId}**: ${t.description}`).join("\n")}
 3. Use clear_canvas with preserve_pinned=true to keep important components
 4. Provide brief, helpful responses explaining what you did
 5. If a request is unclear, ask for clarification
+6. When a tool fails, do not surface raw error text. Summarize the issue in plain language and propose the next step. Do not add components until the issue is resolved. If you see an error prefixed with \"Action needed:\", follow its instructions.
+7. Do not claim a component was added until the tool succeeds. Before tool execution, use tentative language like \"I'll try to add...\" and only confirm after success.
+8. Treat tool results with \`success: false\` as failures, even if the tool call completed. Ask for the missing info or propose the next step instead of claiming success.
+9. When a tool returns \`action\` or \`missingFields\`, follow that guidance and ask the user for the specific missing inputs.
+
+## Data Transforms
+
+Transforms are reusable filters/transformations that process data from sources. The LLM generates deterministic JavaScript code once, which runs on every data fetch.
+
+### Creating Transforms
+Use **create_transform** to create a reusable transform:
+- name: Short name (e.g., "My Mentions")
+- description: What it does
+- code: JavaScript function body that receives 'data' and returns transformed data
+- compatible_with: Array of {source, query_type} pairs
+
+### Using Transforms
+When adding a component, pass transform_id to apply a stored transform:
+\`\`\`
+add_component({type_id: "slack.channel-activity", transform_id: "transform_abc123"})
+\`\`\`
+
+### Transform Examples
+- Filter Slack mentions: \`return data.filter(m => m.mentions?.some(u => u.username === 'pete'))\`
+- Only open PRs: \`return data.filter(pr => pr.state === 'open')\`
+- Sort by date: \`return [...data].sort((a,b) => new Date(b.created_at) - new Date(a.created_at))\`
+- First 5 items: \`return data.slice(0, 5)\`
+
+### When to Use Transforms
+- Filter data by keywords, users, or conditions
+- Show subsets of data (e.g., only open PRs, only messages from certain users)
+- Custom sorting or reshaping
+
+### Transform Reuse
+Before creating a new transform, check if an existing one in "Available Transforms" already does what's needed. Transforms can be reused across multiple components.
+
+### Adding Filtered Components
+Use **add_filtered_component** to create a component with a filter in one step:
+\`\`\`
+add_filtered_component({
+  type_id: "slack.channel-activity",
+  filter_name: "My Filter",
+  filter_description: "What the filter does",
+  filter_code: "return data.filter(item => /* condition */)",
+  config: { /* component-specific config */ }
+})
+\`\`\`
+
+The tool will validate required config and guide you if something is missing.
 
 ## Data Binding
 
@@ -283,19 +373,34 @@ When the user asks for "my PRs", "PRs to review", "my issues", etc., use the app
 - property-breakdown: Bar chart of visitors/pageviews by domain
 - top-pages: Ranked list of most visited pages
 
-### Slack Components (require SLACK_BOT_TOKEN)
-- channel-activity: Shows recent messages from a Slack channel
+### Slack Components
+- channel-activity: Shows recent messages from a Slack channel (requires SLACK_BOT_TOKEN)
   - config.channelId or config.channelName (e.g., "general" or "#engineering")
   - config.limit: Number of messages (default 20)
-- mentions: Shows messages where the user was @mentioned
+  - config.includeThreadReplies: true to include thread replies (useful when mentions live in threads)
+  - config.threadRepliesLimit: Max replies per thread (default 20)
+  - Each message includes \`mentions\` metadata: [{ userId, username, displayName }]
+- mentions: Shows messages where the user was @mentioned (requires **User OAuth token xoxp-**)
+  - Bot tokens cannot use Slack's search API.
+  - If only a bot token is available, use **channel-activity + a transform** and prefer filtering via the \`mentions\` array (fallback to \`text\` if needed).
   - config.limit: Number of mentions (default 10)
-- thread-watch: Monitors a specific thread for replies
+  - config.userId: (optional) show mentions for a specific user (use lookup_slack_user if you only have a handle)
+- thread-watch: Monitors a specific thread for replies (requires SLACK_BOT_TOKEN)
   - config.channelId or config.channelName: Channel containing the thread
   - config.threadTs: Timestamp of the parent message (e.g., "1234567890.123456")
+  - If you see a not_in_channel error, do not ask for channel ID. Ask the user to invite the Slack app to that channel or choose a channel where the app is already present.
+
+### Slack Tools
+- lookup_slack_user: Resolve a name/handle to Slack users (requires users:read scope)
+  - Use when you need a user's handle/ID to build a mention filter.
+  - If multiple matches, ask the user which one is correct.
 
 ### Slack Usage Examples
 - "Show messages from #general" → channel-activity with channelName: "general"
-- "Show my mentions" → mentions component
+- "Show my mentions (no user token)" → use add_filtered_component with type_id "slack.channel-activity" and a mentions filter. Omit channel config so the tool UI can prompt the user with a channel OptionList (includes "All available channels").
+- If the user hasn't specified a channel, ask them to pick from the available Slack channels surfaced by the tools (via the OptionList UI).
+- "Show my mentions (unknown user)" → do not try to resolve "@me" via lookup_slack_user; ask the user to pick themselves from the Slack user list. Only use lookup_slack_user when the user provides a specific handle/name and you need to disambiguate.
+- "Filter messages" → use add_filtered_component with filter_code
 - "Watch this thread: [thread link]" → Extract channel and thread_ts from Slack link
 
 ### Vercel Components (require VERCEL_TOKEN)

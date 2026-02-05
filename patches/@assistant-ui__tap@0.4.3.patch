@@ -1,0 +1,32 @@
+diff --git a/dist/core/ResourceFiber.js b/dist/core/ResourceFiber.js
+index d5447a79aa54901771b6ebe39f44d3563e255203..5e825b6361e6019533763bff60334a4f01f90bae 100644
+--- a/dist/core/ResourceFiber.js
++++ b/dist/core/ResourceFiber.js
+@@ -16,8 +16,10 @@ export function createResourceFiber(type, dispatchUpdate, strictMode = getDevStr
+     };
+ }
+ export function unmountResourceFiber(fiber) {
++    // In React development StrictMode, effect cleanup may run more than once for the
++    // same logical mount. Treat repeated unmount attempts as a no-op.
+     if (!fiber.isMounted)
+-        throw new Error("Tried to unmount a fiber that is already unmounted");
++        return;
+     fiber.isMounted = false;
+     cleanupAllEffects(fiber);
+ }
+diff --git a/src/core/ResourceFiber.ts b/src/core/ResourceFiber.ts
+index 937b2ba2e24071d1a20aafcb481004ef95e6402f..c9129c0cd3b42d8a54438e0b6176a60142664d84 100644
+--- a/src/core/ResourceFiber.ts
++++ b/src/core/ResourceFiber.ts
+@@ -23,8 +23,9 @@ export function createResourceFiber<R, P>(
+ }
+ 
+ export function unmountResourceFiber<R, P>(fiber: ResourceFiber<R, P>): void {
+-  if (!fiber.isMounted)
+-    throw new Error("Tried to unmount a fiber that is already unmounted");
++  // In React development StrictMode, effect cleanup may run more than once for the
++  // same logical mount. Treat repeated unmount attempts as a no-op.
++  if (!fiber.isMounted) return;
+ 
+   fiber.isMounted = false;
+   cleanupAllEffects(fiber);

@@ -9,7 +9,7 @@
 //
 // FETCH DEDUPLICATION:
 // pendingFetches tracks in-flight requests. If a fetch is already in progress
-// for a cache key, additional requests for that key no-op. This prevents
+// for a cache key, additional requests await the same promise. This prevents
 // thundering herd when multiple components mount simultaneously.
 //
 // COMPONENT DATA STATE:
@@ -28,7 +28,7 @@
 
 import { StateCreator } from "zustand";
 import type { AgenticCanvasStore } from "./index";
-import type { ComponentId, DataBinding, DataLoadingState, DataError } from "@/types";
+import type { ComponentId, DataBinding, DataLoadingState, DataError, TransformDefinition } from "@/types";
 
 // Cached data entry
 interface CachedData {
@@ -41,7 +41,7 @@ interface CachedData {
 // Slice interface
 export interface DataSlice {
   dataCache: Map<string, CachedData>;
-  pendingFetches: Set<string>;
+  pendingFetches: Map<string, Promise<void>>;
   fetchData: (componentId: ComponentId, binding: DataBinding) => Promise<void>;
   refreshComponent: (componentId: ComponentId) => Promise<void>;
   invalidateCache: (pattern?: string) => void;
@@ -58,7 +58,7 @@ export const createDataSlice: StateCreator<
   DataSlice
 > = (set, get) => ({
   dataCache: new Map(),
-  pendingFetches: new Set(),
+  pendingFetches: new Map(),
 
   fetchData: async (componentId, binding) => {
     const cacheKey = generateCacheKey(binding);
@@ -76,64 +76,86 @@ export const createDataSlice: StateCreator<
     }
 
     // Check if already fetching
-    if (get().pendingFetches.has(cacheKey)) {
-      return;
+    const existingFetch = get().pendingFetches.get(cacheKey);
+    if (existingFetch) {
+      return existingFetch;
     }
 
-    // Set loading state
+    const startedAt = Date.now();
+    const fetchPromise = (async () => {
+      try {
+        // Fetch from appropriate API based on source
+        const result = await fetchDataFromSource(binding);
+
+        // Apply transform if one is specified
+        let transformedData = result.data;
+        if (binding.transformId) {
+          const transform = get().workspace.transforms.get(binding.transformId);
+          if (transform) {
+            try {
+              transformedData = applyTransform(result.data, transform.code);
+            } catch (err) {
+              console.error(`Transform ${binding.transformId} failed:`, err);
+              // Fall back to untransformed data
+            }
+          }
+        }
+
+        // Update cache and component
+        set((state) => {
+          state.dataCache.set(cacheKey, {
+            data: transformedData,
+            fetchedAt: Date.now(),
+            ttl: result.ttl,
+            binding,
+          });
+
+          const comp = state.canvas.components.find((c) => c.id === componentId);
+          if (comp) {
+            comp.dataState = { status: "ready", data: transformedData, fetchedAt: Date.now() };
+          }
+        });
+
+        // Schedule refresh if interval set
+        if (binding.refreshInterval && binding.refreshInterval > 0) {
+          setTimeout(() => {
+            const currentComp = get().canvas.components.find((c) => c.id === componentId);
+            if (currentComp && currentComp.dataBinding === binding) {
+              get().fetchData(componentId, binding);
+            }
+          }, binding.refreshInterval);
+        }
+      } catch (error) {
+        const dataError: DataError = {
+          code: "UNKNOWN",
+          message: error instanceof Error ? error.message : "Unknown error",
+          source: binding.source,
+          retryable: true,
+        };
+
+        set((state) => {
+          const comp = state.canvas.components.find((c) => c.id === componentId);
+          if (comp) {
+            comp.dataState = { status: "error", error: dataError, attemptedAt: Date.now() };
+          }
+        });
+      } finally {
+        set((state) => {
+          state.pendingFetches.delete(cacheKey);
+        });
+      }
+    })();
+
+    // Set loading state and mark as pending
     set((state) => {
-      state.pendingFetches.add(cacheKey);
+      state.pendingFetches.set(cacheKey, fetchPromise);
       const comp = state.canvas.components.find((c) => c.id === componentId);
       if (comp) {
-        comp.dataState = { status: "loading", startedAt: Date.now() };
+        comp.dataState = { status: "loading", startedAt };
       }
     });
 
-    try {
-      // Fetch from appropriate API based on source
-      const result = await fetchDataFromSource(binding);
-
-      // Update cache and component
-      set((state) => {
-        state.dataCache.set(cacheKey, {
-          data: result.data,
-          fetchedAt: Date.now(),
-          ttl: result.ttl,
-          binding,
-        });
-        state.pendingFetches.delete(cacheKey);
-
-        const comp = state.canvas.components.find((c) => c.id === componentId);
-        if (comp) {
-          comp.dataState = { status: "ready", data: result.data, fetchedAt: Date.now() };
-        }
-      });
-
-      // Schedule refresh if interval set
-      if (binding.refreshInterval && binding.refreshInterval > 0) {
-        setTimeout(() => {
-          const currentComp = get().canvas.components.find((c) => c.id === componentId);
-          if (currentComp && currentComp.dataBinding === binding) {
-            get().fetchData(componentId, binding);
-          }
-        }, binding.refreshInterval);
-      }
-    } catch (error) {
-      const dataError: DataError = {
-        code: "UNKNOWN",
-        message: error instanceof Error ? error.message : "Unknown error",
-        source: binding.source,
-        retryable: true,
-      };
-
-      set((state) => {
-        state.pendingFetches.delete(cacheKey);
-        const comp = state.canvas.components.find((c) => c.id === componentId);
-        if (comp) {
-          comp.dataState = { status: "error", error: dataError, attemptedAt: Date.now() };
-        }
-      });
-    }
+    return fetchPromise;
   },
 
   refreshComponent: async (componentId) => {
@@ -296,4 +318,22 @@ async function fetchVercelData(binding: DataBinding): Promise<{ data: unknown; t
   }
 
   return response.json();
+}
+
+/**
+ * Apply a transform to data.
+ * The code should be a JavaScript function body that receives `data` and returns the transformed result.
+ * Example code: "return data.filter(m => m.mentions?.some(u => u.username === 'pete'))"
+ *
+ * NOTE: This intentionally uses new Function() to execute LLM-generated JavaScript.
+ * Transforms run client-side in the user's browser where they already have full access
+ * to their own data. The transform code is generated deterministically by the LLM
+ * and stored by the user.
+ */
+function applyTransform(data: unknown, code: string): unknown {
+  // Create a function from the code string
+  // The code should be the function BODY, receiving `data` as input
+  // eslint-disable-next-line @typescript-eslint/no-implied-eval
+  const fn = new Function("data", code);
+  return fn(data);
 }

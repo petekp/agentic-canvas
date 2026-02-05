@@ -150,6 +150,11 @@ export interface SlackMessageData {
   user: string;
   userId?: string;
   text: string;
+  mentions?: Array<{
+    userId: string;
+    username?: string;
+    displayName?: string;
+  }>;
   threadTs?: string;
   replyCount?: number;
   reactions?: Array<{ name: string; count: number }>;

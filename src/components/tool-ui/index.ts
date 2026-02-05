@@ -4,4 +4,5 @@
 
 export * from "./stats-display";
 export * from "./data-table";
+export * from "./option-list";
 export * from "./shared";

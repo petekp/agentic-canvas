@@ -268,6 +268,12 @@ function summarizeComponent(
     summary += " (loading data...)";
   } else if (component.dataState.status === "error") {
     summary += " (error loading data)";
+    const errorMessage = component.dataState.error?.message;
+    if (errorMessage) {
+      const shortened =
+        errorMessage.length > 160 ? `${errorMessage.slice(0, 157)}...` : errorMessage;
+      highlights.push(`Error: ${shortened}`);
+    }
   }
 
   // Add pinned status
@@ -640,7 +646,8 @@ export function getAvailableComponentTypes(): { typeId: string; name: string; de
     {
       typeId: "slack.mentions",
       name: "Mentions",
-      description: "Shows messages where you've been @mentioned (4x3 default). Requires Slack Bot Token.",
+      description:
+        "Shows messages where you've been @mentioned (4x3 default). Requires User OAuth token (xoxp-). If only a bot token is available, use channel-activity + a transform.",
     },
     {
       typeId: "slack.thread-watch",

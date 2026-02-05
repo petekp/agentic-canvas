@@ -47,6 +47,10 @@ const partialize = (state: AgenticCanvasStore) => ({
       },
     })),
     settings: state.workspace.settings,
+    // Serialize transforms Map to array for persistence (handle undefined for backwards compat)
+    transforms: state.workspace.transforms
+      ? Array.from(state.workspace.transforms.entries())
+      : [],
   },
   activeSpaceId: state.activeSpaceId,
   lastSpaceId: state.lastSpaceId,
@@ -68,16 +72,25 @@ export const useStore = create<AgenticCanvasStore>()(
       })),
       {
         name: "agentic-canvas",
-        version: 2, // Bump version to trigger migration for spaces
+        version: 3, // v3: Added transforms support
         // Persist canvas, workspace (spaces), and navigation state
         partialize,
         // Re-fetch data for all components after rehydration
         onRehydrateStorage: () => (state) => {
           if (state) {
+            // Ensure transforms exists (backwards compat) and deserialize array to Map
+            if (state.workspace) {
+              if (Array.isArray(state.workspace.transforms as unknown)) {
+                const transformsArray = state.workspace.transforms as unknown as [string, import("@/types").TransformDefinition][];
+                state.workspace.transforms = new Map(transformsArray);
+              } else if (!state.workspace.transforms) {
+                state.workspace.transforms = new Map();
+              }
+            }
             state.initializeData();
           }
         },
-        // Migration from v1 (views) to v2 (spaces)
+        // Migration function
         migrate: (persistedState: unknown, version: number): PersistedState => {
           if (version < 2) {
             // Clean slate migration - start fresh with new space system
@@ -85,7 +98,18 @@ export const useStore = create<AgenticCanvasStore>()(
             // Return empty object - zustand will merge with defaults
             return {} as PersistedState;
           }
-          return persistedState as PersistedState;
+
+          const state = persistedState as PersistedState;
+
+          // v2 -> v3: Add transforms support
+          if (version < 3 && state.workspace) {
+            // Initialize transforms as empty array if not present
+            if (!state.workspace.transforms) {
+              state.workspace.transforms = [];
+            }
+          }
+
+          return state;
         },
       }
     )

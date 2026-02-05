@@ -40,10 +40,13 @@ export interface ChatState {
 export interface ChatSlice {
   // State
   chat: ChatState;
+  lastUserMessage: string | null;
 
   // Actions
   addUserMessage: (content: string) => void;
   addAssistantMessage: (content: string, toolCalls?: ToolCall[]) => void;
+  setMessages: (messages: ChatMessage[]) => void;
+  setLastUserMessage: (content: string | null) => void;
   setStreaming: (isStreaming: boolean) => void;
   updateStreamingContent: (content: string) => void;
   appendStreamingContent: (chunk: string) => void;
@@ -75,6 +78,7 @@ export const createChatSlice: StateCreator<
   ChatSlice
 > = (set) => ({
   chat: initialChatState,
+  lastUserMessage: null,
 
   addUserMessage: (content) => {
     set((state) => {
@@ -85,6 +89,7 @@ export const createChatSlice: StateCreator<
         createdAt: Date.now(),
       });
       state.chat.error = null;
+      state.lastUserMessage = content;
     });
   },
 
@@ -97,6 +102,18 @@ export const createChatSlice: StateCreator<
         toolCalls,
         createdAt: Date.now(),
       });
+    });
+  },
+
+  setMessages: (messages) => {
+    set((state) => {
+      state.chat.messages = messages;
+    });
+  },
+
+  setLastUserMessage: (content) => {
+    set((state) => {
+      state.lastUserMessage = content;
     });
   },
 

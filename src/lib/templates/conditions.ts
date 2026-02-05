@@ -49,11 +49,14 @@ function compareNumbers(
 }
 
 export function evaluateCondition(expression: ConditionExpression, ctx: ConditionContext): boolean {
-  if (expression.op === "and") {
-    return expression.conditions.every((condition) => evaluateCondition(condition, ctx));
-  }
-  if (expression.op === "or") {
-    return expression.conditions.some((condition) => evaluateCondition(condition, ctx));
+  if ("conditions" in expression) {
+    if (expression.op === "and") {
+      return expression.conditions.every((condition) => evaluateCondition(condition, ctx));
+    }
+    if (expression.op === "or") {
+      return expression.conditions.some((condition) => evaluateCondition(condition, ctx));
+    }
+    return false;
   }
 
   const left = resolveToken(expression.left, ctx) ?? expression.left;
