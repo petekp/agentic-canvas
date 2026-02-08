@@ -78,7 +78,6 @@ export interface NotificationActions {
   markAllAsRead: () => void;
   dismiss: (id: string) => void;
   dismissAll: () => void;
-  clearExpired: () => void;
 
   // Queries
   getUnreadCount: () => number;
@@ -87,7 +86,6 @@ export interface NotificationActions {
 
   // Polling control
   setPollingEnabled: (enabled: boolean) => void;
-  setPollingInterval: (ms: number) => void;
   updateLastPollTime: (source: string) => void;
 
   // Chat integration
@@ -183,15 +181,6 @@ export const createNotificationSlice: StateCreator<
     });
   },
 
-  clearExpired: () => {
-    const now = Date.now();
-    set((draft) => {
-      draft.notifications = draft.notifications.filter(
-        (n) => !n.expiresAt || n.expiresAt > now
-      );
-    });
-  },
-
   getUnreadCount: () => {
     return get().notifications.filter((n) => !n.read && !n.dismissed).length;
   },
@@ -210,12 +199,6 @@ export const createNotificationSlice: StateCreator<
   setPollingEnabled: (enabled) => {
     set((draft) => {
       draft.pollingEnabled = enabled;
-    });
-  },
-
-  setPollingInterval: (ms) => {
-    set((draft) => {
-      draft.pollingIntervalMs = Math.max(10000, ms); // Min 10s
     });
   },
 

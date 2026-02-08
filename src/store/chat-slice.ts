@@ -52,8 +52,6 @@ export interface ChatSlice {
   appendStreamingContent: (chunk: string) => void;
   finalizeStreamingMessage: (toolCalls?: ToolCall[]) => void;
   setError: (error: string | null) => void;
-  clearMessages: () => void;
-  updateToolCallResult: (messageId: string, toolCallId: string, result: unknown) => void;
 }
 
 // ============================================================================
@@ -161,24 +159,4 @@ export const createChatSlice: StateCreator<
     });
   },
 
-  clearMessages: () => {
-    set((state) => {
-      state.chat.messages = [];
-      state.chat.streamingContent = "";
-      state.chat.isStreaming = false;
-      state.chat.error = null;
-    });
-  },
-
-  updateToolCallResult: (messageId, toolCallId, result) => {
-    set((state) => {
-      const message = state.chat.messages.find((m) => m.id === messageId);
-      if (message?.toolCalls) {
-        const toolCall = message.toolCalls.find((tc) => tc.id === toolCallId);
-        if (toolCall) {
-          toolCall.result = result;
-        }
-      }
-    });
-  },
 });

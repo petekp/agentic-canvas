@@ -27,15 +27,6 @@ export function useComponent(id: ComponentId) {
   return useStore((state) => state.canvas.components.find((c) => c.id === id));
 }
 
-// Selection hook - returns whether a specific component is selected
-export function useIsSelected(id: ComponentId) {
-  return useStore((state) => state.selectedComponentId === id);
-}
-
-export function useComponentsByType(typeId: string) {
-  return useStore(useShallow((state) => state.canvas.components.filter((c) => c.typeId === typeId)));
-}
-
 // Re-export undo hooks
 export {
   useUndo,
@@ -77,10 +68,6 @@ export function useComponentData(id: ComponentId) {
   };
 }
 
-export function useIsLoading() {
-  return useStore((state) => state.canvas.components.some((c) => c.dataState.status === "loading"));
-}
-
 // Settings hooks
 export function useSettings() {
   return useStore(
@@ -89,10 +76,6 @@ export function useSettings() {
       updateSettings: state.updateSettings,
     }))
   );
-}
-
-export function useTheme() {
-  return useStore((state) => state.workspace.settings.theme);
 }
 
 // Polling hook

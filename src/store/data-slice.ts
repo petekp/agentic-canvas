@@ -28,7 +28,7 @@
 
 import { StateCreator } from "zustand";
 import type { AgenticCanvasStore } from "./index";
-import type { ComponentId, DataBinding, DataLoadingState, DataError } from "@/types";
+import type { ComponentId, DataBinding, DataError } from "@/types";
 
 // Cached data entry
 interface CachedData {
@@ -44,10 +44,7 @@ export interface DataSlice {
   pendingFetches: Map<string, Promise<void>>;
   fetchData: (componentId: ComponentId, binding: DataBinding) => Promise<void>;
   refreshComponent: (componentId: ComponentId) => Promise<void>;
-  invalidateCache: (pattern?: string) => void;
   initializeData: () => void;
-  _setCacheEntry: (key: string, data: CachedData) => void;
-  _setComponentDataState: (componentId: ComponentId, state: DataLoadingState) => void;
 }
 
 // Slice creator
@@ -209,21 +206,6 @@ export const createDataSlice: StateCreator<
     await get().fetchData(componentId, component.dataBinding);
   },
 
-  invalidateCache: (pattern) => {
-    set((state) => {
-      if (!pattern) {
-        state.dataCache.clear();
-      } else {
-        const regex = new RegExp(pattern);
-        for (const key of state.dataCache.keys()) {
-          if (regex.test(key)) {
-            state.dataCache.delete(key);
-          }
-        }
-      }
-    });
-  },
-
   initializeData: () => {
     // Fetch data for all components with data bindings
     // Called after rehydration from localStorage
@@ -235,20 +217,6 @@ export const createDataSlice: StateCreator<
     }
   },
 
-  _setCacheEntry: (key, data) => {
-    set((state) => {
-      state.dataCache.set(key, data);
-    });
-  },
-
-  _setComponentDataState: (componentId, dataState) => {
-    set((state) => {
-      const comp = state.canvas.components.find((c) => c.id === componentId);
-      if (comp) {
-        comp.dataState = dataState;
-      }
-    });
-  },
 });
 
 // Generate cache key from binding

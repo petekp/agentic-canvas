@@ -107,25 +107,6 @@ export interface UndoActions {
   getRedoDescription: () => string | null;
   getUndoHistory: (limit?: number) => EnhancedUndoEntry[];
 
-  // For specific sources
-  getEntriesBySource: (sourceType: CommandSource["type"]) => EnhancedUndoEntry[];
-  getEntriesByBatch: (batchId: BatchId) => EnhancedUndoEntry[];
-
-  // Policy management
-  setPolicies: (policies: UndoPolicy[]) => void;
-  addPolicy: (policy: UndoPolicy) => void;
-  removePolicy: (policyId: string) => void;
-
-  // Admin operations
-  placeRetentionHold: (
-    entryId: string,
-    hold: { reason: string; holdUntil: number; holdBy: string }
-  ) => void;
-  removeRetentionHold: (entryId: string) => void;
-
-  // Cleanup
-  clearHistory: () => void;
-  pruneOldEntries: (olderThan: number) => void;
 }
 
 export type UndoSlice = UndoState & UndoActions;
@@ -618,78 +599,6 @@ export const createUndoSlice: StateCreator<
     return limit ? reversed.slice(0, limit) : reversed;
   },
 
-  getEntriesBySource: (sourceType) => {
-    return get().undoStack.filter((e) => e.source.type === sourceType);
-  },
-
-  getEntriesByBatch: (batchId) => {
-    return get().undoStack.filter((e) => e.batchId === batchId);
-  },
-
-  // ============================================================================
-  // Policy Management
-  // ============================================================================
-
-  setPolicies: (policies) => {
-    set((draft) => {
-      draft.policies = policies;
-    });
-  },
-
-  addPolicy: (policy) => {
-    set((draft) => {
-      draft.policies.push(policy);
-    });
-  },
-
-  removePolicy: (policyId) => {
-    set((draft) => {
-      draft.policies = draft.policies.filter((p) => p.id !== policyId);
-    });
-  },
-
-  // ============================================================================
-  // Admin Operations
-  // ============================================================================
-
-  placeRetentionHold: (entryId, hold) => {
-    set((draft) => {
-      const entry = draft.undoStack.find((e) => e.id === entryId);
-      if (entry) {
-        entry.retentionHold = hold;
-        entry.canUndo = false;
-        entry.undoBlockedReason = `Retention hold: ${hold.reason}`;
-      }
-    });
-  },
-
-  removeRetentionHold: (entryId) => {
-    set((draft) => {
-      const entry = draft.undoStack.find((e) => e.id === entryId);
-      if (entry) {
-        entry.retentionHold = undefined;
-        entry.canUndo = true;
-        entry.undoBlockedReason = undefined;
-      }
-    });
-  },
-
-  // ============================================================================
-  // Cleanup
-  // ============================================================================
-
-  clearHistory: () => {
-    set((draft) => {
-      draft.undoStack = [];
-      draft.redoStack = [];
-    });
-  },
-
-  pruneOldEntries: (olderThan) => {
-    set((draft) => {
-      draft.undoStack = draft.undoStack.filter((e) => e.timestamp >= olderThan);
-    });
-  },
 });
 
 // ============================================================================

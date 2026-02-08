@@ -34,20 +34,6 @@ export function useUndo() {
     getUndoDescription,
     getRedoDescription,
     getUndoHistory,
-    getEntriesBySource,
-    getEntriesByBatch,
-
-    // Policy management
-    policies,
-    setPolicies,
-    addPolicy,
-    removePolicy,
-
-    // Admin
-    placeRetentionHold,
-    removeRetentionHold,
-    clearHistory,
-    pruneOldEntries,
   } = useStore(
     useShallow((state) => ({
       undoStack: state.undoStack,
@@ -65,16 +51,6 @@ export function useUndo() {
       getUndoDescription: state.getUndoDescription,
       getRedoDescription: state.getRedoDescription,
       getUndoHistory: state.getUndoHistory,
-      getEntriesBySource: state.getEntriesBySource,
-      getEntriesByBatch: state.getEntriesByBatch,
-      policies: state.policies,
-      setPolicies: state.setPolicies,
-      addPolicy: state.addPolicy,
-      removePolicy: state.removePolicy,
-      placeRetentionHold: state.placeRetentionHold,
-      removeRetentionHold: state.removeRetentionHold,
-      clearHistory: state.clearHistory,
-      pruneOldEntries: state.pruneOldEntries,
     }))
   );
 
@@ -105,20 +81,6 @@ export function useUndo() {
 
     // Query operations
     getHistory: getUndoHistory,
-    getBySource: getEntriesBySource,
-    getByBatch: getEntriesByBatch,
-
-    // Policy management
-    policies,
-    setPolicies,
-    addPolicy,
-    removePolicy,
-
-    // Admin
-    placeRetentionHold,
-    removeRetentionHold,
-    clearHistory,
-    pruneOldEntries,
   };
 }
 

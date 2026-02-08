@@ -9,7 +9,6 @@ import type {
   WorkspaceSettings,
   Space,
   SpaceId,
-  TriggerId,
   TransformId,
   TransformDefinition,
   Canvas,
@@ -108,19 +107,15 @@ export interface WorkspaceSlice {
   createEmptySpace: (nameOrOptions?: string | CreateSpaceOptions) => SpaceId;
   setActiveSpace: (spaceId: SpaceId | null) => void;
   updateSettings: (settings: Partial<WorkspaceSettings>) => void;
-  activateTrigger: (triggerId: TriggerId) => void;
   // Pin/unpin spaces
   pinSpace: (spaceId: SpaceId) => void;
   unpinSpace: (spaceId: SpaceId) => void;
-  // Cleanup stale unpinned spaces
-  cleanupStaleSpaces: (maxAgeMs?: number) => number;
   // Get spaces list for AI context
   getSpaces: () => Space[];
   // Computed helper
   hasUnsavedChanges: () => boolean;
   // Transform management
   createTransform: (transform: Omit<TransformDefinition, "id" | "createdAt">) => TransformId;
-  updateTransform: (id: TransformId, updates: Partial<TransformDefinition>) => void;
   deleteTransform: (id: TransformId) => void;
   getTransform: (id: TransformId) => TransformDefinition | undefined;
   getTransforms: () => TransformDefinition[];
@@ -585,18 +580,6 @@ export const createWorkspaceSlice: StateCreator<
     });
   },
 
-  activateTrigger: (triggerId) => {
-    const trigger = get().workspace.triggers.find((t) => t.id === triggerId);
-    if (!trigger || !trigger.enabled) {
-      return;
-    }
-
-    // v0.1: Simple trigger handling
-    if (trigger.spaceId) {
-      get().loadSpace(trigger.spaceId);
-    }
-  },
-
   pinSpace: (spaceId) => {
     const space = get().workspace.spaces.find((s) => s.id === spaceId);
     if (!space || space.pinned) return;
@@ -681,33 +664,6 @@ export const createWorkspaceSlice: StateCreator<
     });
   },
 
-  cleanupStaleSpaces: (maxAgeMs = 7 * 24 * 60 * 60 * 1000) => {
-    const now = Date.now();
-    const activeSpaceId = get().activeSpaceId;
-    let cleanedCount = 0;
-
-    set((state) => {
-      const spacesToKeep = state.workspace.spaces.filter((space) => {
-        // Keep pinned spaces
-        if (space.pinned) return true;
-        // Keep active space
-        if (space.id === activeSpaceId) return true;
-        // Keep spaces newer than maxAge
-        if (now - space.createdAt < maxAgeMs) return true;
-        // Remove stale unpinned spaces
-        cleanedCount++;
-        return false;
-      });
-
-      state.workspace.spaces = spacesToKeep;
-      if (cleanedCount > 0) {
-        state.workspace.updatedAt = now;
-      }
-    });
-
-    return cleanedCount;
-  },
-
   getSpaces: () => {
     return get().workspace.spaces;
   },
@@ -727,19 +683,6 @@ export const createWorkspaceSlice: StateCreator<
     });
 
     return id;
-  },
-
-  updateTransform: (id, updates) => {
-    const existing = get().workspace.transforms.get(id);
-    if (!existing) return;
-
-    set((state) => {
-      const transform = state.workspace.transforms.get(id);
-      if (transform) {
-        Object.assign(transform, updates);
-        state.workspace.updatedAt = Date.now();
-      }
-    });
   },
 
   deleteTransform: (id) => {
