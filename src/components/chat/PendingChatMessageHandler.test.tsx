@@ -13,8 +13,8 @@ vi.mock("@assistant-ui/react", async (importOriginal) => {
 
 describe("PendingChatMessageHandler", () => {
   it("does not clear queued messages when thread runtime is unavailable", async () => {
-    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-    globalThis.React = React;
+    (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+    (globalThis as Record<string, unknown>).React = React;
     const storage = new Map<string, string>();
     globalThis.localStorage = {
       getItem: (key: string) => storage.get(key) ?? null,

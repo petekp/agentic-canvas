@@ -7,10 +7,12 @@ import { createCanvasSlice, type CanvasSlice } from "@/store/canvas-slice";
 import { createWorkspaceSlice, type WorkspaceSlice } from "@/store/workspace-slice";
 import { createUndoSlice, type UndoSlice } from "@/store/undo-slice";
 import { createDataSlice, type DataSlice } from "@/store/data-slice";
+import { createChatSlice, type ChatSlice } from "@/store/chat-slice";
+import { createNotificationSlice, type NotificationSlice } from "@/store/notification-slice";
 import { createAssistantSource } from "@/lib/undo/types";
 import type { DataBinding } from "@/types";
 
-type TestStore = CanvasSlice & WorkspaceSlice & UndoSlice & DataSlice;
+type TestStore = CanvasSlice & WorkspaceSlice & UndoSlice & DataSlice & ChatSlice & NotificationSlice;
 
 enableMapSet();
 
@@ -21,6 +23,8 @@ function createTestStore() {
       ...createWorkspaceSlice(...args),
       ...createUndoSlice(...args),
       ...createDataSlice(...args),
+      ...createChatSlice(...args),
+      ...createNotificationSlice(...args),
     }))
   );
 }

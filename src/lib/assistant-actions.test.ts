@@ -7,13 +7,14 @@ import { createCanvasSlice, type CanvasSlice } from "@/store/canvas-slice";
 import { createDataSlice, type DataSlice } from "@/store/data-slice";
 import { createUndoSlice, type UndoSlice } from "@/store/undo-slice";
 import { createWorkspaceSlice, type WorkspaceSlice } from "@/store/workspace-slice";
+import { createChatSlice, type ChatSlice } from "@/store/chat-slice";
 import { createNotificationSlice, type NotificationSlice } from "@/store/notification-slice";
 import type { CreateComponentPayload } from "@/types";
 import { addComponentWithFetch } from "@/lib/assistant-actions";
 
 enableMapSet();
 
-type TestStore = CanvasSlice & DataSlice & UndoSlice & WorkspaceSlice & NotificationSlice;
+type TestStore = CanvasSlice & DataSlice & UndoSlice & WorkspaceSlice & ChatSlice & NotificationSlice;
 
 function createTestStore() {
   return create<TestStore>()(
@@ -22,6 +23,7 @@ function createTestStore() {
       ...createDataSlice(...args),
       ...createUndoSlice(...args),
       ...createWorkspaceSlice(...args),
+      ...createChatSlice(...args),
       ...createNotificationSlice(...args),
     }))
   );

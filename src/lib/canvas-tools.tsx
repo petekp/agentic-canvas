@@ -783,7 +783,7 @@ const AddComponentToolUI = ({
 }: {
   args: AddComponentToolArgs;
   status: { type: string };
-  result: unknown;
+  result?: unknown;
 }) => {
   const needsSlackChannel = shouldOfferSlackChannelPicker(args.type_id, result);
   const needsSlackUser = shouldOfferSlackUserPicker(args.type_id, result);
@@ -1497,7 +1497,7 @@ const AddFilteredComponentToolUI = ({
 }: {
   args: AddFilteredComponentToolArgs;
   status: { type: string };
-  result: unknown;
+  result?: unknown;
 }) => {
   const needsSlackChannel = shouldOfferSlackChannelPicker(args.type_id, result);
   const mentionIntent = isMentionsIntent({

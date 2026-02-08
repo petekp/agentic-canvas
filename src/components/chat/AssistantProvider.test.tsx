@@ -5,8 +5,8 @@ import { createRoot } from "react-dom/client";
 
 describe("AssistantProvider", () => {
   it("renders without runtime errors", async () => {
-    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-    globalThis.React = React;
+    (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+    (globalThis as Record<string, unknown>).React = React;
     const storage = new Map<string, string>();
     globalThis.localStorage = {
       getItem: (key: string) => storage.get(key) ?? null,
@@ -55,8 +55,8 @@ describe("AssistantProvider", () => {
   });
 
   it("unmounts cleanly under React.StrictMode (no double-unmount crashes)", async () => {
-    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-    globalThis.React = React;
+    (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+    (globalThis as Record<string, unknown>).React = React;
     const storage = new Map<string, string>();
     globalThis.localStorage = {
       getItem: (key: string) => storage.get(key) ?? null,

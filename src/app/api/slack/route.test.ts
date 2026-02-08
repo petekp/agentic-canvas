@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import type { NextRequest } from "next/server";
 function jsonResponse(body: unknown, ok = true, status = 200) {
   return {
     ok,
@@ -45,7 +46,7 @@ describe("Slack API route", () => {
       }),
     });
 
-    const res = await POST(req as unknown as Request);
+    const res = await POST(req as unknown as NextRequest);
     const payload = await res.json();
 
     expect(res.status).toBe(500);
@@ -90,7 +91,7 @@ describe("Slack API route", () => {
       }),
     });
 
-    const res = await POST(req as unknown as Request);
+    const res = await POST(req as unknown as NextRequest);
     const payload = await res.json();
 
     expect(res.status).toBe(200);
@@ -145,7 +146,7 @@ describe("Slack API route", () => {
       }),
     });
 
-    const res = await POST(req as unknown as Request);
+    const res = await POST(req as unknown as NextRequest);
     const payload = await res.json();
 
     expect(res.status).toBe(200);
@@ -217,7 +218,7 @@ describe("Slack API route", () => {
       }),
     });
 
-    const res = await POST(req as unknown as Request);
+    const res = await POST(req as unknown as NextRequest);
     const payload = await res.json();
 
     expect(res.status).toBe(200);
@@ -270,7 +271,7 @@ describe("Slack API route", () => {
       }),
     });
 
-    const res = await POST(req as unknown as Request);
+    const res = await POST(req as unknown as NextRequest);
     const payload = await res.json();
 
     expect(res.status).toBe(200);
@@ -330,7 +331,7 @@ describe("Slack API route", () => {
       }),
     });
 
-    const res = await POST(req as unknown as Request);
+    const res = await POST(req as unknown as NextRequest);
     const payload = await res.json();
 
     expect(res.status).toBe(200);
@@ -365,7 +366,7 @@ describe("Slack API route", () => {
       }),
     });
 
-    const res = await POST(req as unknown as Request);
+    const res = await POST(req as unknown as NextRequest);
     const payload = await res.json();
 
     expect(res.status).toBe(200);
@@ -403,7 +404,7 @@ describe("Slack API route", () => {
       }),
     });
 
-    const res = await POST(req as unknown as Request);
+    const res = await POST(req as unknown as NextRequest);
     const payload = await res.json();
 
     expect(res.status).toBe(200);

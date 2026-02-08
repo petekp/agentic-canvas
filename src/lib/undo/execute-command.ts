@@ -27,7 +27,7 @@
 // See: .claude/plans/undo-redo-system-v2.md
 
 import type { UndoCanvasCommand, FilesystemCommand, HybridCommand } from "./types";
-import type { CanvasSnapshot } from "@/types";
+import type { CanvasSnapshot, ComponentInstance } from "@/types";
 
 // ============================================================================
 // Snapshot-based State Restoration

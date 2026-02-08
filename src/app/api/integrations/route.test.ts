@@ -32,7 +32,7 @@ describe("GET /api/integrations", () => {
     });
 
     const { GET } = await import("@/app/api/integrations/route");
-    const res = await GET({} as Request);
+    const res = await GET();
     const payload = await res.json();
 
     expect(payload.slack.bot).toBe(true);

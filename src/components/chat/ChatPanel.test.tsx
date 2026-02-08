@@ -80,8 +80,8 @@ vi.mock("@assistant-ui/react", () => {
 
 describe("ChatPanel", () => {
   it("does not place the composer inside a pointer-events-none ancestor", async () => {
-    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-    globalThis.React = React;
+    (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+    (globalThis as Record<string, unknown>).React = React;
     const storage = new Map<string, string>();
     globalThis.localStorage = {
       getItem: (key: string) => storage.get(key) ?? null,
