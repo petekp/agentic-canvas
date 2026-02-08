@@ -84,12 +84,6 @@ export interface UndoActions {
     spaceContext?: Partial<UndoSpaceContext>;
     beforeSpaceState?: SpaceStateSnapshot;
     afterSpaceState?: SpaceStateSnapshot;
-    /** @deprecated Use spaceContext instead */
-    viewContext?: Partial<UndoSpaceContext>;
-    /** @deprecated Use beforeSpaceState instead */
-    beforeViewState?: SpaceStateSnapshot;
-    /** @deprecated Use afterSpaceState instead */
-    afterViewState?: SpaceStateSnapshot;
   }) => EnhancedUndoEntry;
 
   undo: (steps?: number) => EnhancedUndoEntry | null;
@@ -205,24 +199,17 @@ export const createUndoSlice: StateCreator<
     const auditCorrelationId = generateAuditId();
     const timestamp = Date.now();
 
-    // Support both new spaceContext and deprecated viewContext
     const spaceContext: UndoSpaceContext = {
       ...getDefaultSpaceContext(get),
       ...params.spaceContext,
-      ...params.viewContext, // Backwards compat
     };
 
-    // Support both new beforeSpaceState and deprecated beforeViewState
     const beforeSpaceState = params.beforeSpaceState
       ? cloneSpaceStateSnapshot(params.beforeSpaceState)
-      : params.beforeViewState
-        ? cloneSpaceStateSnapshot(params.beforeViewState)
-        : undefined;
+      : undefined;
     const afterSpaceState = params.afterSpaceState
       ? cloneSpaceStateSnapshot(params.afterSpaceState)
-      : params.afterViewState
-        ? cloneSpaceStateSnapshot(params.afterViewState)
-        : undefined;
+      : undefined;
 
     // Create the entry
     const entry: EnhancedUndoEntry = {

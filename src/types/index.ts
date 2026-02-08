@@ -3,7 +3,7 @@
 // Single source of truth for all TypeScript interfaces in the canvas system.
 //
 // ORGANIZATION:
-// 1. Identifiers - Branded string types for type safety (ComponentId, ViewId, etc.)
+// 1. Identifiers - Branded string types for type safety (ComponentId, SpaceId, etc.)
 // 2. Grid & Layout - Position, Size, GridConfig for spatial awareness
 // 3. Workspace & Canvas - Top-level containers and views
 // 4. Component Instance - The core data structure for canvas items
@@ -31,8 +31,6 @@ import type { JSONSchema7 } from "json-schema";
 export type WorkspaceId = string;
 export type ComponentId = string;
 export type SpaceId = string;
-/** @deprecated Use SpaceId instead */
-export type ViewId = SpaceId;
 export type TypeId = string;
 export type DataSourceId = string;
 export type UndoId = string;
@@ -76,8 +74,6 @@ export interface Workspace {
   canvas: Canvas;
   threadId: string;
   spaces: Space[];
-  /** @deprecated Use spaces instead */
-  views?: Space[];
   triggers: ProactiveTrigger[];
   transforms: Map<TransformId, TransformDefinition>;
   settings: WorkspaceSettings;
@@ -110,9 +106,6 @@ export interface Space {
   updatedAt: number;
   lastVisitedAt: number;
 }
-
-/** @deprecated Use Space instead */
-export type View = Space;
 
 // ============================================================================
 // 4. Component Instance
@@ -157,12 +150,6 @@ export type CanvasCommand =
   | { type: "space.save"; payload: SaveSpacePayload }
   | { type: "space.load"; payload: LoadSpacePayload }
   | { type: "space.delete"; payload: DeleteSpacePayload }
-  /** @deprecated Use space.save instead */
-  | { type: "view.save"; payload: SaveSpacePayload }
-  /** @deprecated Use space.load instead */
-  | { type: "view.load"; payload: LoadSpacePayload }
-  /** @deprecated Use space.delete instead */
-  | { type: "view.delete"; payload: DeleteSpacePayload }
   | { type: "canvas.clear"; payload: ClearCanvasPayload }
   | { type: "batch"; payload: BatchPayload };
 
@@ -202,22 +189,13 @@ export interface SaveSpacePayload {
   triggerIds?: TriggerId[];
 }
 
-/** @deprecated Use SaveSpacePayload instead */
-export type SaveViewPayload = SaveSpacePayload;
-
 export interface LoadSpacePayload {
   spaceId: SpaceId;
 }
 
-/** @deprecated Use LoadSpacePayload instead */
-export type LoadViewPayload = LoadSpacePayload;
-
 export interface DeleteSpacePayload {
   spaceId: SpaceId;
 }
-
-/** @deprecated Use DeleteSpacePayload instead */
-export type DeleteViewPayload = DeleteSpacePayload;
 
 export interface ClearCanvasPayload {
   preservePinned: boolean;
@@ -289,8 +267,6 @@ export interface UndoEntry {
   afterSnapshot: CanvasSnapshot;
   /** Space context where this action was performed (for auto-navigation on undo) */
   spaceContext: SpaceId | null;
-  /** @deprecated Use spaceContext instead */
-  viewContext?: SpaceId | null;
 }
 
 export type HistoryAction =
@@ -566,11 +542,7 @@ export interface WorkspaceContext {
   id: WorkspaceId;
   name: string;
   activeSpaceId: SpaceId | null;
-  /** @deprecated Use activeSpaceId instead */
-  activeViewId?: SpaceId | null;
   savedSpaces: SpaceSummary[];
-  /** @deprecated Use savedSpaces instead */
-  savedViews?: SpaceSummary[];
   componentCount: number;
   gridUtilization: number;
 }
@@ -584,9 +556,6 @@ export interface SpaceSummary {
   createdBy: "user" | "assistant";
   lastVisitedAt: number;
 }
-
-/** @deprecated Use SpaceSummary instead */
-export type ViewSummary = SpaceSummary;
 
 export interface ContextBudget {
   maxTokens: number;
@@ -841,8 +810,6 @@ export type CanvasEvent =
   | { type: "component.ready"; payload: ComponentReadyPayload }
   | { type: "layout.changed"; payload: LayoutChangePayload }
   | { type: "space.loaded"; payload: SpaceLoadedPayload }
-  /** @deprecated Use space.loaded instead */
-  | { type: "view.loaded"; payload: SpaceLoadedPayload }
   | { type: "trigger.activated"; payload: TriggerActivatedPayload };
 
 export interface ComponentClickPayload {
@@ -890,15 +857,10 @@ export interface SpaceLoadedPayload {
   spaceName: string;
 }
 
-/** @deprecated Use SpaceLoadedPayload instead */
-export type ViewLoadedPayload = SpaceLoadedPayload;
-
 export interface TriggerActivatedPayload {
   triggerId: TriggerId;
   triggerName: string;
   suggestedSpaceId?: SpaceId;
-  /** @deprecated Use suggestedSpaceId instead */
-  suggestedViewId?: SpaceId;
 }
 
 // ============================================================================
@@ -912,8 +874,6 @@ export interface ProactiveTrigger {
   enabled: boolean;
   type: TriggerType;
   spaceId?: SpaceId;
-  /** @deprecated Use spaceId instead */
-  viewId?: SpaceId;
   message?: string;
 }
 

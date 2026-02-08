@@ -105,14 +105,6 @@ export type UndoCanvasCommand =
   | { type: "space_pin"; spaceId: string; spaceName: string }
   | { type: "space_unpin"; spaceId: string; spaceName: string }
   | { type: "space_load"; spaceId: string; spaceName: string }
-  // Deprecated aliases for backwards compatibility
-  | { type: "view_create"; viewId: string; viewName: string }
-  | { type: "view_delete"; viewId: string; viewName: string }
-  | { type: "view_rename"; viewId: string; from: string; to: string }
-  | { type: "view_switch"; from: string | null; to: string }
-  | { type: "view_pin"; viewId: string; viewName: string }
-  | { type: "view_unpin"; viewId: string; viewName: string }
-  | { type: "view_load"; viewId: string; viewName: string }
   | { type: "canvas_clear"; removedCount: number };
 
 export interface LayoutChange {
@@ -166,9 +158,6 @@ export interface UndoSpaceContext {
   wasSpaceSpecificOp: boolean;
 }
 
-/** @deprecated Use UndoSpaceContext instead */
-export type UndoViewContext = UndoSpaceContext;
-
 // ============================================================================
 // Space State Snapshot - for undoing space-level operations
 // ============================================================================
@@ -179,9 +168,6 @@ export interface SpaceStateSnapshot {
   spaceSnapshotHash: string | null;
   workspaceUpdatedAt: number;
 }
-
-/** @deprecated Use SpaceStateSnapshot instead */
-export type ViewStateSnapshot = SpaceStateSnapshot;
 
 // ============================================================================
 // Retention Hold - For compliance/admin lockdown
@@ -223,8 +209,6 @@ export interface EnhancedUndoEntry {
 
   // Space context
   spaceContext: UndoSpaceContext;
-  /** @deprecated Use spaceContext instead */
-  viewContext?: UndoSpaceContext;
 
   // Snapshot-based restoration (keeping existing pattern)
   beforeSnapshot: CanvasSnapshot;
@@ -233,10 +217,6 @@ export interface EnhancedUndoEntry {
   // Optional space state snapshots (for undoing space operations)
   beforeSpaceState?: SpaceStateSnapshot;
   afterSpaceState?: SpaceStateSnapshot;
-  /** @deprecated Use beforeSpaceState instead */
-  beforeViewState?: SpaceStateSnapshot;
-  /** @deprecated Use afterSpaceState instead */
-  afterViewState?: SpaceStateSnapshot;
 
   // The semantic command (for audit/display purposes)
   commandType: "canvas" | "filesystem" | "hybrid";

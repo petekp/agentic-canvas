@@ -62,25 +62,8 @@ export function useSpaces() {
       hasUnsavedChanges: state.hasUnsavedChanges,
       pinSpace: state.pinSpace,
       unpinSpace: state.unpinSpace,
-      // Deprecated aliases
-      views: state.workspace.spaces, // Backwards compat
-      activeViewId: state.activeSpaceId, // Backwards compat
-      saveView: state.saveSpace,
-      loadView: state.loadSpace,
-      deleteView: state.deleteSpace,
-      renameView: state.renameSpace,
-      duplicateView: state.duplicateSpace,
-      createEmptyView: state.createEmptySpace,
-      setActiveView: state.setActiveSpace,
-      pinView: state.pinSpace,
-      unpinView: state.unpinSpace,
     }))
   );
-}
-
-/** @deprecated Use useSpaces instead */
-export function useViews() {
-  return useSpaces();
 }
 
 // Data hooks

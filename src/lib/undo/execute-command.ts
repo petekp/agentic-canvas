@@ -74,26 +74,26 @@ export function describeCanvasCommand(command: UndoCanvasCommand): string {
     case "layout_bulk_update":
       return `Update ${command.componentIds.length} component layouts`;
 
-    case "view_create":
-      return `Create view: ${command.viewName}`;
+    case "space_create":
+      return `Create space: ${command.spaceName}`;
 
-    case "view_delete":
-      return `Delete view: ${command.viewName}`;
+    case "space_delete":
+      return `Delete space: ${command.spaceName}`;
 
-    case "view_rename":
-      return `Rename view from "${command.from}" to "${command.to}"`;
+    case "space_rename":
+      return `Rename space from "${command.from}" to "${command.to}"`;
 
-    case "view_switch":
-      return `Switch to view`;
+    case "space_switch":
+      return `Switch to space`;
 
-    case "view_load":
-      return `Load view: ${command.viewName}`;
+    case "space_load":
+      return `Load space: ${command.spaceName}`;
 
-    case "view_pin":
-      return `Pin view: ${command.viewName}`;
+    case "space_pin":
+      return `Pin space: ${command.spaceName}`;
 
-    case "view_unpin":
-      return `Unpin view: ${command.viewName}`;
+    case "space_unpin":
+      return `Unpin space: ${command.spaceName}`;
 
     case "canvas_clear":
       return `Clear canvas (${command.removedCount} components)`;
@@ -206,34 +206,34 @@ export function invertCanvasCommand(command: UndoCanvasCommand): UndoCanvasComma
         to: command.from,
       };
 
-    case "view_rename":
+    case "space_rename":
       return {
-        type: "view_rename",
-        viewId: command.viewId,
+        type: "space_rename",
+        spaceId: command.spaceId,
         from: command.to,
         to: command.from,
       };
 
-    case "view_pin":
+    case "space_pin":
       return {
-        type: "view_unpin",
-        viewId: command.viewId,
-        viewName: command.viewName,
+        type: "space_unpin",
+        spaceId: command.spaceId,
+        spaceName: command.spaceName,
       };
 
-    case "view_unpin":
+    case "space_unpin":
       return {
-        type: "view_pin",
-        viewId: command.viewId,
-        viewName: command.viewName,
+        type: "space_pin",
+        spaceId: command.spaceId,
+        spaceName: command.spaceName,
       };
 
     // These commands are not easily invertible without more context
     case "layout_bulk_update":
-    case "view_create":
-    case "view_delete":
-    case "view_switch":
-    case "view_load":
+    case "space_create":
+    case "space_delete":
+    case "space_switch":
+    case "space_load":
     case "canvas_clear":
       // For these, we rely on snapshot restoration
       return command;

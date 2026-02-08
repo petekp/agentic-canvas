@@ -87,18 +87,12 @@ export interface UpdateSpacePayload extends SaveSpacePayload {
   spaceId?: SpaceId; // If provided, updates existing space instead of creating new
 }
 
-/** @deprecated Use UpdateSpacePayload instead */
-export type UpdateViewPayload = UpdateSpacePayload;
-
 // Options for creating a space
 export interface CreateSpaceOptions {
   name?: string;
   createdBy?: "user" | "assistant";
   switchTo?: boolean;
 }
-
-/** @deprecated Use CreateSpaceOptions instead */
-export type CreateViewOptions = CreateSpaceOptions;
 
 // Slice interface
 export interface WorkspaceSlice {
@@ -131,29 +125,6 @@ export interface WorkspaceSlice {
   getTransform: (id: TransformId) => TransformDefinition | undefined;
   getTransforms: () => TransformDefinition[];
 
-  // Deprecated method aliases for backwards compatibility
-  /** @deprecated Use saveSpace instead */
-  saveView: (payload: UpdateSpacePayload) => SpaceId;
-  /** @deprecated Use loadSpace instead */
-  loadView: (spaceId: SpaceId) => CommandResult;
-  /** @deprecated Use deleteSpace instead */
-  deleteView: (spaceId: SpaceId) => void;
-  /** @deprecated Use renameSpace instead */
-  renameView: (spaceId: SpaceId, name: string) => void;
-  /** @deprecated Use duplicateSpace instead */
-  duplicateView: (spaceId: SpaceId) => SpaceId | null;
-  /** @deprecated Use createEmptySpace instead */
-  createEmptyView: (nameOrOptions?: string | CreateSpaceOptions) => SpaceId;
-  /** @deprecated Use setActiveSpace instead */
-  setActiveView: (spaceId: SpaceId | null) => void;
-  /** @deprecated Use pinSpace instead */
-  pinView: (spaceId: SpaceId) => void;
-  /** @deprecated Use unpinSpace instead */
-  unpinView: (spaceId: SpaceId) => void;
-  /** @deprecated Use cleanupStaleSpaces instead */
-  cleanupStaleViews: (maxAgeMs?: number) => number;
-  /** @deprecated Use getSpaces instead */
-  getViews: () => Space[];
 }
 
 // Simple hash for change detection (not cryptographic, just for comparison)
@@ -788,38 +759,4 @@ export const createWorkspaceSlice: StateCreator<
     return Array.from(get().workspace.transforms.values());
   },
 
-  // Deprecated method aliases - delegate to new methods
-  saveView: function (payload) {
-    return this.saveSpace(payload);
-  },
-  loadView: function (spaceId) {
-    return this.loadSpace(spaceId);
-  },
-  deleteView: function (spaceId) {
-    return this.deleteSpace(spaceId);
-  },
-  renameView: function (spaceId, name) {
-    return this.renameSpace(spaceId, name);
-  },
-  duplicateView: function (spaceId) {
-    return this.duplicateSpace(spaceId);
-  },
-  createEmptyView: function (nameOrOptions) {
-    return this.createEmptySpace(nameOrOptions);
-  },
-  setActiveView: function (spaceId) {
-    return this.setActiveSpace(spaceId);
-  },
-  pinView: function (spaceId) {
-    return this.pinSpace(spaceId);
-  },
-  unpinView: function (spaceId) {
-    return this.unpinSpace(spaceId);
-  },
-  cleanupStaleViews: function (maxAgeMs) {
-    return this.cleanupStaleSpaces(maxAgeMs);
-  },
-  getViews: function () {
-    return this.getSpaces();
-  },
 });
