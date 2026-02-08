@@ -4,6 +4,7 @@
 import { NextRequest } from "next/server";
 
 const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN;
+const SLACK_USER_TOKEN = process.env.SLACK_USER_TOKEN;
 const SLACK_API = "https://slack.com/api";
 const SLACK_USER_MENTION_REGEX = /<@([A-Z0-9]+)>/g;
 
@@ -459,12 +460,15 @@ async function fetchMentions(
     userId = authData.user_id;
   }
 
-  // Search for messages mentioning the user
-  // Note: search.messages requires a user token (xoxp-), not a bot token (xoxb-)
+  // search.messages requires a user token (xoxp-), not a bot token (xoxb-)
+  const mentionHeaders: HeadersInit = SLACK_USER_TOKEN
+    ? { Authorization: `Bearer ${SLACK_USER_TOKEN}`, "Content-Type": "application/json" }
+    : headers;
+
   const query = encodeURIComponent(`<@${userId}>`);
   const res = await fetch(
     `${SLACK_API}/search.messages?query=${query}&count=${limit}&sort=timestamp&sort_dir=desc`,
-    { headers }
+    { headers: mentionHeaders }
   );
 
   if (!res.ok) {

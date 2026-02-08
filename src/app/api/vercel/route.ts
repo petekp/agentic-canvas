@@ -67,7 +67,13 @@ export async function POST(req: NextRequest) {
         return Response.json({ error: "Unknown query type" }, { status: 400 });
     }
 
-    return Response.json({ data, ttl });
+    return Response.json({
+      data,
+      ttl,
+      ...(!DEFAULT_PROJECT_ID && {
+        warning: "VERCEL_PROJECT_ID not configured. Results may include deployments from all projects.",
+      }),
+    });
   } catch (error) {
     console.error("Vercel API error:", error);
     return Response.json(

@@ -52,6 +52,13 @@ interface InsightRequest {
 }
 
 export async function POST(req: Request) {
+  if (!process.env.OPENAI_API_KEY) {
+    return Response.json(
+      { error: "OPENAI_API_KEY not configured. Insights require an OpenAI API key." },
+      { status: 500 }
+    );
+  }
+
   try {
     const { userId = "default_user", context }: InsightRequest = await req.json();
 

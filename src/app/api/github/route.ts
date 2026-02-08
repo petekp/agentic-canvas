@@ -57,8 +57,11 @@ export async function POST(req: NextRequest) {
       "User-Agent": "agentic-canvas",
     };
 
+    let unauthenticated = false;
     if (GITHUB_TOKEN) {
       headers.Authorization = `Bearer ${GITHUB_TOKEN}`;
+    } else {
+      unauthenticated = true;
     }
 
     let data: unknown;
@@ -95,7 +98,13 @@ export async function POST(req: NextRequest) {
         return Response.json({ error: "Unknown query type" }, { status: 400 });
     }
 
-    return Response.json({ data, ttl });
+    return Response.json({
+      data,
+      ttl,
+      ...(unauthenticated && {
+        warning: "GITHUB_TOKEN not configured. Using unauthenticated access (60 requests/hour limit).",
+      }),
+    });
   } catch (error) {
     console.error("GitHub API error:", error);
     return Response.json(
