@@ -1,19 +1,16 @@
 # Agent Changelog
 
 > This file helps coding agents understand project evolution, key decisions,
-> and deprecated patterns. Updated: 2026-02-03
+> and deprecated patterns. Updated: 2026-02-08
 
 ## Current State Summary
 
-Agentic Canvas is a **working v0.1 implementation** with canvas + chat interface, AI-powered component manipulation, saved views with tabs, assistant-driven view management, and multi-source data integrations. It now includes a **template generation engine** with state-signal inference and a toolbar-driven generation UI. Undo/redo is snapshot-based with view-aware restoration, audit logging, and policy hooks, and now covers view operations as first-class undoable actions.
+Agentic Canvas is a **working v0.1 implementation** with canvas + chat interface, AI-powered component manipulation, spaces grid + navigation, assistant-driven space management, and multi-source data integrations. It now includes a **template generation engine** with state-signal inference and a toolbar-driven generation UI. Undo/redo is snapshot-based with space-aware restoration, audit logging, and policy hooks, and now covers space operations as first-class undoable actions.
 
 ## Stale Information Detected
 
 | Location | States | Reality | Since |
 |----------|--------|---------|-------|
-| `CLAUDE.md` file structure | Lists `history-slice.ts` | File deleted, undo/redo in canvas-slice | 2026-01-31 |
-| `CLAUDE.md` file structure | Lists `mock-github.ts` | Real GitHub API via `/api/github` route | 2026-01-31 |
-| `CLAUDE.md` file structure | Lists `tool-executor.ts` | File deleted, tools in canvas-tools.tsx | 2026-02-01 |
 | `.claude/plans/primitives-spec-v0.1.md` | View lacks `pinned`, `createdBy`, `updatedAt`; ComponentMeta lacks `template` | Runtime types include these fields | 2026-02-03 |
 | `.claude/plans/component-schemas-v0.1.md` | Documents only 4 GitHub components | Runtime supports GitHub + PostHog + Slack + personal filters + commit/team analysis | 2026-02-01 |
 | `.claude/plans/store-architecture-v0.1.md` | References `history-slice.ts` | Undo/redo implemented in `undo-slice.ts` with snapshots | 2026-01-31 |
@@ -234,6 +231,8 @@ Agentic Canvas is a **working v0.1 implementation** with canvas + chat interface
 | GitHub | `/api/github` | stat-tile, pr-list, issue-grid, activity-timeline, my-activity, commits, team-activity |
 | PostHog | `/api/posthog` | site-health, property-breakdown, top-pages |
 | Slack | `/api/slack` | channel-activity, mentions*, thread-watch |
+| Vercel | `/api/vercel` | deployments, project-status |
+| Integrations | `/api/integrations` | availability status (github, posthog, slack, vercel) |
 
 *mentions requires user token, not bot token
 
@@ -241,12 +240,17 @@ Agentic Canvas is a **working v0.1 implementation** with canvas + chat interface
 
 ```bash
 OPENAI_API_KEY=        # Required for AI
+SUPERMEMORY_API_KEY=   # Required for memory + insights
 GITHUB_TOKEN=          # For GitHub API
 GITHUB_REPO=           # owner/repo format
 GITHUB_USERNAME=       # For personal filters
 POSTHOG_API_KEY=       # For PostHog
 POSTHOG_PROJECT_ID=    # PostHog project
 SLACK_BOT_TOKEN=       # xoxb-... token
+SLACK_USER_TOKEN=      # xoxp-... token (required for mentions/search)
+VERCEL_TOKEN=          # For Vercel API
+VERCEL_PROJECT_ID=     # Optional default project
+VERCEL_TEAM_ID=        # Optional default team
 ```
 
 ## Trajectory

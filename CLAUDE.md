@@ -4,14 +4,14 @@ A conversational AI workspace that generates UI components on a grid-based canva
 
 ## Project Status
 
-**Phase:** v0.1 implemented - Canvas + Chat interface working
+**Phase:** v0.1 implemented - Canvas + Chat + Spaces + Templates + multi-source integrations
 
 ## Quick Start
 
 ```bash
-npm install
-cp .env.example .env.local  # Add your OPENAI_API_KEY
-npm run dev
+pnpm install
+cp .env.example .env.local  # Add your OPENAI_API_KEY (+ SUPERMEMORY_API_KEY)
+pnpm dev
 ```
 
 Open http://localhost:3000 and try: "Add a stat tile showing open PRs"
@@ -39,13 +39,20 @@ When working on this project, read specs in this order:
 
 3. **Store third:** `.claude/plans/store-architecture-v0.1.md`
    - Zustand slices and how they compose
-   - Command → action → history flow
+   - Command → action → undo/redo flow
 
-4. **Templates:** `.claude/plans/template-primitives-v0.1.md`
+4. **Spaces navigation:** `.claude/plans/spaces-navigation-v0.2.md`
+   - Spaces grid + space routing
+   - Space lifecycle (pin/unpin/cleanup)
+
+5. **Templates:** `.claude/plans/template-primitives-v0.1.md`
    - State-aware template generation
 
-5. **Undo/Redo:** `.claude/plans/undo-redo-system-v2.md`
+6. **Undo/Redo:** `.claude/plans/undo-redo-system-v2.md`
    - Snapshot-based undo with policies + audit log
+
+7. **assistant-ui tools:** `.claude/plans/assistant-ui-native-tools.md`
+   - `makeAssistantTool` patterns + UI rendering
 
 ## Key Architecture Decisions
 
@@ -59,8 +66,9 @@ Every change goes through `CanvasCommand` so we can:
 - Validate before applying
 
 ### Why API routes instead of direct client calls?
-We route data access through `/api/github`, `/api/posthog`, and `/api/slack` to centralize auth,
-cache/TTL behavior, and response shaping for the canvas.
+We route data access through `/api/github`, `/api/posthog`, `/api/slack`, `/api/vercel`, and `/api/insights`
+to centralize auth, cache/TTL behavior, and response shaping. Memory feedback goes through `/api/memory/feedback`,
+and integration availability through `/api/integrations`.
 
 ### Why grid-based instead of infinite canvas?
 Cognitive load. Fixed grids constrain layout decisions, making both user placement and AI suggestions simpler.
@@ -73,6 +81,22 @@ Cognitive load. Fixed grids constrain layout decisions, making both user placeme
 - **Computed at render** — Fields like `age` and `isStale` are derived, not stored
 - **LLM tools use snake_case** — `add_component`, `move_component` (not camelCase)
 - **Internal types use PascalCase** — `CanvasCommand`, `DataLoadingState`
+- **Spaces are first-class** — use space APIs and routing (`/spaces`, `/spaces/[id]`)
+- **Tools live in canvas-tools** — use `makeAssistantTool` in `src/lib/canvas-tools.tsx`
+
+## Assistant Tool Commands
+
+**Canvas edits**
+- `add_component`, `remove_component`, `move_component`, `resize_component`, `update_component`, `clear_canvas`
+
+**Spaces**
+- `create_space`, `switch_space`, `pin_space`, `unpin_space`
+
+**Templates / filters / transforms**
+- `generate_template`, `add_filtered_component`, `create_transform`
+
+**Slack helpers**
+- `lookup_slack_user`
 
 ## AI SDK v6 Notes
 
@@ -132,37 +156,51 @@ z.record(z.string(), z.unknown())
 - Don't create complex triggers — only `session_start` and `time_based` in v0.1
 - Don't implement `ErrorRecovery` — deferred to v0.2
 - Don't create a `list_components` tool — inject IDs via `CanvasContext`
+- Don't use view APIs (`saveView`, `loadView`, etc.) — use space APIs (`saveSpace`, `loadSpace`)
+- Don't add custom tool executors — use assistant-ui `makeAssistantTool`
 
 ## File Structure
 
 ```
 src/
 ├── app/
-│   ├── api/chat/route.ts    # Streaming chat API with tools
-│   ├── api/github/route.ts  # GitHub data source
-│   ├── api/posthog/route.ts # PostHog data source
-│   ├── api/slack/route.ts   # Slack data source
-│   └── page.tsx             # Main layout (canvas + chat)
+│   ├── api/chat/route.ts           # Streaming chat API with tools
+│   ├── api/github/route.ts         # GitHub data source
+│   ├── api/posthog/route.ts        # PostHog data source
+│   ├── api/slack/route.ts          # Slack data source
+│   ├── api/vercel/route.ts         # Vercel data source
+│   ├── api/insights/route.ts       # Server-side insights
+│   ├── api/integrations/route.ts   # Integration availability
+│   ├── api/memory/feedback/route.ts# Memory feedback
+│   ├── page.tsx                    # Entry router to spaces
+│   └── spaces/                     # Spaces grid + space pages
 ├── store/
 │   ├── index.ts             # Combined store
 │   ├── canvas-slice.ts      # Canvas state
-│   ├── workspace-slice.ts   # Views, settings, triggers
+│   ├── workspace-slice.ts   # Spaces, settings, triggers, transforms
 │   ├── data-slice.ts        # Data fetching + cache
 │   ├── undo-slice.ts        # Snapshot-based undo/redo + batching
 │   ├── chat-slice.ts        # Chat messages
 │   └── notification-slice.ts# Notifications + polling
 ├── components/
 │   ├── canvas/              # Grid and layout
-│   └── chat/                # Chat UI components
+│   ├── chat/                # Chat UI components
+│   ├── spaces/              # Spaces grid + cards
+│   ├── notifications/       # Insight notifications
+│   ├── tool-ui/             # Tool UI primitives
+│   └── ui/                  # Base UI components
 ├── types/
 │   └── index.ts             # All TypeScript interfaces
 ├── lib/
 │   ├── ai-tools.ts          # Tool definitions + system prompt
-│   ├── canvas-context.ts    # Serialize canvas for AI
+│   ├── canvas-context.ts    # Serialize canvas + workspace for AI
 │   ├── canvas-tools.tsx     # assistant-ui makeAssistantTool definitions
 │   ├── canvas-defaults.ts   # Default sizes/bindings
 │   ├── component-registry.ts# Component registry
 │   ├── templates/           # Template engine + state signals
+│   ├── memory/              # Supermemory integration
+│   ├── notifications/       # Notification helpers
+│   ├── slack-mentions-*.ts  # Slack mention filters/defaults
 │   ├── undo/                # Undo types, policies, audit hooks
 │   ├── insights/            # Proactive insights
 │   └── audit/               # Audit log implementation
