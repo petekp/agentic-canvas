@@ -27,7 +27,7 @@
 // See: .claude/plans/undo-redo-system-v2.md
 
 import type { UndoCanvasCommand, FilesystemCommand, HybridCommand } from "./types";
-import type { ComponentInstance, CanvasSnapshot } from "@/types";
+import type { CanvasSnapshot } from "@/types";
 
 // ============================================================================
 // Snapshot-based State Restoration
@@ -38,9 +38,8 @@ import type { ComponentInstance, CanvasSnapshot } from "@/types";
  * This is the primary mechanism for undo/redo in our snapshot-based system.
  */
 export function restoreFromSnapshot(
-  snapshot: CanvasSnapshot,
-  _currentComponents: ComponentInstance[]
-): ComponentInstance[] {
+  snapshot: CanvasSnapshot
+): CanvasSnapshot["components"] {
   // Deep clone to prevent mutations
   return structuredClone(snapshot.components);
 }

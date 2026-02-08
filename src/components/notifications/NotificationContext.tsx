@@ -3,7 +3,7 @@
 // Notification Context - provides notification data to compound components
 // See: React composition patterns for flexible notification customization
 
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, use, type ReactNode } from "react";
 import type { Notification, NotificationAction } from "@/store/notification-slice";
 
 // ============================================================================
@@ -27,7 +27,7 @@ const NotificationContext = createContext<NotificationContextValue | null>(null)
  * Must be used within a NotificationProvider
  */
 export function useNotification(): NotificationContextValue {
-  const context = useContext(NotificationContext);
+  const context = use(NotificationContext);
   if (!context) {
     throw new Error("useNotification must be used within a NotificationProvider");
   }

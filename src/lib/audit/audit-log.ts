@@ -18,27 +18,6 @@ import { detectChanges } from "../undo/execute-command";
 // Hash Utilities (using Web Crypto API for browser compatibility)
 // ============================================================================
 
-// Async hash for future use (more secure)
-async function _hashContentAsync(content: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(content);
-
-  if (typeof crypto !== "undefined" && crypto.subtle) {
-    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-  }
-
-  // Fallback: simple hash for environments without Web Crypto
-  let hash = 0;
-  for (let i = 0; i < content.length; i++) {
-    const char = content.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash; // Convert to 32-bit integer
-  }
-  return Math.abs(hash).toString(16).padStart(8, "0");
-}
-
 // Synchronous hash for immediate use (less secure but fast)
 function hashContentSync(content: string): string {
   let hash = 0;

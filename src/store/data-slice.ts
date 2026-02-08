@@ -28,7 +28,7 @@
 
 import { StateCreator } from "zustand";
 import type { AgenticCanvasStore } from "./index";
-import type { ComponentId, DataBinding, DataLoadingState, DataError, TransformDefinition } from "@/types";
+import type { ComponentId, DataBinding, DataLoadingState, DataError } from "@/types";
 
 // Cached data entry
 interface CachedData {
@@ -63,13 +63,36 @@ export const createDataSlice: StateCreator<
   fetchData: async (componentId, binding) => {
     const cacheKey = generateCacheKey(binding);
 
+    const setLoadingForMatchingComponents = (state: AgenticCanvasStore, startedAt: number) => {
+      for (const comp of state.canvas.components) {
+        const bindingKey = comp.dataBinding ? generateCacheKey(comp.dataBinding) : null;
+        if (comp.id === componentId || bindingKey === cacheKey) {
+          if (comp.dataState.status === "ready" || comp.dataState.status === "stale") {
+            comp.dataState = {
+              status: "stale",
+              data: comp.dataState.data,
+              fetchedAt: comp.dataState.fetchedAt,
+            };
+          } else if (comp.dataState.status !== "loading") {
+            comp.dataState = { status: "loading", startedAt };
+          }
+        }
+      }
+    };
+
     // Check cache
     const cached = get().dataCache.get(cacheKey);
     if (cached && Date.now() - cached.fetchedAt < cached.ttl) {
       set((state) => {
-        const comp = state.canvas.components.find((c) => c.id === componentId);
-        if (comp) {
-          comp.dataState = { status: "ready", data: cached.data, fetchedAt: cached.fetchedAt };
+        for (const comp of state.canvas.components) {
+          const bindingKey = comp.dataBinding ? generateCacheKey(comp.dataBinding) : null;
+          if (comp.id === componentId || bindingKey === cacheKey) {
+            comp.dataState = {
+              status: "ready",
+              data: cached.data,
+              fetchedAt: cached.fetchedAt,
+            };
+          }
         }
       });
       return;
@@ -78,6 +101,10 @@ export const createDataSlice: StateCreator<
     // Check if already fetching
     const existingFetch = get().pendingFetches.get(cacheKey);
     if (existingFetch) {
+      const startedAt = Date.now();
+      set((state) => {
+        setLoadingForMatchingComponents(state, startedAt);
+      });
       return existingFetch;
     }
 
@@ -92,6 +119,11 @@ export const createDataSlice: StateCreator<
         if (binding.transformId) {
           const transform = get().workspace.transforms.get(binding.transformId);
           if (transform) {
+            if (transform.createdBy !== "assistant") {
+              throw new Error(
+                `Transform ${binding.transformId} is not trusted for execution (createdBy=${transform.createdBy})`
+              );
+            }
             try {
               transformedData = applyTransform(result.data, transform.code);
             } catch (err) {
@@ -102,17 +134,20 @@ export const createDataSlice: StateCreator<
         }
 
         // Update cache and component
+        const fetchedAt = Date.now();
         set((state) => {
           state.dataCache.set(cacheKey, {
             data: transformedData,
-            fetchedAt: Date.now(),
+            fetchedAt,
             ttl: result.ttl,
             binding,
           });
 
-          const comp = state.canvas.components.find((c) => c.id === componentId);
-          if (comp) {
-            comp.dataState = { status: "ready", data: transformedData, fetchedAt: Date.now() };
+          for (const comp of state.canvas.components) {
+            const bindingKey = comp.dataBinding ? generateCacheKey(comp.dataBinding) : null;
+            if (comp.id === componentId || bindingKey === cacheKey) {
+              comp.dataState = { status: "ready", data: transformedData, fetchedAt };
+            }
           }
         });
 
@@ -133,10 +168,13 @@ export const createDataSlice: StateCreator<
           retryable: true,
         };
 
+        const attemptedAt = Date.now();
         set((state) => {
-          const comp = state.canvas.components.find((c) => c.id === componentId);
-          if (comp) {
-            comp.dataState = { status: "error", error: dataError, attemptedAt: Date.now() };
+          for (const comp of state.canvas.components) {
+            const bindingKey = comp.dataBinding ? generateCacheKey(comp.dataBinding) : null;
+            if (comp.id === componentId || bindingKey === cacheKey) {
+              comp.dataState = { status: "error", error: dataError, attemptedAt };
+            }
           }
         });
       } finally {
@@ -149,10 +187,7 @@ export const createDataSlice: StateCreator<
     // Set loading state and mark as pending
     set((state) => {
       state.pendingFetches.set(cacheKey, fetchPromise);
-      const comp = state.canvas.components.find((c) => c.id === componentId);
-      if (comp) {
-        comp.dataState = { status: "loading", startedAt };
-      }
+      setLoadingForMatchingComponents(state, startedAt);
     });
 
     return fetchPromise;

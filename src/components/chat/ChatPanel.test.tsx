@@ -12,7 +12,6 @@ vi.mock("@/lib/canvas-tools", () => ({
 }));
 
 vi.mock("@assistant-ui/react", () => {
-  const React = require("react");
   const ThreadPrimitive = {
     Root: ({ children, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
       <div data-thread-root {...props}>
@@ -30,13 +29,16 @@ vi.mock("@assistant-ui/react", () => {
     Messages: () => null,
     Suggestion: ({
       children,
-      autoSend: _autoSend,
+      autoSend,
       ...props
-    }: React.ButtonHTMLAttributes<HTMLButtonElement> & { autoSend?: boolean }) => (
-      <button type="button" {...props}>
-        {children}
-      </button>
-    ),
+    }: React.ButtonHTMLAttributes<HTMLButtonElement> & { autoSend?: boolean }) => {
+      void autoSend;
+      return (
+        <button type="button" {...props}>
+          {children}
+        </button>
+      );
+    },
   };
 
   const MessagePrimitive = {
@@ -66,6 +68,12 @@ vi.mock("@assistant-ui/react", () => {
     ComposerPrimitive,
     useAssistantState: (selector: (state: { thread: { isRunning: boolean; messages: [] } }) => boolean | unknown) =>
       selector({ thread: { isRunning: false, messages: [] } }),
+    useAssistantApi: () => ({
+      thread: () => ({
+        append: vi.fn(),
+        cancelRun: vi.fn(),
+      }),
+    }),
     useThreadRuntime: () => null,
   };
 });

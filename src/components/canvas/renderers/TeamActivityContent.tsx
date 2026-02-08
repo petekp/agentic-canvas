@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import Image from "next/image";
 import { SparklineBarChart } from "./shared";
 import type { TeamActivityData } from "./types";
 
@@ -44,10 +45,12 @@ export function TeamActivityContent({ data }: TeamActivityContentProps) {
             >
               <div className="flex items-center gap-2">
                 {contributor.avatar && (
-                  <img
+                  <Image
                     src={contributor.avatar}
                     alt={contributor.login}
-                    className="w-6 h-6 rounded-full"
+                    width={24}
+                    height={24}
+                    className="h-6 w-6 rounded-full"
                   />
                 )}
                 <span className="font-medium">{contributor.login}</span>
