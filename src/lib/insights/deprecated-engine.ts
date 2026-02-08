@@ -8,13 +8,15 @@ import type { GeneratedInsight, InsightContext } from "./types";
  * @deprecated Use the /api/insights route instead for server-side insight generation
  */
 export class InsightEngine {
-  constructor(_memory: AgentMemoryService) {
+  constructor(memory: AgentMemoryService) {
+    void memory;
     console.warn(
       "InsightEngine is deprecated. Use the /api/insights route instead."
     );
   }
 
-  async generateInsights(_context: InsightContext): Promise<GeneratedInsight[]> {
+  async generateInsights(context: InsightContext): Promise<GeneratedInsight[]> {
+    void context;
     console.warn(
       "InsightEngine.generateInsights is deprecated. Call /api/insights instead."
     );

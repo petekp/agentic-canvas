@@ -77,6 +77,80 @@ describe("data-slice fetchData", () => {
     expect(ready?.dataState.status).toBe("ready");
   });
 
+  it("updates all components sharing a binding when a pending fetch resolves", async () => {
+    const store = createTestStore();
+
+    const deferred = createDeferred<{ ok: boolean; json: () => Promise<unknown> }>();
+    globalThis.fetch = vi.fn(() => deferred.promise) as unknown as typeof fetch;
+
+    const first = store.getState().addComponent({
+      typeId: "github.stat-tile",
+      config: {},
+      dataBinding: binding,
+    });
+    const second = store.getState().addComponent({
+      typeId: "github.stat-tile",
+      config: {},
+      dataBinding: binding,
+    });
+
+    const firstId = first.affectedComponentIds[0];
+    const secondId = second.affectedComponentIds[0];
+
+    expect((globalThis.fetch as unknown as { mock: { calls: unknown[] } }).mock.calls.length).toBe(1);
+
+    const secondLoading = store.getState().canvas.components.find((c) => c.id === secondId);
+    expect(secondLoading?.dataState.status).toBe("loading");
+
+    const pending = Array.from(store.getState().pendingFetches.values())[0] as Promise<void>;
+
+    deferred.resolve({
+      ok: true,
+      json: async () => ({ data: { items: [1] }, ttl: 1000 }),
+    });
+
+    await pending;
+
+    const firstReady = store.getState().canvas.components.find((c) => c.id === firstId);
+    const secondReady = store.getState().canvas.components.find((c) => c.id === secondId);
+
+    expect(firstReady?.dataState.status).toBe("ready");
+    expect(secondReady?.dataState.status).toBe("ready");
+  });
+
+  it("blocks transforms that are not assistant-generated", async () => {
+    const store = createTestStore();
+    const addResult = store.getState().addComponent({
+      typeId: "github.stat-tile",
+      config: {},
+    });
+    const componentId = addResult.affectedComponentIds[0];
+
+    const transformId = store.getState().createTransform({
+      name: "Unsafe",
+      description: "User-created transform",
+      code: "return data;",
+      compatibleWith: [],
+      createdBy: "user",
+    });
+
+    globalThis.fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ data: { items: [] }, ttl: 1000 }),
+    })) as unknown as typeof fetch;
+
+    await store.getState().fetchData(componentId, {
+      ...binding,
+      transformId,
+    });
+
+    const errored = store.getState().canvas.components.find((c) => c.id === componentId);
+    expect(errored?.dataState.status).toBe("error");
+    if (errored?.dataState.status === "error") {
+      expect(errored.dataState.error.message).toContain("not trusted");
+    }
+  });
+
   it("records error state when fetch fails", async () => {
     const store = createTestStore();
     const addResult = store.getState().addComponent({

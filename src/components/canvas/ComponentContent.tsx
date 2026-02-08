@@ -201,7 +201,7 @@ function ContentState({
 
 export function ComponentContent({
   component,
-  isSelected: _isSelected,
+  isSelected,
 }: ComponentContentProps) {
   const { removeComponent } = useCanvas();
   const { dataState, refresh } = useComponentData(component.id);
@@ -211,7 +211,7 @@ export function ComponentContent({
   }, [component.id, removeComponent]);
 
   return (
-    <div className="group/component relative h-full">
+    <div className="group/component relative h-full" data-selected={isSelected || undefined}>
       {/* Chrome overlay - appears on hover */}
       <ComponentHeader
         typeId={component.typeId}

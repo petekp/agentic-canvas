@@ -158,10 +158,7 @@ function extractRecentActivityInsights(changes: RecentChange[]): string[] {
 /**
  * Generates suggested actions based on canvas state
  */
-function generateSuggestedActions(
-  components: ComponentInstance[],
-  _changes: RecentChange[]
-): string[] {
+function generateSuggestedActions(components: ComponentInstance[]): string[] {
   const suggestions: string[] = [];
 
   if (components.length === 0) {
@@ -218,7 +215,7 @@ export function generateGreeting(
   const insights = [...componentInsights, ...activityInsights].slice(0, 3);
 
   // Generate suggestions
-  const suggestedActions = generateSuggestedActions(components, recentChanges);
+  const suggestedActions = generateSuggestedActions(components);
 
   return {
     greeting,
