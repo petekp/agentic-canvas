@@ -156,7 +156,7 @@ z.record(z.string(), z.unknown())
 - Don't create complex triggers — only `session_start` and `time_based` in v0.1
 - Don't implement `ErrorRecovery` — deferred to v0.2
 - Don't create a `list_components` tool — inject IDs via `CanvasContext`
-- Don't use view APIs (`saveView`, `loadView`, etc.) — use space APIs (`saveSpace`, `loadSpace`)
+- Don't use any `view` or `View` naming — fully migrated to `space`/`Space`
 - Don't add custom tool executors — use assistant-ui `makeAssistantTool`
 
 ## File Structure
@@ -202,7 +202,7 @@ src/
 │   ├── notifications/       # Notification helpers
 │   ├── slack-mentions-*.ts  # Slack mention filters/defaults
 │   ├── undo/                # Undo types, policies, audit hooks
-│   ├── insights/            # Proactive insights
+│   ├── insights/            # Insight types (engine removed)
 │   └── audit/               # Audit log implementation
 └── hooks/
     └── index.ts             # useCanvas, useHistory, etc.
