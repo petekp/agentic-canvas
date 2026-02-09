@@ -13,6 +13,7 @@ import {
   CanvasChangeRecord,
 } from "../undo/types";
 import { detectChanges } from "../undo/execute-command";
+import { trackClientTelemetry } from "@/lib/telemetry-client";
 
 // ============================================================================
 // Hash Utilities (using Web Crypto API for browser compatibility)
@@ -67,6 +68,12 @@ export class AuditLog {
       }
     } catch (error) {
       console.warn("Failed to load audit log from storage:", error);
+      void trackClientTelemetry({
+        source: "store.audit",
+        event: "load_error",
+        level: "warn",
+        data: { error: error instanceof Error ? error.message : String(error) },
+      });
     }
   }
 
@@ -96,6 +103,20 @@ export class AuditLog {
 
     // Persist
     this.persist(fullEntry);
+
+    void trackClientTelemetry({
+      source: "store.audit",
+      event: "append",
+      data: {
+        id,
+        eventType: fullEntry.eventType,
+        sourceType: fullEntry.sourceType,
+        scope: fullEntry.scope,
+        description: fullEntry.description,
+        policyCheckCount: fullEntry.policyChecks?.length ?? 0,
+        hasCanvasChanges: Boolean(fullEntry.canvasChanges?.length),
+      },
+    });
 
     return fullEntry;
   }
@@ -235,6 +256,12 @@ export class AuditLog {
     } catch (error) {
       // localStorage might be full or unavailable
       console.warn("Failed to persist audit log entry:", error);
+      void trackClientTelemetry({
+        source: "store.audit",
+        event: "persist_error",
+        level: "warn",
+        data: { error: error instanceof Error ? error.message : String(error) },
+      });
     }
   }
 }

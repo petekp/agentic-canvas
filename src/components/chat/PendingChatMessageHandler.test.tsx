@@ -3,16 +3,23 @@ import React, { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { createRoot } from "react-dom/client";
 
+const appendMock = vi.fn();
+
 vi.mock("@assistant-ui/react", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@assistant-ui/react")>();
   return {
     ...actual,
-    useThreadRuntime: () => null,
+    useAssistantApi: () => ({
+      thread: () => ({
+        append: appendMock,
+        cancelRun: vi.fn(),
+      }),
+    }),
   };
 });
 
 describe("PendingChatMessageHandler", () => {
-  it("does not clear queued messages when thread runtime is unavailable", async () => {
+  it("sends and clears queued messages when mounted", async () => {
     (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
     (globalThis as Record<string, unknown>).React = React;
     const storage = new Map<string, string>();
@@ -50,7 +57,11 @@ describe("PendingChatMessageHandler", () => {
       });
     }).not.toThrow();
 
-    expect(useStore.getState().pendingChatMessage).toBe("hello");
+    expect(appendMock).toHaveBeenCalledWith({
+      role: "user",
+      content: [{ type: "text", text: "hello" }],
+    });
+    expect(useStore.getState().pendingChatMessage).toBe(null);
 
     act(() => {
       root.unmount();

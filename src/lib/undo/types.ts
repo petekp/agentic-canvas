@@ -105,6 +105,7 @@ export type UndoCanvasCommand =
   | { type: "space_pin"; spaceId: string; spaceName: string }
   | { type: "space_unpin"; spaceId: string; spaceName: string }
   | { type: "space_load"; spaceId: string; spaceName: string }
+  | { type: "space_update"; spaceId: string; spaceName: string }
   | { type: "canvas_clear"; removedCount: number };
 
 export interface LayoutChange {

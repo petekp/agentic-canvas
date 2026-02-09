@@ -3,12 +3,12 @@
 // AssistantThread - main chat thread component using assistant-ui primitives
 // Renders messages, tool calls, and composer with auto-scroll
 
-import { useState, useCallback } from "react";
 import {
   ThreadPrimitive,
+  ComposerPrimitive,
   MessagePrimitive,
   useAssistantState,
-  useAssistantApi,
+  AssistantIf,
 } from "@assistant-ui/react";
 import { cn } from "@/lib/utils";
 import { SendHorizonal, Square } from "lucide-react";
@@ -38,7 +38,7 @@ function EmptyState() {
           <ThreadPrimitive.Suggestion
             key={suggestion.prompt}
             prompt={suggestion.prompt}
-            autoSend
+            send
             className="px-3 py-1.5 text-sm bg-muted hover:bg-muted/80 rounded-full cursor-pointer transition-colors"
           >
             {suggestion.label}
@@ -127,78 +127,48 @@ export function AssistantComposer({
   placeholder = "Ask about your canvas...",
   className,
 }: AssistantComposerProps) {
-  const isRunning = useAssistantState((s) => s.thread.isRunning);
-  const api = useAssistantApi();
-
-  // Local state workaround for assistant-ui ComposerPrimitive.Input bug in v0.12.x
-  const [localText, setLocalText] = useState("");
-
-  const handleSend = useCallback(() => {
-    if (!localText.trim() || isRunning) return;
-
-    const text = localText.trim();
-
-    // Use the assistant API to send the message
-    api.thread().append({
-      role: "user",
-      content: [{ type: "text", text }],
-    });
-    setLocalText("");
-  }, [localText, isRunning, api]);
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        handleSend();
-      }
-    },
-    [handleSend]
-  );
-
-  const handleCancel = useCallback(() => {
-    api.thread().cancelRun();
-  }, [api]);
-
   return (
-    <div className={cn("flex items-end gap-2 p-3 border-t border-border", className)}>
-      <textarea
-        placeholder={placeholder}
-        data-aui-composer-input
-        value={localText}
-        onChange={(e) => setLocalText(e.target.value)}
-        onKeyDown={handleKeyDown}
-        className={cn(
-          "flex-1 min-h-10 max-h-32 resize-none rounded-lg border bg-background px-3 py-2 text-sm",
-          "focus:outline-none focus:ring-2 focus:ring-ring"
-        )}
-        onFocus={onFocus}
-      />
-      {isRunning ? (
-        <button
-          type="button"
-          onClick={handleCancel}
+    <ComposerPrimitive.Root
+      className={cn("flex items-end gap-2 p-3 border-t border-border", className)}
+    >
+      <ComposerPrimitive.Input asChild>
+        <textarea
+          placeholder={placeholder}
+          data-aui-composer-input
           className={cn(
-            "p-2 rounded-lg shrink-0",
-            "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            "flex-1 min-h-10 max-h-32 resize-none rounded-lg border bg-background px-3 py-2 text-sm",
+            "focus:outline-none focus:ring-2 focus:ring-ring"
           )}
-        >
-          <Square className="h-4 w-4" />
-        </button>
-      ) : (
-        <button
-          type="button"
-          onClick={handleSend}
-          disabled={!localText.trim()}
-          className={cn(
-            "p-2 rounded-lg shrink-0",
-            "bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-          )}
-        >
-          <SendHorizonal className="h-4 w-4" />
-        </button>
-      )}
-    </div>
+          onFocus={onFocus}
+        />
+      </ComposerPrimitive.Input>
+      <AssistantIf condition={({ thread }) => thread.isRunning}>
+        <ComposerPrimitive.Cancel asChild>
+          <button
+            type="button"
+            className={cn(
+              "p-2 rounded-lg shrink-0",
+              "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            )}
+          >
+            <Square className="h-4 w-4" />
+          </button>
+        </ComposerPrimitive.Cancel>
+      </AssistantIf>
+      <AssistantIf condition={({ thread }) => !thread.isRunning}>
+        <ComposerPrimitive.Send asChild>
+          <button
+            type="button"
+            className={cn(
+              "p-2 rounded-lg shrink-0",
+              "bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            )}
+          >
+            <SendHorizonal className="h-4 w-4" />
+          </button>
+        </ComposerPrimitive.Send>
+      </AssistantIf>
+    </ComposerPrimitive.Root>
   );
 }
 

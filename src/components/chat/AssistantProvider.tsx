@@ -4,8 +4,8 @@
 // Uses AssistantChatTransport to forward system messages and body data to the API
 
 import { AssistantRuntimeProvider, useAssistantState } from "@assistant-ui/react";
-import { useChatRuntime, AssistantChatTransport } from "@assistant-ui/react-ai-sdk";
-import type { UIMessage } from "@ai-sdk/react";
+import { AssistantChatTransport, useAISDKRuntime } from "@assistant-ui/react-ai-sdk";
+import { useChat, type UIMessage } from "@ai-sdk/react";
 import { useStore } from "@/store";
 import { formatRecentChanges } from "@/lib/canvas-context";
 import { createUIMessageFromAppendMessage } from "@/lib/ai-sdk-message";
@@ -17,6 +17,7 @@ type SendRequestBody = {
   activeSpaceName: string | null;
   spaces: unknown;
   transforms: unknown;
+  rules: unknown;
 };
 
 interface AssistantProviderProps {
@@ -47,16 +48,24 @@ export function AssistantProvider({ children }: AssistantProviderProps) {
           })(),
           spaces: state.workspace.spaces,
           transforms: state.getTransforms(),
+          rules: state.getRulePack(),
         } satisfies SendRequestBody;
       },
     });
   }
 
-  // Create runtime with the stable transport
-  const runtime = useChatRuntime({
+  const chat = useChat({
+    id: "assistant",
     transport: transportRef.current,
+  });
+
+  const runtime = useAISDKRuntime(chat, {
     toCreateMessage: createUIMessageFromAppendMessage,
   });
+
+  if (transportRef.current instanceof AssistantChatTransport) {
+    transportRef.current.setRuntime(runtime);
+  }
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>

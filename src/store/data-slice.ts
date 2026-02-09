@@ -29,6 +29,13 @@
 import { StateCreator } from "zustand";
 import type { AgenticCanvasStore } from "./index";
 import type { ComponentId, DataBinding, DataError } from "@/types";
+import type { Rule, RuleContext } from "@/lib/rules";
+import {
+  applyRulesToItems,
+  getRulesForTarget,
+  resolveRuleTargetForBinding,
+} from "@/lib/rules";
+import { trackClientTelemetry } from "@/lib/telemetry-client";
 
 // Cached data entry
 interface CachedData {
@@ -59,6 +66,11 @@ export const createDataSlice: StateCreator<
 
   fetchData: async (componentId, binding) => {
     const cacheKey = generateCacheKey(binding);
+    const bindingInfo = {
+      source: binding.source,
+      type: binding.query.type,
+      params: binding.query.params ?? {},
+    };
 
     const setLoadingForMatchingComponents = (state: AgenticCanvasStore, startedAt: number) => {
       for (const comp of state.canvas.components) {
@@ -80,6 +92,17 @@ export const createDataSlice: StateCreator<
     // Check cache
     const cached = get().dataCache.get(cacheKey);
     if (cached && Date.now() - cached.fetchedAt < cached.ttl) {
+      void trackClientTelemetry({
+        source: "store.data",
+        event: "cache_hit",
+        data: {
+          componentId,
+          cacheKey,
+          ageMs: Date.now() - cached.fetchedAt,
+          ttl: cached.ttl,
+          binding: bindingInfo,
+        },
+      });
       set((state) => {
         for (const comp of state.canvas.components) {
           const bindingKey = comp.dataBinding ? generateCacheKey(comp.dataBinding) : null;
@@ -98,6 +121,11 @@ export const createDataSlice: StateCreator<
     // Check if already fetching
     const existingFetch = get().pendingFetches.get(cacheKey);
     if (existingFetch) {
+      void trackClientTelemetry({
+        source: "store.data",
+        event: "fetch_dedupe",
+        data: { componentId, cacheKey, binding: bindingInfo },
+      });
       const startedAt = Date.now();
       set((state) => {
         setLoadingForMatchingComponents(state, startedAt);
@@ -106,10 +134,21 @@ export const createDataSlice: StateCreator<
     }
 
     const startedAt = Date.now();
+    void trackClientTelemetry({
+      source: "store.data",
+      event: "fetch_start",
+      data: {
+        componentId,
+        cacheKey,
+        binding: bindingInfo,
+        hasTransform: Boolean(binding.transformId),
+        refreshInterval: binding.refreshInterval ?? null,
+      },
+    });
     const fetchPromise = (async () => {
       try {
         // Fetch from appropriate API based on source
-        const result = await fetchDataFromSource(binding);
+        const result = await fetchDataFromSource(binding, get);
 
         // Apply transform if one is specified
         let transformedData = result.data;
@@ -125,8 +164,76 @@ export const createDataSlice: StateCreator<
               transformedData = applyTransform(result.data, transform.code);
             } catch (err) {
               console.error(`Transform ${binding.transformId} failed:`, err);
+              void trackClientTelemetry({
+                source: "store.data",
+                event: "transform_error",
+                level: "error",
+                data: {
+                  componentId,
+                  cacheKey,
+                  transformId: binding.transformId,
+                  error: err instanceof Error ? err.message : "Unknown error",
+                },
+              });
               // Fall back to untransformed data
             }
+          }
+        }
+
+        const ruleTarget = resolveRuleTargetForBinding(binding);
+        if (ruleTarget && Array.isArray(transformedData)) {
+          const rules = getRulesForTarget(get().workspace.rules, ruleTarget);
+          if (rules.length > 0) {
+            const llmRule = pickLlmClassifierRule(rules);
+            let itemsForRules = transformedData;
+            let llmScores: Record<string, number> | undefined;
+
+            if (llmRule) {
+              const prepared = prepareItemsForLlmScoring(transformedData);
+              itemsForRules = prepared.items;
+              void trackClientTelemetry({
+                source: "store.rules",
+                event: "llm_score_request",
+                data: {
+                  componentId,
+                  target: ruleTarget,
+                  ruleId: llmRule.id ?? null,
+                  itemCount: prepared.scoringItems.length,
+                },
+              });
+              llmScores = await requestLlmScores(llmRule, prepared.scoringItems);
+              void trackClientTelemetry({
+                source: "store.rules",
+                event: "llm_score_response",
+                data: {
+                  componentId,
+                  target: ruleTarget,
+                  ruleId: llmRule.id ?? null,
+                  scoreCount: llmScores ? Object.keys(llmScores).length : 0,
+                },
+              });
+            }
+
+            const ruleContext: RuleContext = {
+              userId: "local",
+              now: Date.now(),
+              scope: "component",
+              signals: llmScores ? { llmScores } : undefined,
+            };
+            const result = applyRulesToItems(itemsForRules, rules, ruleTarget, ruleContext);
+            void trackClientTelemetry({
+              source: "store.rules",
+              event: "apply",
+              data: {
+                componentId,
+                target: ruleTarget,
+                ruleCount: rules.length,
+                appliedRuleCount: result.appliedRuleIds.length,
+                itemCountBefore: Array.isArray(itemsForRules) ? itemsForRules.length : undefined,
+                itemCountAfter: Array.isArray(result.items) ? result.items.length : undefined,
+              },
+            });
+            transformedData = result.items;
           }
         }
 
@@ -146,6 +253,18 @@ export const createDataSlice: StateCreator<
               comp.dataState = { status: "ready", data: transformedData, fetchedAt };
             }
           }
+        });
+
+        void trackClientTelemetry({
+          source: "store.data",
+          event: "fetch_success",
+          data: {
+            componentId,
+            cacheKey,
+            durationMs: Date.now() - startedAt,
+            ttl: result.ttl,
+            itemCount: Array.isArray(transformedData) ? transformedData.length : undefined,
+          },
         });
 
         // Schedule refresh if interval set
@@ -174,6 +293,18 @@ export const createDataSlice: StateCreator<
             }
           }
         });
+
+        void trackClientTelemetry({
+          source: "store.data",
+          event: "fetch_error",
+          level: "error",
+          data: {
+            componentId,
+            cacheKey,
+            durationMs: Date.now() - startedAt,
+            error: dataError.message,
+          },
+        });
       } finally {
         set((state) => {
           state.pendingFetches.delete(cacheKey);
@@ -201,6 +332,11 @@ export const createDataSlice: StateCreator<
     set((state) => {
       state.dataCache.delete(cacheKey);
     });
+    void trackClientTelemetry({
+      source: "store.data",
+      event: "cache_invalidate",
+      data: { componentId, cacheKey },
+    });
 
     // Re-fetch
     await get().fetchData(componentId, component.dataBinding);
@@ -210,6 +346,11 @@ export const createDataSlice: StateCreator<
     // Fetch data for all components with data bindings
     // Called after rehydration from localStorage
     const components = get().canvas.components;
+    void trackClientTelemetry({
+      source: "store.data",
+      event: "initialize",
+      data: { componentCount: components.length },
+    });
     for (const component of components) {
       if (component.dataBinding) {
         get().fetchData(component.id, component.dataBinding);
@@ -224,9 +365,125 @@ function generateCacheKey(binding: DataBinding): string {
   return `${binding.source}:${binding.query.type}:${JSON.stringify(binding.query.params)}`;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object");
+}
+
+function extractText(value: unknown): string {
+  if (!isRecord(value)) return "";
+  const candidates = [
+    value.text,
+    value.title,
+    value.message,
+    value.content,
+    value.body,
+    value.summary,
+  ];
+  for (const entry of candidates) {
+    if (typeof entry === "string") return entry;
+  }
+  return "";
+}
+
+function deriveItemKey(value: unknown, index: number): string {
+  if (isRecord(value)) {
+    const candidates = [
+      value.id,
+      value.ts,
+      value.timestamp,
+      value.createdAt,
+      value.updatedAt,
+      value.url,
+    ];
+    for (const entry of candidates) {
+      if (typeof entry === "string" || typeof entry === "number") {
+        return String(entry);
+      }
+    }
+  }
+  return `idx:${index}`;
+}
+
+function pickLlmClassifierRule(rules: Rule[]): Rule | undefined {
+  const candidates = rules.filter((rule) => rule.type === "score.llm_classifier");
+  if (candidates.length === 0) return undefined;
+  return candidates.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0))[0];
+}
+
+function prepareItemsForLlmScoring(items: unknown[]): {
+  items: unknown[];
+  scoringItems: Array<{ key: string; text: string }>;
+} {
+  const scoringItems: Array<{ key: string; text: string }> = [];
+  const prepared = items.map((item, index) => {
+    const key = deriveItemKey(item, index);
+    const text = extractText(item);
+    if (text) {
+      scoringItems.push({ key, text });
+    }
+    if (isRecord(item)) {
+      return { ...item, _llmKey: key };
+    }
+    return item;
+  });
+
+  return { items: prepared, scoringItems };
+}
+
+async function requestLlmScores(
+  rule: Rule,
+  scoringItems: Array<{ key: string; text: string }>
+): Promise<Record<string, number> | undefined> {
+  if (!rule.params || typeof rule.params !== "object") return undefined;
+  const instruction =
+    typeof rule.params.instruction === "string"
+      ? rule.params.instruction.trim()
+      : "";
+  if (!instruction) return undefined;
+
+  const maxItemsRaw = rule.params.maxItems;
+  const maxItems =
+    typeof maxItemsRaw === "number" && Number.isFinite(maxItemsRaw)
+      ? Math.max(1, Math.min(200, Math.floor(maxItemsRaw)))
+      : 50;
+
+  const payloadItems = scoringItems.slice(0, maxItems);
+  if (payloadItems.length === 0) return undefined;
+
+  try {
+    const response = await fetch("/api/rules/score", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ instruction, items: payloadItems }),
+    });
+
+    if (!response.ok) {
+      return undefined;
+    }
+
+    const payload = (await response.json()) as { scores?: Array<{ key: string; score: number }> };
+    const scores = Array.isArray(payload?.scores) ? payload.scores : [];
+    const map: Record<string, number> = {};
+    for (const entry of scores) {
+      if (!entry || typeof entry.key !== "string") continue;
+      if (typeof entry.score !== "number" || !Number.isFinite(entry.score)) continue;
+      map[entry.key] = entry.score;
+    }
+    return Object.keys(map).length > 0 ? map : undefined;
+  } catch (error) {
+    console.error("Failed to fetch LLM scores:", error);
+    return undefined;
+  }
+}
+
 // Route to appropriate data source
-async function fetchDataFromSource(binding: DataBinding): Promise<{ data: unknown; ttl: number }> {
+async function fetchDataFromSource(
+  binding: DataBinding,
+  getState: () => AgenticCanvasStore
+): Promise<{ data: unknown; ttl: number }> {
   switch (binding.source) {
+    case "briefing":
+      return fetchBriefingData(binding, getState);
     case "posthog":
       return fetchPostHogData(binding);
     case "slack":
@@ -236,6 +493,85 @@ async function fetchDataFromSource(binding: DataBinding): Promise<{ data: unknow
     case "mock-github":
     default:
       return fetchGitHubData(binding);
+  }
+}
+
+// Fetch data for briefing recommendations (Phase 2: aggregator API)
+async function fetchBriefingData(
+  binding: DataBinding,
+  getState: () => AgenticCanvasStore
+): Promise<{ data: unknown; ttl: number }> {
+  const state = getState();
+  const params = binding.query.params ?? {};
+  const activeSpace = state.workspace.spaces.find((s) => s.id === state.activeSpaceId);
+
+  const now = Date.now();
+  const fallbackSince = now - 24 * 60 * 60 * 1000;
+  const since =
+    (typeof params.since === "number" ? params.since : undefined) ??
+    activeSpace?.briefingConfig?.sinceTimestamp ??
+    (activeSpace?.lastVisitedAt && activeSpace?.createdAt
+      ? Math.abs(activeSpace.lastVisitedAt - activeSpace.createdAt) < 60_000
+        ? fallbackSince
+        : activeSpace.lastVisitedAt
+      : undefined) ??
+    fallbackSince;
+
+  const normalizeParam = (value: unknown) =>
+    typeof value === "string" && value.startsWith("$") ? undefined : value;
+
+  const requestBody = {
+    since,
+    repos: params.repos ?? activeSpace?.briefingConfig?.repos ?? [],
+    slackUserId:
+      normalizeParam(params.slackUserId) ??
+      activeSpace?.briefingConfig?.slackUserId,
+    slackChannels: params.slackChannels ?? activeSpace?.briefingConfig?.slackChannels,
+    vercelProjectId:
+      normalizeParam(params.vercelProjectId) ??
+      activeSpace?.briefingConfig?.vercelProjectId,
+    vercelTeamId:
+      normalizeParam(params.vercelTeamId) ??
+      activeSpace?.briefingConfig?.vercelTeamId,
+    generateNarrative: params.generateNarrative ?? true,
+  };
+
+  try {
+    const response = await fetch("/api/briefing", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error ?? `API error: ${response.status}`);
+    }
+
+    return response.json();
+  } catch {
+    const repos = Array.isArray(requestBody.repos) ? requestBody.repos : [];
+    const repoLabel = repos.length > 0 ? repos.join(", ") : "your repos";
+    return {
+      data: {
+        summary: "Your briefing space is set up. Ask me to catch you up when you're ready.",
+        sinceLabel: "Since your last visit",
+        sections: [
+          {
+            title: "Setup",
+            items: [
+              {
+                icon: "alert",
+                text: `Tracking ${repoLabel}. I'll surface anything that needs your attention.`,
+                priority: "low",
+              },
+            ],
+          },
+        ],
+        generatedAt: now,
+      },
+      ttl: 300000,
+    };
   }
 }
 
@@ -305,13 +641,18 @@ async function fetchSlackData(binding: DataBinding): Promise<{ data: unknown; tt
 // Fetch data from Vercel API route
 async function fetchVercelData(binding: DataBinding): Promise<{ data: unknown; ttl: number }> {
   const { query } = binding;
+  const params = { ...(query.params ?? {}) } as Record<string, unknown>;
+  const isPlaceholder = (value: unknown) =>
+    typeof value === "string" && value.startsWith("$");
+  if (isPlaceholder(params.projectId)) delete params.projectId;
+  if (isPlaceholder(params.teamId)) delete params.teamId;
 
   const response = await fetch("/api/vercel", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       type: query.type,
-      params: query.params,
+      params,
     }),
   });
 

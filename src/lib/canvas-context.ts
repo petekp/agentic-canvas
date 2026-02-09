@@ -155,6 +155,8 @@ const TYPE_METADATA: Record<string, { name: string; category: "data" | "metric" 
   // Vercel components
   "vercel.deployments": { name: "Deployments", category: "timeline" },
   "vercel.project-status": { name: "Project Status", category: "metric" },
+  // Briefing components
+  "briefing.recommendations": { name: "Briefing Recommendations", category: "data" },
 };
 
 /**
@@ -263,6 +265,19 @@ function summarizeComponent(
       summary = `${typeMeta.name} for ${project.name}`;
       if (project.framework) highlights.push(project.framework);
       if (project.latestProduction?.state) highlights.push(`Status: ${project.latestProduction.state}`);
+    } else if (component.typeId === "briefing.recommendations") {
+      const briefing = data as { summary?: string; sections?: Array<{ items?: unknown[] }> };
+      const sectionCount = briefing.sections?.length ?? 0;
+      const itemCount = (briefing.sections ?? []).reduce(
+        (total, section) => total + (section.items?.length ?? 0),
+        0
+      );
+      summary = `${typeMeta.name} with ${sectionCount} sections`;
+      if (itemCount > 0) highlights.push(`${itemCount} recommendations`);
+      if (briefing.summary) {
+        const trimmed = briefing.summary.length > 60 ? `${briefing.summary.slice(0, 57)}...` : briefing.summary;
+        highlights.push(trimmed);
+      }
     }
   } else if (component.dataState.status === "loading") {
     summary += " (loading data...)";
@@ -545,6 +560,29 @@ function extractDataDetails(component: ComponentInstance): string[] {
         details.push(`  - URL: ${project.latestProduction.url}`);
       }
     }
+  } else if (component.typeId === "briefing.recommendations") {
+    const briefing = data as {
+      summary?: string;
+      sections?: Array<{ title?: string; items?: Array<{ text?: string; priority?: string }> }>;
+    };
+    if (briefing.summary) {
+      const trimmed =
+        briefing.summary.length > 80 ? `${briefing.summary.slice(0, 77)}...` : briefing.summary;
+      details.push(`  - Summary: ${trimmed}`);
+    }
+    const sections = briefing.sections ?? [];
+    for (const section of sections.slice(0, 3)) {
+      if (!section.items || section.items.length === 0) continue;
+      details.push(`  - ${section.title ?? "Section"}:`);
+      for (const item of section.items.slice(0, 2)) {
+        const text = item.text ? item.text.slice(0, 60) : "Recommendation";
+        const priority = item.priority ? ` (${item.priority})` : "";
+        details.push(`    └ ${text}${priority}`);
+      }
+      if (section.items.length > 2) {
+        details.push(`    └ ... and ${section.items.length - 2} more`);
+      }
+    }
   }
 
   return details;
@@ -664,6 +702,11 @@ export function getAvailableComponentTypes(): { typeId: string; name: string; de
       typeId: "vercel.project-status",
       name: "Project Status",
       description: "Compact tile showing project health with production status and preview URL (2x2 default). Requires Vercel Token.",
+    },
+    {
+      typeId: "briefing.recommendations",
+      name: "Briefing Recommendations",
+      description: "AI-generated briefing summary and suggested follow-ups (6x4 default).",
     },
   ];
 }

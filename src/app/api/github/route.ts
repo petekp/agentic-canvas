@@ -20,6 +20,7 @@
 // data-slice.ts keep us well under budget.
 
 import { NextRequest } from "next/server";
+import { appendTelemetry } from "@/lib/telemetry";
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GITHUB_USERNAME = process.env.GITHUB_USERNAME;
@@ -33,7 +34,15 @@ type PRFilter = "all" | "authored" | "review_requested";
 type IssueFilter = "all" | "assigned" | "mentioned" | "created";
 
 interface GitHubRequest {
-  type: "pull_requests" | "issues" | "stats" | "activity" | "my_activity" | "commits" | "team_activity";
+  type:
+    | "pull_requests"
+    | "issues"
+    | "stats"
+    | "activity"
+    | "my_activity"
+    | "commits"
+    | "team_activity"
+    | "user_repos";
   params: {
     repo?: string;
     repos?: string[];
@@ -51,6 +60,22 @@ export async function POST(req: NextRequest) {
   try {
     const { type, params }: GitHubRequest = await req.json();
     const repo = params.repo || DEFAULT_REPO;
+
+    await appendTelemetry({
+      level: "info",
+      source: "api.github",
+      event: "request",
+      data: {
+        type,
+        repo,
+        repos: params.repos,
+        orgs: params.orgs,
+        limit: params.limit,
+        filter: params.filter,
+        state: params.state,
+        timeWindow: params.timeWindow,
+      },
+    });
 
     const headers: HeadersInit = {
       Accept: "application/vnd.github.v3+json",
@@ -94,6 +119,16 @@ export async function POST(req: NextRequest) {
         data = await fetchTeamActivity(repo, params, headers);
         ttl = 120000; // 2 minute cache
         break;
+      case "user_repos":
+        if (!GITHUB_TOKEN) {
+          return Response.json(
+            { error: "GITHUB_TOKEN not configured. Connect GitHub to list your repos." },
+            { status: 401 }
+          );
+        }
+        data = await fetchUserRepos(headers);
+        ttl = 300000; // 5 minute cache
+        break;
       default:
         return Response.json({ error: "Unknown query type" }, { status: 400 });
     }
@@ -107,11 +142,42 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     console.error("GitHub API error:", error);
+    await appendTelemetry({
+      level: "error",
+      source: "api.github",
+      event: "error",
+      data: { error: error instanceof Error ? error.message : String(error) },
+    });
     return Response.json(
       { error: error instanceof Error ? error.message : "GitHub API error" },
       { status: 500 }
     );
   }
+}
+
+async function fetchUserRepos(headers: HeadersInit) {
+  const res = await fetch(
+    `${GITHUB_API}/user/repos?per_page=50&sort=updated&type=all`,
+    { headers }
+  );
+
+  if (!res.ok) {
+    throw new Error(`GitHub API error: ${res.status} ${res.statusText}`);
+  }
+
+  const repos = await res.json();
+
+  return repos.map((repo: {
+    full_name: string;
+    description: string | null;
+    private: boolean;
+    updated_at: string;
+  }) => ({
+    fullName: repo.full_name,
+    description: repo.description ?? "",
+    isPrivate: repo.private,
+    updatedAt: new Date(repo.updated_at).getTime(),
+  }));
 }
 
 async function fetchPullRequests(

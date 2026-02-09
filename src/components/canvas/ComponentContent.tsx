@@ -9,6 +9,8 @@ import { useCanvas, useComponentData } from "@/hooks";
 import type { ComponentInstance, DataLoadingState } from "@/types";
 import { Button } from "@/components/ui/button";
 import { RefreshCw, X, Loader2 } from "lucide-react";
+import { useStore } from "@/store";
+import { resolveRuleTargetForBinding } from "@/lib/rules";
 
 // Import registry for dynamic renderer lookup
 import { CONTENT_RENDERERS } from "@/lib/component-registry";
@@ -159,6 +161,7 @@ interface ContentStateProps {
   config: Record<string, unknown>;
   label?: string;
   componentId: string;
+  isRefining: boolean;
 }
 
 function ContentState({
@@ -167,10 +170,11 @@ function ContentState({
   config,
   label,
   componentId,
+  isRefining,
 }: ContentStateProps) {
   switch (dataState.status) {
     case "loading":
-      return <LoadingState />;
+      return <LoadingState label={isRefining ? "Refining..." : undefined} />;
 
     case "error":
       return <ErrorState message={dataState.error.message} />;
@@ -205,6 +209,12 @@ export function ComponentContent({
 }: ComponentContentProps) {
   const { removeComponent } = useCanvas();
   const { dataState, refresh } = useComponentData(component.id);
+  const isRefining = useStore((state) => {
+    if (!component.dataBinding) return false;
+    const target = resolveRuleTargetForBinding(component.dataBinding);
+    if (!target) return false;
+    return state.getRulesForTarget(target).some((rule) => rule.type === "score.llm_classifier");
+  });
 
   const handleRemove = useCallback(() => {
     removeComponent(component.id);
@@ -227,6 +237,7 @@ export function ComponentContent({
           config={component.config}
           label={component.meta.label}
           componentId={component.id}
+          isRefining={isRefining}
         />
       </div>
     </div>

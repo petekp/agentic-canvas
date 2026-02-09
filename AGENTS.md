@@ -53,6 +53,47 @@ Tools execute via assistant-ui’s native tool system.
 - Tool definitions live in `src/lib/canvas-tools.tsx`.
 - Use `makeAssistantTool` + `frontendTools()`; do not add custom tool executors.
 
+### 6) Shape Up workflow (planning & delivery)
+
+Use Shape Up for significant changes and feature work. Keep artifacts in `.claude/`.
+
+- Existing projects: start by mapping the CURRENT system (breadboard) before framing change.
+- Flow: **Frame → Shape → Breadboard → Slice → Build**.
+- Use `/shaping` for framing and requirements/shape fit checks; use `/breadboarding` for affordances, wiring, and slicing.
+- `shaping.md` is the source of truth; spikes go in `spike-*.md`.
+- Create per-slice plans as `V[N]-plan.md` and update `big-picture.md` after each slice.
+
+### 7) Telemetry workflow (headless debugging)
+
+Agents should use telemetry logs to understand system behavior without a browser.
+
+- Logs are JSONL at `.claude/telemetry/agentic-canvas.log`
+- Live tail: `tail -f .claude/telemetry/agentic-canvas.log`
+- Filter: `rg "tool\\.add_component|api\\.chat" .claude/telemetry/agentic-canvas.log`
+- Inspect last events: `curl "http://localhost:3000/api/telemetry?limit=200"`
+- Override log path: set `TELEMETRY_LOG_PATH` in `.env.local`
+- Standard filter helper: `./scripts/query-telemetry.sh --level error --limit 50`
+- Event prefixes to grep:
+  - `api.*` (API routes)
+  - `tool.*` (assistant tool execution)
+  - `store.data.*`, `store.rules.*` (data fetch + rules)
+  - `store.canvas.*` (component mutations)
+  - `store.undo.*` (undo/redo + batching)
+  - `store.audit.*` (audit log append/persist)
+
+Quick queries:
+
+```bash
+# Last 50 errors
+tail -n 200 .claude/telemetry/agentic-canvas.log | rg "\"level\":\"error\"" | tail -n 50
+
+# Tool calls for preference rules
+rg "\"source\":\"tool\\.set_preference_rules\"" .claude/telemetry/agentic-canvas.log | tail -n 20
+
+# Data fetch failures and cache misses
+rg "\"source\":\"store\\.data\"" .claude/telemetry/agentic-canvas.log | rg "fetch_error|fetch_start" | tail -n 50
+```
+
 ## Tool Commands (assistant-facing)
 
 **Canvas edits**

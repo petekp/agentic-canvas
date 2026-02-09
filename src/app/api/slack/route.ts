@@ -2,11 +2,21 @@
 // Keeps token server-side for security
 
 import { NextRequest } from "next/server";
+import { appendTelemetry } from "@/lib/telemetry";
 
 const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN;
 const SLACK_USER_TOKEN = process.env.SLACK_USER_TOKEN;
 const SLACK_API = "https://slack.com/api";
 const SLACK_USER_MENTION_REGEX = /<@([A-Z0-9]+)>/g;
+
+class SlackRouteError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
 
 interface SlackRequest {
   type:
@@ -84,6 +94,25 @@ export async function POST(req: NextRequest) {
   try {
     const { type, params }: SlackRequest = await req.json();
 
+    await appendTelemetry({
+      level: "info",
+      source: "api.slack",
+      event: "request",
+      data: {
+        type,
+        params: {
+          channelId: params.channelId,
+          channelName: params.channelName,
+          userId: params.userId,
+          threadTs: params.threadTs,
+          limit: params.limit,
+          includeThreadReplies: params.includeThreadReplies,
+          threadRepliesLimit: params.threadRepliesLimit,
+          query: params.query,
+        },
+      },
+    });
+
     const headers: HeadersInit = {
       Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
       "Content-Type": "application/json",
@@ -123,9 +152,16 @@ export async function POST(req: NextRequest) {
     return Response.json({ data, ttl });
   } catch (error) {
     console.error("Slack API error:", error);
+    const status = error instanceof SlackRouteError ? error.status : 500;
+    await appendTelemetry({
+      level: "error",
+      source: "api.slack",
+      event: "error",
+      data: { error: error instanceof Error ? error.message : String(error), status },
+    });
     return Response.json(
       { error: error instanceof Error ? error.message : "Slack API error" },
-      { status: 500 }
+      { status }
     );
   }
 }
@@ -479,9 +515,10 @@ async function fetchMentions(
   if (!data.ok) {
     // Handle the case where bot tokens can't use search API
     if (data.error === "not_allowed_token_type") {
-      throw new Error(
+      throw new SlackRouteError(
         "Mentions feature requires a User OAuth Token (xoxp-). Bot tokens cannot use the search API. " +
-        "Use Channel Activity instead, or set up OAuth to get a user token."
+          "Use Channel Activity instead, or set up OAuth to get a user token.",
+        403
       );
     }
     throw new Error(`Slack API error: ${data.error}`);

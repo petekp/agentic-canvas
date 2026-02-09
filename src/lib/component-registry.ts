@@ -29,6 +29,7 @@ import {
   BarChart3,
   MessageSquare,
   Layers,
+  Sparkles,
   Triangle,
 } from "lucide-react";
 
@@ -49,7 +50,7 @@ export type ContentRenderer = LazyExoticComponent<ComponentType<any>>;
 export interface ComponentTypeConfig {
   typeId: string;
   label: string;
-  category: "personal" | "github" | "posthog" | "slack" | "vercel";
+  category: "personal" | "github" | "posthog" | "slack" | "vercel" | "briefing";
   config: Record<string, unknown>;
   size: { cols: number; rows: number };
   queryType: string;
@@ -60,7 +61,7 @@ export interface ComponentTypeConfig {
  * Category metadata for grouping in dropdown
  */
 export interface CategoryConfig {
-  id: "personal" | "github" | "posthog" | "slack" | "vercel";
+  id: "personal" | "github" | "posthog" | "slack" | "vercel" | "briefing";
   label: string;
   icon: LucideIcon;
 }
@@ -126,6 +127,11 @@ export const CONTENT_RENDERERS: Record<string, ContentRenderer> = {
   "vercel.project-status": lazy(
     () => import("@/components/canvas/renderers/ProjectStatusContent")
   ),
+
+  // Briefing components
+  "briefing.recommendations": lazy(
+    () => import("@/components/canvas/renderers/BriefingRecommendationsContent")
+  ),
 };
 
 // ============================================================================
@@ -141,6 +147,7 @@ export const CATEGORIES: CategoryConfig[] = [
   { id: "posthog", label: "PostHog", icon: BarChart3 },
   { id: "slack", label: "Slack", icon: MessageSquare },
   { id: "vercel", label: "Vercel", icon: Triangle },
+  { id: "briefing", label: "Briefing", icon: Sparkles },
 ];
 
 /**
@@ -323,6 +330,15 @@ export const COMPONENT_TYPES: ComponentTypeConfig[] = [
     size: { cols: 2, rows: 2 },
     queryType: "project_info",
     source: "vercel",
+  },
+  {
+    typeId: "briefing.recommendations",
+    label: "AI Recommendations",
+    category: "briefing",
+    config: {},
+    size: { cols: 6, rows: 4 },
+    queryType: "recommendations",
+    source: "briefing",
   },
 ];
 

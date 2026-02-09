@@ -28,6 +28,7 @@ import { openai } from "@ai-sdk/openai";
 import { streamText, convertToModelMessages, type UIMessage, stepCountIs } from "ai";
 import { frontendTools } from "@assistant-ui/react-ai-sdk";
 import { createSystemPrompt } from "@/lib/ai-tools";
+import { appendTelemetry } from "@/lib/telemetry";
 
 // Allow streaming responses up to 30 seconds
 export const maxDuration = 30;
@@ -91,13 +92,59 @@ function normalizeMessages(messages: unknown[]): UIMessage[] {
   });
 }
 
+function extractLastUserText(messages: UIMessage[]): string | null {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const msg = messages[i];
+    if (msg?.role !== "user") continue;
+    const parts = Array.isArray(msg.parts) ? msg.parts : [];
+    const textParts = parts
+      .map((part) => {
+        if (part && typeof part === "object" && "type" in part && "text" in part) {
+          const p = part as { type?: string; text?: string };
+          if (p.type === "text" && typeof p.text === "string") {
+            return p.text.trim();
+          }
+        }
+        return null;
+      })
+      .filter((part): part is string => Boolean(part));
+    if (textParts.length > 0) {
+      return textParts.join("\n").slice(0, 500);
+    }
+  }
+  return null;
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { messages: rawMessages, system, tools, canvas, recentChanges, activeSpaceName, spaces, transforms } = body;
+    const {
+      messages: rawMessages,
+      system,
+      tools,
+      canvas,
+      recentChanges,
+      activeSpaceName,
+      spaces,
+      transforms,
+      rules,
+    } = body;
 
     // Normalize messages to ensure parts array format (handles legacy content format)
     const messages = normalizeMessages(rawMessages ?? []);
+    const lastUserMessage = extractLastUserText(messages);
+
+    await appendTelemetry({
+      level: "info",
+      source: "api.chat",
+      event: "request",
+      data: {
+        messageCount: messages.length,
+        lastUserMessage,
+        toolCount: Array.isArray(tools) ? tools.length : undefined,
+        activeSpaceName,
+      },
+    });
 
     // Build dynamic system prompt based on current canvas state and context
     const dynamicSystemPrompt = createSystemPrompt({
@@ -106,6 +153,7 @@ export async function POST(req: Request) {
       recentChanges,
       spaces,
       transforms,
+      rules,
     });
 
     // Combine any forwarded frontend system messages with our dynamic prompt
@@ -143,11 +191,23 @@ export async function POST(req: Request) {
     return result.toUIMessageStreamResponse({
       onError: (error) => {
         console.error("[Chat API] Stream error:", error);
+        void appendTelemetry({
+          level: "error",
+          source: "api.chat",
+          event: "stream_error",
+          data: { error: error instanceof Error ? error.message : String(error) },
+        });
         return error instanceof Error ? error.message : "Stream error occurred";
       },
     });
   } catch (error) {
     console.error("Chat API error:", error);
+    await appendTelemetry({
+      level: "error",
+      source: "api.chat",
+      event: "error",
+      data: { error: error instanceof Error ? error.message : String(error) },
+    });
     return new Response(
       JSON.stringify({
         error: error instanceof Error ? error.message : "Unknown error",

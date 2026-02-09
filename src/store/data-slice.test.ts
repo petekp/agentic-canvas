@@ -176,4 +176,118 @@ describe("data-slice fetchData", () => {
       expect(errored.dataState.error.message).toContain("kaboom");
     }
   });
+
+  it("returns briefing data without external fetch", async () => {
+    const store = createTestStore();
+    const addResult = store.getState().addComponent({
+      typeId: "briefing.recommendations",
+      config: {},
+      dataBinding: {
+        source: "briefing",
+        query: { type: "recommendations", params: { repos: ["owner/repo"] } },
+        refreshInterval: null,
+      },
+    });
+    const componentId = addResult.affectedComponentIds[0];
+
+    globalThis.fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ data: {}, ttl: 1000 }),
+    })) as unknown as typeof fetch;
+
+    await store.getState().fetchData(componentId, {
+      source: "briefing",
+      query: { type: "recommendations", params: { repos: ["owner/repo"] } },
+      refreshInterval: null,
+    });
+
+    const ready = store.getState().canvas.components.find((c) => c.id === componentId);
+    expect(ready?.dataState.status).toBe("ready");
+    if (ready?.dataState.status === "ready") {
+      const data = ready.dataState.data as { summary?: string };
+      expect(typeof data.summary).toBe("string");
+    }
+  });
+
+  it("applies LLM scores from /api/rules/score and sorts by score", async () => {
+    const store = createTestStore();
+
+    store.getState().setRulesForTarget("github.prs", [
+      {
+        id: "score-llm",
+        type: "score.llm_classifier",
+        phase: "score",
+        target: "github.prs",
+        params: { instruction: "Prioritize questions." },
+      },
+      {
+        id: "sort-score",
+        type: "sort.score_then_recent",
+        phase: "sort",
+        target: "github.prs",
+      },
+    ]);
+    expect(store.getState().getRulesForTarget("github.prs")).toHaveLength(2);
+
+    const fetchMock = vi.fn(async (url: RequestInfo | URL, options?: RequestInit) => {
+      if (url === "/api/github") {
+        return {
+          ok: true,
+          json: async () => ({
+            data: [
+              { id: "a", title: "FYI update", updatedAt: 100 },
+              { id: "b", title: "Can you review this?", updatedAt: 50 },
+            ],
+            ttl: 1000,
+          }),
+        };
+      }
+
+      if (url === "/api/rules/score") {
+        const body = JSON.parse(String(options?.body ?? "{}"));
+        expect(body.instruction).toBe("Prioritize questions.");
+        expect(Array.isArray(body.items)).toBe(true);
+        return {
+          ok: true,
+          json: async () => ({
+            scores: [
+              { key: "b", score: 0.9 },
+              { key: "a", score: 0.1 },
+            ],
+          }),
+        };
+      }
+
+      throw new Error(`Unexpected fetch: ${String(url)}`);
+    });
+
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const addResult = store.getState().addComponent({
+      typeId: "github.pr-list",
+      config: {},
+      dataBinding: {
+        source: "mock-github",
+        query: { type: "pull_requests", params: {} },
+        refreshInterval: null,
+      },
+    });
+    const componentId = addResult.affectedComponentIds[0];
+
+    await store.getState().fetchData(componentId, {
+      source: "mock-github",
+      query: { type: "pull_requests", params: {} },
+      refreshInterval: null,
+    });
+
+    const fetchUrls = fetchMock.mock.calls.map((call) => String(call[0]));
+    expect(fetchUrls).toContain("/api/rules/score");
+
+    const ready = store.getState().canvas.components.find((c) => c.id === componentId);
+    expect(ready?.dataState.status).toBe("ready");
+    if (ready?.dataState.status === "ready") {
+      const data = ready.dataState.data as Array<{ id: string }>;
+      expect(data[0]?.id).toBe("b");
+    }
+  });
 });

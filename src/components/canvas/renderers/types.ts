@@ -260,3 +260,21 @@ export interface VercelDeploymentEventsData {
     timestamp: number;
   }>;
 }
+
+// Briefing Types
+// ============================================================================
+
+export interface BriefingRecommendationsData {
+  summary: string;
+  sinceLabel: string;
+  sections: Array<{
+    title: string;
+    items: Array<{
+      icon: "pr" | "issue" | "deploy" | "slack" | "alert";
+      text: string;
+      priority: "high" | "medium" | "low";
+      actionUrl?: string;
+    }>;
+  }>;
+  generatedAt: number;
+}

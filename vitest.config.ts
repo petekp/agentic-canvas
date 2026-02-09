@@ -6,6 +6,9 @@ export default defineConfig({
     environment: "node",
     exclude: [...configDefaults.exclude, "patches/**"],
   },
+  esbuild: {
+    jsx: "automatic",
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "src"),

@@ -45,6 +45,7 @@ import {
 import { UndoPolicy, evaluatePolicies, canUndoEntry, defaultPolicies } from "@/lib/undo/policies";
 import { emitToAuditLog, emitBatchEvent } from "@/lib/audit/audit-log";
 import { describeCanvasCommand } from "@/lib/undo/execute-command";
+import { trackClientTelemetry } from "@/lib/telemetry-client";
 
 // ============================================================================
 // Slice State
@@ -228,6 +229,16 @@ export const createUndoSlice: StateCreator<
       set((draft) => {
         draft.activeBatch!.entries.push(entry);
       });
+      void trackClientTelemetry({
+        source: "store.undo",
+        event: "entry_queued",
+        data: {
+          entryId: entry.id,
+          batchId: state.activeBatch.id,
+          commandType: entry.command.type,
+          description: entry.description,
+        },
+      });
       return entry;
     }
 
@@ -248,6 +259,18 @@ export const createUndoSlice: StateCreator<
       eventType: "operation_performed",
       entry,
       policyChecks: policyResults,
+    });
+
+    void trackClientTelemetry({
+      source: "store.undo",
+      event: "entry_added",
+      data: {
+        entryId: entry.id,
+        commandType: entry.command.type,
+        description: entry.description,
+        canUndo: entry.canUndo,
+        blockedReason: entry.undoBlockedReason ?? null,
+      },
     });
 
     return entry;
@@ -281,6 +304,15 @@ export const createUndoSlice: StateCreator<
 
       if (!canUndoResult.allowed) {
         console.warn(`Cannot undo: ${canUndoResult.reason}`);
+        void trackClientTelemetry({
+          source: "store.undo",
+          event: "undo_blocked",
+          level: "warn",
+          data: {
+            entryId: entry.id,
+            reason: canUndoResult.reason,
+          },
+        });
         break;
       }
 
@@ -333,6 +365,16 @@ export const createUndoSlice: StateCreator<
           originalEntryId: entry.auditCorrelationId,
           originalTimestamp: entry.timestamp,
           originalSource: entry.source,
+        },
+      });
+
+      void trackClientTelemetry({
+        source: "store.undo",
+        event: "undo_applied",
+        data: {
+          entryId: entry.id,
+          commandType: entry.command.type,
+          description: entry.description,
         },
       });
     }
@@ -400,6 +442,16 @@ export const createUndoSlice: StateCreator<
           originalSource: entry.source,
         },
       });
+
+      void trackClientTelemetry({
+        source: "store.undo",
+        event: "redo_applied",
+        data: {
+          entryId: entry.id,
+          commandType: entry.command.type,
+          description: entry.description,
+        },
+      });
     }
 
     return lastEntry;
@@ -438,6 +490,12 @@ export const createUndoSlice: StateCreator<
       source,
     });
 
+    void trackClientTelemetry({
+      source: "store.undo",
+      event: "batch_started",
+      data: { batchId, description, sourceType: source.type },
+    });
+
     return batchId;
   },
 
@@ -445,6 +503,12 @@ export const createUndoSlice: StateCreator<
     const state = get();
     if (!state.activeBatch) {
       console.warn("No active batch to add to");
+      void trackClientTelemetry({
+        source: "store.undo",
+        event: "batch_add_failed",
+        level: "warn",
+        data: { error: "NO_ACTIVE_BATCH" },
+      });
       return;
     }
 
@@ -465,6 +529,11 @@ export const createUndoSlice: StateCreator<
     if (!state.activeBatch || state.activeBatch.entries.length === 0) {
       set((draft) => {
         draft.activeBatch = null;
+      });
+      void trackClientTelemetry({
+        source: "store.undo",
+        event: "batch_empty",
+        data: { reason: "no_entries" },
       });
       return null;
     }
@@ -537,6 +606,17 @@ export const createUndoSlice: StateCreator<
       policyChecks: [],
     });
 
+    void trackClientTelemetry({
+      source: "store.undo",
+      event: "batch_committed",
+      data: {
+        batchId,
+        entryId: combinedEntry.id,
+        entryCount: entries.length,
+        description,
+      },
+    });
+
     return combinedEntry;
   },
 
@@ -556,6 +636,13 @@ export const createUndoSlice: StateCreator<
       description,
       source,
       error: "Batch aborted",
+    });
+
+    void trackClientTelemetry({
+      source: "store.undo",
+      event: "batch_aborted",
+      level: "warn",
+      data: { batchId, description },
     });
   },
 

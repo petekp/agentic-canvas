@@ -23,6 +23,7 @@
 // See: .claude/plans/primitives-spec-v0.1.md for design rationale
 
 import type { JSONSchema7 } from "json-schema";
+import type { RulePack } from "@/lib/rules/types";
 
 // ============================================================================
 // 1. Identifiers
@@ -76,6 +77,7 @@ export interface Workspace {
   spaces: Space[];
   triggers: ProactiveTrigger[];
   transforms: Map<TransformId, TransformDefinition>;
+  rules: RulePack;
   settings: WorkspaceSettings;
   createdAt: number;
   updatedAt: number;
@@ -105,6 +107,14 @@ export interface Space {
   createdAt: number;
   updatedAt: number;
   lastVisitedAt: number;
+  briefingConfig?: {
+    repos: string[];
+    slackUserId?: string;
+    slackChannels?: Array<{ id: string; name: string }>;
+    vercelProjectId?: string;
+    vercelTeamId?: string;
+    sinceTimestamp?: number;
+  };
 }
 
 // ============================================================================

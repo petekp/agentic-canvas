@@ -11,7 +11,12 @@ import { useStore } from "@/store";
 import { DEFAULT_BINDINGS, DEFAULT_SIZES, getDefaultBinding } from "@/lib/canvas-defaults";
 import { serializeCanvasContext } from "@/lib/canvas-context";
 import { addComponentWithFetch } from "@/lib/assistant-actions";
-import { assertIntegrationAvailable } from "@/lib/integration-preflight";
+import { compilePreference, getRuleEntry, resolveRuleTargetForBinding } from "@/lib/rules";
+import {
+  assertIntegrationAvailable,
+  getIntegrationStatus,
+  type IntegrationStatus,
+} from "@/lib/integration-preflight";
 import { resolveConfigFromChat } from "@/lib/tool-config";
 import { inferSlackUserFromText } from "@/lib/component-config";
 import { buildSlackMentionsFilterCode } from "@/lib/slack-mentions-filter";
@@ -21,6 +26,7 @@ import {
   formatToolErrorMessage,
   isSlackChannelMissing,
 } from "@/lib/tool-ui-messages";
+import { trackClientTelemetry } from "@/lib/telemetry-client";
 import {
   compileTemplateToCommands,
   deriveIntent,
@@ -42,6 +48,7 @@ import {
   type OptionListSelection,
   type OptionListOption,
 } from "@/components/tool-ui/option-list";
+import { Button } from "@/components/ui/button";
 import {
   Check,
   Loader2,
@@ -106,6 +113,20 @@ type SlackUserListItem = {
   userId: string;
   username?: string;
   displayName?: string;
+};
+
+type GitHubRepoListItem = {
+  fullName: string;
+  description?: string;
+  isPrivate?: boolean;
+  updatedAt?: number;
+};
+
+type VercelProjectListItem = {
+  id: string;
+  name: string;
+  framework?: string;
+  teamId?: string;
 };
 
 function shouldOfferSlackChannelPicker(
@@ -199,6 +220,54 @@ function formatSlackUserListError(error: string): string {
   }
   if (/SLACK_BOT_TOKEN/i.test(error)) {
     return "Slack isn't connected yet. Connect Slack to list users.";
+  }
+  return error;
+}
+
+async function fetchGitHubRepoList(): Promise<GitHubRepoListItem[]> {
+  const response = await fetch("/api/github", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ type: "user_repos", params: {} }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    const message = error?.error ?? `GitHub API error: ${response.status}`;
+    throw new Error(message);
+  }
+
+  const payload = await response.json();
+  return Array.isArray(payload.data) ? payload.data : [];
+}
+
+function formatGitHubRepoListError(error: string): string {
+  if (/GITHUB_TOKEN/i.test(error)) {
+    return "GitHub isn't connected yet. Connect GitHub to list your repos.";
+  }
+  return error;
+}
+
+async function fetchVercelProjectList(): Promise<VercelProjectListItem[]> {
+  const response = await fetch("/api/vercel", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ type: "project_list", params: {} }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    const message = error?.error ?? `Vercel API error: ${response.status}`;
+    throw new Error(message);
+  }
+
+  const payload = await response.json();
+  return Array.isArray(payload.data) ? payload.data : [];
+}
+
+function formatVercelProjectListError(error: string): string {
+  if (/VERCEL_TOKEN/i.test(error)) {
+    return "Vercel isn't connected yet. Connect Vercel to list projects.";
   }
   return error;
 }
@@ -371,6 +440,168 @@ function SlackUserPicker({
   );
 }
 
+function GitHubRepoPicker({
+  id,
+  onConfirm,
+}: {
+  id: string;
+  onConfirm: (selection: OptionListSelection, repos: GitHubRepoListItem[]) => Promise<{ success: boolean; error?: string }>;
+}) {
+  const loadOptions = useCallback(async () => {
+    try {
+      const repos = await fetchGitHubRepoList();
+      const sorted = [...repos].sort((a, b) => (a.fullName ?? "").localeCompare(b.fullName ?? ""));
+
+      const options: OptionListOption[] = sorted.map((repo) => {
+        const visibility = repo.isPrivate ? "Private" : "Public";
+        const updatedAt = repo.updatedAt ? new Date(repo.updatedAt).toLocaleDateString() : "Unknown update";
+        const description = [visibility, `Updated ${updatedAt}`, repo.description]
+          .filter(Boolean)
+          .join(" · ");
+        return {
+          id: repo.fullName,
+          label: repo.fullName,
+          description,
+        };
+      });
+
+      return {
+        options,
+        context: sorted,
+        emptyMessage: "No GitHub repositories available.",
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to load repos";
+      throw new Error(formatGitHubRepoListError(message));
+    }
+  }, []);
+
+  const handleConfirm = useCallback(
+    async (selection: OptionListSelection, repos?: GitHubRepoListItem[]) =>
+      onConfirm(selection, repos ?? []),
+    [onConfirm]
+  );
+
+  return (
+    <AsyncOptionList
+      id={id}
+      selectionMode="multi"
+      minSelections={1}
+      maxSelections={8}
+      loadingMessage="Loading GitHub repositories..."
+      emptyMessage="No GitHub repositories found."
+      loadOptions={loadOptions}
+      onConfirm={handleConfirm}
+    />
+  );
+}
+
+function VercelProjectPicker({
+  id,
+  onConfirm,
+  optional = true,
+}: {
+  id: string;
+  optional?: boolean;
+  onConfirm: (
+    selection: OptionListSelection,
+    projects: VercelProjectListItem[]
+  ) => Promise<{ success: boolean; error?: string }>;
+}) {
+  const loadOptions = useCallback(async () => {
+    try {
+      const projects = await fetchVercelProjectList();
+      const sorted = [...projects].sort((a, b) => a.name.localeCompare(b.name));
+
+      const options: OptionListOption[] = sorted.map((project) => ({
+        id: project.id,
+        label: project.name,
+        description: project.framework ? `Framework: ${project.framework}` : undefined,
+      }));
+
+      return {
+        options,
+        context: sorted,
+        emptyMessage: "No Vercel projects available.",
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to load projects";
+      throw new Error(formatVercelProjectListError(message));
+    }
+  }, []);
+
+  const handleConfirm = useCallback(
+    async (selection: OptionListSelection, projects?: VercelProjectListItem[]) =>
+      onConfirm(selection, projects ?? []),
+    [onConfirm]
+  );
+
+  return (
+    <AsyncOptionList
+      id={id}
+      selectionMode="single"
+      minSelections={optional ? 0 : 1}
+      loadingMessage="Loading Vercel projects..."
+      emptyMessage="No Vercel projects found."
+      loadOptions={loadOptions}
+      onConfirm={handleConfirm}
+    />
+  );
+}
+
+function SlackMentionsPicker({
+  id,
+  onConfirm,
+}: {
+  id: string;
+  onConfirm: (
+    selection: OptionListSelection,
+    users: SlackUserListItem[]
+  ) => Promise<{ success: boolean; error?: string }>;
+}) {
+  const loadOptions = useCallback(async () => {
+    try {
+      const { users, emptyMessage } = await resolveSlackUserOptions();
+      return {
+        options: users.map((user) => {
+          const label = user.displayName || user.username || user.userId;
+          const details = [user.username ? `@${user.username}` : null, user.userId]
+            .filter(Boolean)
+            .join(" • ");
+          return {
+            id: user.userId,
+            label,
+            description: details || undefined,
+          };
+        }),
+        context: users,
+        emptyMessage,
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to load users";
+      throw new Error(formatSlackUserListError(message));
+    }
+  }, []);
+
+  const handleConfirm = useCallback(
+    async (selection: OptionListSelection, users?: SlackUserListItem[]) =>
+      onConfirm(selection, users ?? []),
+    [onConfirm]
+  );
+
+  return (
+    <AsyncOptionList
+      id={id}
+      selectionMode="single"
+      minSelections={0}
+      loadingMessage="Loading Slack users..."
+      emptyMessage="No Slack users found."
+      loadOptions={loadOptions}
+      onConfirm={handleConfirm}
+    />
+  );
+}
+
 function getTypeName(typeId: string): string {
   const names: Record<string, string> = {
     "github.stat-tile": "stat tile",
@@ -386,6 +617,7 @@ function getTypeName(typeId: string): string {
     "slack.channel-activity": "channel activity",
     "slack.mentions": "mentions",
     "slack.thread-watch": "thread watch",
+    "briefing.recommendations": "briefing recommendations",
   };
   if (!typeId) return "component";
   return names[typeId] ?? typeId.split(".").pop() ?? typeId;
@@ -437,6 +669,26 @@ function resolveSelectedUsers(
   const selectedIds = Array.isArray(selection) ? selection : [selection];
   const selectedSet = new Set(selectedIds);
   return users.filter((user) => selectedSet.has(user.userId));
+}
+
+function resolveSelectedRepos(
+  selection: OptionListSelection,
+  repos: GitHubRepoListItem[]
+): GitHubRepoListItem[] {
+  if (!selection) return [];
+  const selectedIds = Array.isArray(selection) ? selection : [selection];
+  const selectedSet = new Set(selectedIds);
+  return repos.filter((repo) => selectedSet.has(repo.fullName));
+}
+
+function resolveSelectedProjects(
+  selection: OptionListSelection,
+  projects: VercelProjectListItem[]
+): VercelProjectListItem[] {
+  if (!selection) return [];
+  const selectedIds = Array.isArray(selection) ? selection : [selection];
+  const selectedSet = new Set(selectedIds);
+  return projects.filter((project) => selectedSet.has(project.id));
 }
 
 const SLACK_USER_ID_INPUT_REGEX = /^[UW][A-Z0-9]{8,}$/;
@@ -544,6 +796,54 @@ function createToolSource(): AssistantCommandSource {
   };
 }
 
+type ToolTelemetryContext = {
+  args?: unknown;
+  source?: AssistantCommandSource;
+};
+
+function logToolStart(toolName: string, context: ToolTelemetryContext) {
+  void trackClientTelemetry({
+    source: `tool.${toolName}`,
+    event: "start",
+    data: context,
+  });
+}
+
+function logToolResult(toolName: string, result: unknown) {
+  void trackClientTelemetry({
+    source: `tool.${toolName}`,
+    event: "result",
+    data: result,
+  });
+}
+
+function logToolError(toolName: string, error: unknown) {
+  const message =
+    error instanceof Error ? error.message : typeof error === "string" ? error : "Unknown error";
+  void trackClientTelemetry({
+    source: `tool.${toolName}`,
+    event: "error",
+    data: { error: message },
+    level: "error",
+  });
+}
+
+async function withToolTelemetry<T>(
+  toolName: string,
+  context: ToolTelemetryContext,
+  run: () => Promise<T>
+): Promise<T> {
+  logToolStart(toolName, context);
+  try {
+    const result = await run();
+    logToolResult(toolName, result);
+    return result;
+  } catch (error) {
+    logToolError(toolName, error);
+    throw error;
+  }
+}
+
 // ============================================================================
 // Schema Definitions
 // ============================================================================
@@ -590,6 +890,9 @@ const COMPONENT_REQUIRED_CONFIG: Record<string, { fields: string[]; message: str
 
 // Config fields that should be merged into dataBinding.query.params
 const CONFIG_TO_PARAMS_FIELDS: Record<string, string[]> = {
+  "github.pr-list": ["repo", "state", "filter", "limit"],
+  "github.issue-grid": ["repo", "state", "filter", "limit"],
+  "github.team-activity": ["repo", "timeWindow"],
   "slack.channel-activity": [
     "channelId",
     "channelName",
@@ -599,6 +902,8 @@ const CONFIG_TO_PARAMS_FIELDS: Record<string, string[]> = {
   ],
   "slack.thread-watch": ["channelId", "channelName", "threadTs"],
   "slack.mentions": ["userId", "limit"],
+  "vercel.deployments": ["projectId", "teamId", "limit", "state"],
+  "vercel.project-status": ["projectId", "teamId"],
 };
 
 function validateComponentConfig(
@@ -660,111 +965,116 @@ const addComponentToolDef = tool({
     label: z.string().optional(),
     transform_id: z.string().optional().describe("ID of a transform to apply to this component's data"),
   }),
-  execute: async ({ type_id, config, position, size, label, transform_id }) => {
-    const store = useStore.getState();
-    const getState = useStore.getState;
-    const source = createToolSource();
-    let batchStarted = false;
-
-    try {
-      const normalizedConfig = resolveConfigFromChat(
-        type_id,
-        config,
-        store.lastUserMessage
-      );
-      // Pre-validate required config fields
-      const validation = validateComponentConfig(type_id, normalizedConfig);
-      if (!validation.valid) {
-        return {
-          success: false,
-          error: validation.error,
-          action: validation.actionNeeded,
-          missingFields: validation.missingFields,
-        };
-      }
+  execute: async (args) =>
+    withToolTelemetry("add_component", { args }, async () => {
+      const { type_id, config, position, size, label, transform_id } = args;
+      const store = useStore.getState();
+      const getState = useStore.getState;
+      const source = createToolSource();
+      let batchStarted = false;
 
       try {
-        await assertIntegrationAvailable(type_id);
-      } catch (err) {
-        return {
-          success: false,
-          error: err instanceof Error ? err.message : "Integration unavailable",
-        };
-      }
+        const normalizedConfig = resolveConfigFromChat(
+          type_id,
+          config,
+          store.lastUserMessage
+        );
+        // Pre-validate required config fields
+        const validation = validateComponentConfig(type_id, normalizedConfig);
+        if (!validation.valid) {
+          return {
+            success: false,
+            error: validation.error,
+            action: validation.actionNeeded,
+            missingFields: validation.missingFields,
+          };
+        }
 
-      let resolvedConfig = normalizedConfig;
-      if (type_id === "slack.mentions") {
-        const resolvedUser = await resolveSlackMentionsUser(normalizedConfig);
-        if (resolvedUser.error) {
-          if (resolvedUser.userOptions) {
+        try {
+          await assertIntegrationAvailable(type_id);
+        } catch (err) {
+          return {
+            success: false,
+            error: err instanceof Error ? err.message : "Integration unavailable",
+          };
+        }
+
+        let resolvedConfig = normalizedConfig;
+        if (type_id === "slack.mentions") {
+          const resolvedUser = await resolveSlackMentionsUser(normalizedConfig);
+          if (resolvedUser.error) {
+            if (resolvedUser.userOptions) {
+              return {
+                success: false,
+                error: resolvedUser.error,
+                missingFields: ["userId"],
+                userOptions: resolvedUser.userOptions,
+                userQuery: resolvedUser.userQuery,
+              };
+            }
             return {
               success: false,
               error: resolvedUser.error,
-              missingFields: ["userId"],
-              userOptions: resolvedUser.userOptions,
-              userQuery: resolvedUser.userQuery,
             };
           }
+          resolvedConfig = resolvedUser.config;
+        }
+
+        store.startBatch(source, "AI: add_component");
+        batchStarted = true;
+
+        // Get default binding, merge config params, and add transform if specified
+        const defaultBinding = DEFAULT_BINDINGS[type_id];
+        // Build binding with config merged in and transform applied
+        const mergedBinding = mergeConfigToBindingParams(type_id, resolvedConfig, defaultBinding);
+        const dataBinding = mergedBinding
+          ? { ...mergedBinding, transformId: transform_id }
+          : undefined;
+
+        const payload: CreateComponentPayload = {
+          typeId: type_id,
+          config: resolvedConfig ?? {},
+          position: position ? { col: position.col, row: position.row } : undefined,
+          size: size ? { cols: size.cols, rows: size.rows } : DEFAULT_SIZES[type_id],
+          dataBinding,
+          meta: {
+            createdBy: "assistant",
+            label,
+          },
+        };
+
+        const { componentId, error, assistantMessage } = await addComponentWithFetch(
+          getState,
+          payload
+        );
+        if (error) {
+          store.abortBatch();
+          batchStarted = false;
           return {
             success: false,
-            error: resolvedUser.error,
+            error,
+            action: assistantMessage ?? error,
           };
         }
-        resolvedConfig = resolvedUser.config;
-      }
 
-      store.startBatch(source, "AI: add_component");
-      batchStarted = true;
-
-      // Get default binding, merge config params, and add transform if specified
-      const defaultBinding = DEFAULT_BINDINGS[type_id];
-      // Build binding with config merged in and transform applied
-      const mergedBinding = mergeConfigToBindingParams(type_id, resolvedConfig, defaultBinding);
-      const dataBinding = mergedBinding
-        ? { ...mergedBinding, transformId: transform_id }
-        : undefined;
-
-      const payload: CreateComponentPayload = {
-        typeId: type_id,
-        config: resolvedConfig ?? {},
-        position: position ? { col: position.col, row: position.row } : undefined,
-        size: size ? { cols: size.cols, rows: size.rows } : DEFAULT_SIZES[type_id],
-        dataBinding,
-        meta: {
-          createdBy: "assistant",
-          label,
-        },
-      };
-
-      const { componentId, error, assistantMessage } = await addComponentWithFetch(getState, payload);
-      if (error) {
-        store.abortBatch();
+        store.commitBatch();
         batchStarted = false;
+
+        return {
+          success: true,
+          componentId,
+          message: `Added ${getTypeName(type_id)}`,
+        };
+      } catch (err) {
+        if (batchStarted) {
+          store.abortBatch();
+        }
         return {
           success: false,
-          error,
-          action: assistantMessage ?? error,
+          error: err instanceof Error ? err.message : "Unknown error",
         };
       }
-
-      store.commitBatch();
-      batchStarted = false;
-
-      return {
-        success: true,
-        componentId,
-        message: `Added ${getTypeName(type_id)}`,
-      };
-    } catch (err) {
-      if (batchStarted) {
-        store.abortBatch();
-      }
-      return {
-        success: false,
-        error: err instanceof Error ? err.message : "Unknown error",
-      };
-    }
-  },
+    }),
 });
 
 type AddComponentToolArgs = {
@@ -999,25 +1309,27 @@ const removeComponentToolDef = tool({
   parameters: z.object({
     component_id: z.string(),
   }),
-  execute: async ({ component_id }) => {
-    const store = useStore.getState();
-    const source = createToolSource();
+  execute: async (args) =>
+    withToolTelemetry("remove_component", { args }, async () => {
+      const { component_id } = args;
+      const store = useStore.getState();
+      const source = createToolSource();
 
-    store.startBatch(source, "AI: remove_component");
-    try {
-      const result = store.removeComponent(component_id);
-      store.commitBatch();
+      store.startBatch(source, "AI: remove_component");
+      try {
+        const result = store.removeComponent(component_id);
+        store.commitBatch();
 
-      return {
-        success: result.success,
-        message: result.explanation,
-      };
-    } catch (err) {
-      store.abortBatch();
-      if (err instanceof Error) throw err;
-      throw new Error("Unknown error");
-    }
-  },
+        return {
+          success: result.success,
+          message: result.explanation,
+        };
+      } catch (err) {
+        store.abortBatch();
+        if (err instanceof Error) throw err;
+        throw new Error("Unknown error");
+      }
+    }),
 });
 
 export const RemoveComponentTool = makeAssistantTool({
@@ -1040,28 +1352,30 @@ const moveComponentToolDef = tool({
     component_id: z.string(),
     position: positionSchema,
   }),
-  execute: async ({ component_id, position }) => {
-    const store = useStore.getState();
-    const source = createToolSource();
+  execute: async (args) =>
+    withToolTelemetry("move_component", { args }, async () => {
+      const { component_id, position } = args;
+      const store = useStore.getState();
+      const source = createToolSource();
 
-    store.startBatch(source, "AI: move_component");
-    try {
-      const result = store.moveComponent(component_id, {
-        col: position.col,
-        row: position.row,
-      });
-      store.commitBatch();
+      store.startBatch(source, "AI: move_component");
+      try {
+        const result = store.moveComponent(component_id, {
+          col: position.col,
+          row: position.row,
+        });
+        store.commitBatch();
 
-      return {
-        success: result.success,
-        message: result.explanation,
-      };
-    } catch (err) {
-      store.abortBatch();
-      if (err instanceof Error) throw err;
-      throw new Error("Unknown error");
-    }
-  },
+        return {
+          success: result.success,
+          message: result.explanation,
+        };
+      } catch (err) {
+        store.abortBatch();
+        if (err instanceof Error) throw err;
+        throw new Error("Unknown error");
+      }
+    }),
 });
 
 export const MoveComponentTool = makeAssistantTool({
@@ -1085,30 +1399,32 @@ const resizeComponentToolDef = tool({
     component_id: z.string(),
     size: sizeSchema,
   }),
-  execute: async ({ component_id, size }) => {
-    const store = useStore.getState();
-    const source = createToolSource();
+  execute: async (args) =>
+    withToolTelemetry("resize_component", { args }, async () => {
+      const { component_id, size } = args;
+      const store = useStore.getState();
+      const source = createToolSource();
 
-    store.startBatch(source, "AI: resize_component");
-    try {
-      const result = store.resizeComponent(component_id, {
-        cols: size.cols,
-        rows: size.rows,
-      });
-      store.commitBatch();
+      store.startBatch(source, "AI: resize_component");
+      try {
+        const result = store.resizeComponent(component_id, {
+          cols: size.cols,
+          rows: size.rows,
+        });
+        store.commitBatch();
 
-      return {
-        success: result.success,
-        message: result.explanation,
-      };
-    } catch (err) {
-      store.abortBatch();
-      return {
-        success: false,
-        error: err instanceof Error ? err.message : "Unknown error",
-      };
-    }
-  },
+        return {
+          success: result.success,
+          message: result.explanation,
+        };
+      } catch (err) {
+        store.abortBatch();
+        return {
+          success: false,
+          error: err instanceof Error ? err.message : "Unknown error",
+        };
+      }
+    }),
 });
 
 export const ResizeComponentTool = makeAssistantTool({
@@ -1134,36 +1450,38 @@ const updateComponentToolDef = tool({
     label: z.string().optional(),
     pinned: z.boolean().optional(),
   }),
-  execute: async ({ component_id, config, label, pinned }) => {
-    const store = useStore.getState();
-    const source = createToolSource();
+  execute: async (args) =>
+    withToolTelemetry("update_component", { args }, async () => {
+      const { component_id, config, label, pinned } = args;
+      const store = useStore.getState();
+      const source = createToolSource();
 
-    store.startBatch(source, "AI: update_component");
-    try {
-      const payload: UpdateComponentPayload = {
-        componentId: component_id,
-        config,
-        meta: {
-          ...(label !== undefined && { label }),
-          ...(pinned !== undefined && { pinned }),
-        },
-      };
+      store.startBatch(source, "AI: update_component");
+      try {
+        const payload: UpdateComponentPayload = {
+          componentId: component_id,
+          config,
+          meta: {
+            ...(label !== undefined && { label }),
+            ...(pinned !== undefined && { pinned }),
+          },
+        };
 
-      const result = store.updateComponent(payload);
-      store.commitBatch();
+        const result = store.updateComponent(payload);
+        store.commitBatch();
 
-      return {
-        success: result.success,
-        message: result.explanation,
-      };
-    } catch (err) {
-      store.abortBatch();
-      return {
-        success: false,
-        error: err instanceof Error ? err.message : "Unknown error",
-      };
-    }
-  },
+        return {
+          success: result.success,
+          message: result.explanation,
+        };
+      } catch (err) {
+        store.abortBatch();
+        return {
+          success: false,
+          error: err instanceof Error ? err.message : "Unknown error",
+        };
+      }
+    }),
 });
 
 export const UpdateComponentTool = makeAssistantTool({
@@ -1191,27 +1509,29 @@ const clearCanvasToolDef = tool({
   parameters: z.object({
     preserve_pinned: z.boolean().default(true),
   }),
-  execute: async ({ preserve_pinned }) => {
-    const store = useStore.getState();
-    const source = createToolSource();
+  execute: async (args) =>
+    withToolTelemetry("clear_canvas", { args }, async () => {
+      const { preserve_pinned } = args;
+      const store = useStore.getState();
+      const source = createToolSource();
 
-    store.startBatch(source, "AI: clear_canvas");
-    try {
-      const result = store.clearCanvas(preserve_pinned ?? true);
-      store.commitBatch();
+      store.startBatch(source, "AI: clear_canvas");
+      try {
+        const result = store.clearCanvas(preserve_pinned ?? true);
+        store.commitBatch();
 
-      return {
-        success: result.success,
-        message: result.explanation,
-      };
-    } catch (err) {
-      store.abortBatch();
-      return {
-        success: false,
-        error: err instanceof Error ? err.message : "Unknown error",
-      };
-    }
-  },
+        return {
+          success: result.success,
+          message: result.explanation,
+        };
+      } catch (err) {
+        store.abortBatch();
+        return {
+          success: false,
+          error: err instanceof Error ? err.message : "Unknown error",
+        };
+      }
+    }),
 });
 
 export const ClearCanvasTool = makeAssistantTool({
@@ -1241,33 +1561,35 @@ Example: For filtering Slack messages to only show mentions, use:
       query_type: z.string().describe("Query type this works with (e.g., 'channel_messages', 'pull_requests')"),
     })).describe("What data sources this transform is compatible with"),
   }),
-  execute: async ({ name, description, code, compatible_with }) => {
-    const store = useStore.getState();
+  execute: async (args) =>
+    withToolTelemetry("create_transform", { args }, async () => {
+      const { name, description, code, compatible_with } = args;
+      const store = useStore.getState();
 
-    try {
-      const id = store.createTransform({
-        name,
-        description,
-        code,
-        compatibleWith: compatible_with.map((c) => ({
-          source: c.source,
-          queryType: c.query_type,
-        })),
-        createdBy: "assistant",
-      });
+      try {
+        const id = store.createTransform({
+          name,
+          description,
+          code,
+          compatibleWith: compatible_with.map((c) => ({
+            source: c.source,
+            queryType: c.query_type,
+          })),
+          createdBy: "assistant",
+        });
 
-      return {
-        success: true,
-        transformId: id,
-        message: `Created transform "${name}"`,
-      };
-    } catch (err) {
-      return {
-        success: false,
-        error: err instanceof Error ? err.message : "Unknown error",
-      };
-    }
-  },
+        return {
+          success: true,
+          transformId: id,
+          message: `Created transform "${name}"`,
+        };
+      } catch (err) {
+        return {
+          success: false,
+          error: err instanceof Error ? err.message : "Unknown error",
+        };
+      }
+    }),
 });
 
 export const CreateTransformTool = makeAssistantTool({
@@ -1280,6 +1602,96 @@ export const CreateTransformTool = makeAssistantTool({
       <ToolStatus status={status} />
     </div>
   ),
+});
+
+// Set Preference Rules Tool
+const setPreferenceRulesToolDef = tool({
+  description:
+    "Store personalization rules for a data target (mentions, PRs, issues, deployments).",
+  parameters: z.object({
+    patch: z.unknown().describe("Preference patch JSON (object or string)."),
+  }),
+  execute: async (args) =>
+    withToolTelemetry("set_preference_rules", { args }, async () => {
+      const { patch } = args;
+      const store = useStore.getState();
+
+      const compiled = compilePreference(patch);
+      if (!compiled.patch) {
+        return {
+          success: false,
+          error: "Invalid preference patch.",
+          errors: compiled.errors,
+        };
+      }
+
+      try {
+        store.setRulesForTarget(compiled.patch.target, compiled.patch.rules);
+
+        const refreshTargets = store.canvas.components.filter((component) => {
+          if (!component.dataBinding) return false;
+          return resolveRuleTargetForBinding(component.dataBinding) === compiled.patch?.target;
+        });
+
+        await Promise.allSettled(
+          refreshTargets.map((component) => store.refreshComponent(component.id))
+        );
+
+        const explanations = compiled.patch.rules.map((rule) => {
+          const entry = getRuleEntry(rule.type);
+          return entry?.explain(rule) ?? rule.type;
+        });
+
+        return {
+          success: true,
+          target: compiled.patch.target,
+          ruleCount: compiled.patch.rules.length,
+          summary: compiled.patch.summary,
+          explanations,
+        };
+      } catch (err) {
+        return {
+          success: false,
+          error: err instanceof Error ? err.message : "Unknown error",
+        };
+      }
+    }),
+});
+
+export const SetPreferenceRulesTool = makeAssistantTool({
+  ...setPreferenceRulesToolDef,
+  toolName: "set_preference_rules",
+  render: ({ status, result }) => {
+    const errorMessage = formatToolErrorMessage(result);
+    const record = result && typeof result === "object" ? (result as Record<string, unknown>) : null;
+    const target = typeof record?.target === "string" ? record?.target : null;
+    const summary = typeof record?.summary === "string" ? record?.summary : null;
+    const explanations = Array.isArray(record?.explanations)
+      ? (record?.explanations as string[]).filter((item) => typeof item === "string")
+      : [];
+
+    return (
+      <div className="flex flex-col gap-1 text-xs bg-muted/50 rounded px-2 py-1.5 my-1">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-3 w-3 text-emerald-500" />
+          <span>{target ? `Set rules for ${target}` : "Set preference rules"}</span>
+          <ToolStatus status={status} result={result} />
+        </div>
+        {errorMessage ? (
+          <span className="text-red-500">{errorMessage}</span>
+        ) : (
+          <>
+            {summary ? <span className="text-muted-foreground">{summary}</span> : null}
+            {explanations.length > 0 ? (
+              <div className="text-muted-foreground">
+                {explanations.slice(0, 3).join(" ")}
+              </div>
+            ) : null}
+          </>
+        )}
+      </div>
+    );
+  },
 });
 
 function formatLookupError(result?: unknown): string | null {
@@ -1302,37 +1714,39 @@ const lookupSlackUserToolDef = tool({
     query: z.string().describe("Name or handle to search (e.g., 'pete' or '@pete')"),
     limit: z.number().int().min(1).max(20).optional().describe("Max results (default 5)"),
   }),
-  execute: async ({ query, limit }) => {
-    try {
-      const response = await fetch("/api/slack", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "user_lookup",
-          params: { query, limit },
-        }),
-      });
+  execute: async (args) =>
+    withToolTelemetry("lookup_slack_user", { args }, async () => {
+      const { query, limit } = args;
+      try {
+        const response = await fetch("/api/slack", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: "user_lookup",
+            params: { query, limit },
+          }),
+        });
 
-      if (!response.ok) {
-        const error = await response.json();
+        if (!response.ok) {
+          const error = await response.json();
+          return {
+            success: false,
+            error: error?.error ?? `Slack API error: ${response.status}`,
+          };
+        }
+
+        const payload = await response.json();
+        return {
+          success: true,
+          results: payload.data,
+        };
+      } catch (err) {
         return {
           success: false,
-          error: error?.error ?? `Slack API error: ${response.status}`,
+          error: err instanceof Error ? err.message : "Unknown error",
         };
       }
-
-      const payload = await response.json();
-      return {
-        success: true,
-        results: payload.data,
-      };
-    } catch (err) {
-      return {
-        success: false,
-        error: err instanceof Error ? err.message : "Unknown error",
-      };
-    }
-  },
+    }),
 });
 
 export const LookupSlackUserTool = makeAssistantTool({
@@ -1369,8 +1783,68 @@ export const LookupSlackUserTool = makeAssistantTool({
 });
 
 // Add Filtered Component Tool - combines transform creation and component addition
+const ADD_COMPONENT_INTENT_INSTRUCTION = `Score 1.0 only if the user explicitly asks to add a new component/tile/widget to the canvas.
+Score 0.0 if the user is asking to prioritize, sort, filter, or personalize existing data or an existing component.
+Only explicit add requests should score high.`;
+
+async function requireExplicitAddIntent(
+  lastUserMessage: string | null
+): Promise<{ allowed: boolean; error?: string }> {
+  const message =
+    typeof lastUserMessage === "string" ? lastUserMessage.trim() : "";
+  if (!message) {
+    return {
+      allowed: false,
+      error:
+        "Action needed: This tool only runs when the user explicitly asks to add a new component.",
+    };
+  }
+
+  try {
+    const response = await fetch("/api/rules/score", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        instruction: ADD_COMPONENT_INTENT_INSTRUCTION,
+        items: [{ key: "intent", text: message }],
+      }),
+    });
+
+    if (!response.ok) {
+      return {
+        allowed: false,
+        error:
+          "Action needed: Unable to verify add-component intent. Use set_preference_rules for preference changes.",
+      };
+    }
+
+    const payload = (await response.json()) as {
+      scores?: Array<{ key: string; score: number }>;
+    };
+    const score = payload?.scores?.find((entry) => entry.key === "intent")
+      ?.score;
+
+    if (typeof score !== "number" || !Number.isFinite(score) || score < 0.6) {
+      return {
+        allowed: false,
+        error:
+          "Action needed: Use set_preference_rules to prioritize/sort/filter existing data. add_filtered_component is only for explicit add-component requests.",
+      };
+    }
+
+    return { allowed: true };
+  } catch (error) {
+    console.error("Failed to verify add-component intent:", error);
+    return {
+      allowed: false,
+      error:
+        "Action needed: Unable to verify add-component intent. Use set_preference_rules for preference changes.",
+    };
+  }
+}
+
 const addFilteredComponentToolDef = tool({
-  description: `Add a component with a custom data filter/transform in one step. Use this when you need to filter or reshape data.
+  description: `Add a component with a custom data filter/transform in one step. Use this ONLY when the user explicitly asks to add a new component/tile/widget.
 This creates the transform AND adds the component together.`,
   parameters: z.object({
     type_id: z.string().describe("Component type ID (e.g., 'slack.channel-activity')"),
@@ -1382,101 +1856,115 @@ This creates the transform AND adds the component together.`,
     size: sizeSchema.optional(),
     label: z.string().optional(),
   }),
-  execute: async ({ type_id, filter_name, filter_description, filter_code, config, position, size, label }) => {
-    const store = useStore.getState();
-    const getState = useStore.getState;
-    const source = createToolSource();
-    let batchStarted = false;
-
-    try {
-      const normalizedConfig = resolveConfigFromChat(
-        type_id,
-        config,
-        store.lastUserMessage
-      );
-      // Pre-validate required config fields
-      const validation = validateComponentConfig(type_id, normalizedConfig);
-      if (!validation.valid) {
-        return {
-          success: false,
-          error: validation.error,
-          action: validation.actionNeeded,
-          missingFields: validation.missingFields,
-        };
-      }
+  execute: async (args) =>
+    withToolTelemetry("add_filtered_component", { args }, async () => {
+      const { type_id, filter_name, filter_description, filter_code, config, position, size, label } = args;
+      const store = useStore.getState();
+      const getState = useStore.getState;
+      const source = createToolSource();
+      let batchStarted = false;
 
       try {
-        await assertIntegrationAvailable(type_id);
-      } catch (err) {
-        return {
-          success: false,
-          error: err instanceof Error ? err.message : "Integration unavailable",
-        };
-      }
+        const intentCheck = await requireExplicitAddIntent(store.lastUserMessage);
+        if (!intentCheck.allowed) {
+          return {
+            success: false,
+            error:
+              intentCheck.error ??
+              "Action needed: Use set_preference_rules for preference changes.",
+            action:
+              "Use set_preference_rules to update preferences; add_filtered_component only when explicitly asked to add a component.",
+          };
+        }
 
-      store.startBatch(source, "AI: add_filtered_component");
-      batchStarted = true;
-      // Step 1: Create the transform
-      const transformId = store.createTransform({
-        name: filter_name,
-        description: filter_description,
-        code: filter_code,
-        compatibleWith: [{ source: type_id.split(".")[0], queryType: type_id.split(".")[1] || "default" }],
-        createdBy: "assistant",
-      });
+        const normalizedConfig = resolveConfigFromChat(
+          type_id,
+          config,
+          store.lastUserMessage
+        );
+        // Pre-validate required config fields
+        const validation = validateComponentConfig(type_id, normalizedConfig);
+        if (!validation.valid) {
+          return {
+            success: false,
+            error: validation.error,
+            action: validation.actionNeeded,
+            missingFields: validation.missingFields,
+          };
+        }
 
-      // Step 2: Get default binding, merge config params, and add transform
-      const defaultBinding = DEFAULT_BINDINGS[type_id];
-      // Build binding with config merged in and transform applied
-      const mergedBinding = mergeConfigToBindingParams(type_id, normalizedConfig, defaultBinding);
-      const dataBinding = mergedBinding
-        ? { ...mergedBinding, transformId }
-        : undefined;
+        try {
+          await assertIntegrationAvailable(type_id);
+        } catch (err) {
+          return {
+            success: false,
+            error: err instanceof Error ? err.message : "Integration unavailable",
+          };
+        }
 
-      // Step 3: Add the component
-      const payload: CreateComponentPayload = {
-        typeId: type_id,
-        config: normalizedConfig ?? {},
-        position: position ? { col: position.col, row: position.row } : undefined,
-        size: size ? { cols: size.cols, rows: size.rows } : DEFAULT_SIZES[type_id],
-        dataBinding,
-        meta: {
+        store.startBatch(source, "AI: add_filtered_component");
+        batchStarted = true;
+        // Step 1: Create the transform
+        const transformId = store.createTransform({
+          name: filter_name,
+          description: filter_description,
+          code: filter_code,
+          compatibleWith: [{ source: type_id.split(".")[0], queryType: type_id.split(".")[1] || "default" }],
           createdBy: "assistant",
-          label: label ?? filter_name,
-        },
-      };
+        });
 
-      const { componentId, error, assistantMessage } = await addComponentWithFetch(getState, payload);
-      if (error) {
-        store.deleteTransform(transformId);
-        store.abortBatch();
+        // Step 2: Get default binding, merge config params, and add transform
+        const defaultBinding = DEFAULT_BINDINGS[type_id];
+        // Build binding with config merged in and transform applied
+        const mergedBinding = mergeConfigToBindingParams(type_id, normalizedConfig, defaultBinding);
+        const dataBinding = mergedBinding
+          ? { ...mergedBinding, transformId }
+          : undefined;
+
+        // Step 3: Add the component
+        const payload: CreateComponentPayload = {
+          typeId: type_id,
+          config: normalizedConfig ?? {},
+          position: position ? { col: position.col, row: position.row } : undefined,
+          size: size ? { cols: size.cols, rows: size.rows } : DEFAULT_SIZES[type_id],
+          dataBinding,
+          meta: {
+            createdBy: "assistant",
+            label: label ?? filter_name,
+          },
+        };
+
+        const { componentId, error, assistantMessage } = await addComponentWithFetch(getState, payload);
+        if (error) {
+          store.deleteTransform(transformId);
+          store.abortBatch();
+          batchStarted = false;
+          return {
+            success: false,
+            error,
+            action: assistantMessage ?? error,
+          };
+        }
+
+        store.commitBatch();
         batchStarted = false;
+
+        return {
+          success: true,
+          componentId,
+          transformId,
+          message: `Added ${filter_name} (filtered ${getTypeName(type_id)})`,
+        };
+      } catch (err) {
+        if (batchStarted) {
+          store.abortBatch();
+        }
         return {
           success: false,
-          error,
-          action: assistantMessage ?? error,
+          error: err instanceof Error ? err.message : "Unknown error",
         };
       }
-
-      store.commitBatch();
-      batchStarted = false;
-
-      return {
-        success: true,
-        componentId,
-        transformId,
-        message: `Added ${filter_name} (filtered ${getTypeName(type_id)})`,
-      };
-    } catch (err) {
-      if (batchStarted) {
-        store.abortBatch();
-      }
-      return {
-        success: false,
-        error: err instanceof Error ? err.message : "Unknown error",
-      };
-    }
-  },
+    }),
 });
 
 type AddFilteredComponentToolArgs = {
@@ -1732,79 +2220,81 @@ const generateTemplateToolDef = tool({
     params: z.record(z.string(), z.unknown()).optional(),
     state: stateSchema.optional(),
   }),
-  execute: async ({ template_id, category, params, state }) => {
-    const store = useStore.getState();
-    const source = createToolSource();
+  execute: async (args) =>
+    withToolTelemetry("generate_template", { args }, async () => {
+      const { template_id, category, params, state } = args;
+      const store = useStore.getState();
+      const source = createToolSource();
 
-    registerDefaultTemplates();
+      registerDefaultTemplates();
 
-    const context = serializeCanvasContext(store.canvas);
-    const snapshot = buildStateSnapshotFromSignals(state);
-    const intent = deriveIntent(snapshot, context);
+      const context = serializeCanvasContext(store.canvas);
+      const snapshot = buildStateSnapshotFromSignals(state);
+      const intent = deriveIntent(snapshot, context);
 
-    const templates = getAllTemplates();
-    if (templates.length === 0) {
-      return { success: false, error: "No templates registered" };
-    }
-
-    const template = template_id ? getTemplate(template_id) : undefined;
-    const ranked = template
-      ? { template, reasons: [] as string[] }
-      : selectTopTemplate(templates, snapshot, context, {
-          category: category ?? intent.category,
-        });
-
-    if (!ranked?.template) {
-      return { success: false, error: "Template not found" };
-    }
-
-    const compilation = compileTemplateToCommands({
-      template: ranked.template,
-      intent,
-      state: snapshot,
-      context,
-      overrides: params,
-      defaultBindings: getDefaultBinding,
-      createdBy: "assistant",
-    });
-
-    const validationError = validateCanvasCommand(compilation.command);
-    if (validationError) {
-      return { success: false, error: validationError };
-    }
-
-    store.startBatch(source, "AI: generate_template");
-    try {
-      const results = executeCanvasCommand(store, compilation.command);
-      store.commitBatch();
-
-      const summary = summarizeGenerationResults({
-        results,
-        templateName: ranked.template.name,
-        reasons: ranked.reasons ?? [],
-        issues: compilation.issues,
-      });
-
-      if (!summary.success) {
-        return {
-          success: false,
-          error: summary.error ?? "Template generation failed",
-        };
+      const templates = getAllTemplates();
+      if (templates.length === 0) {
+        return { success: false, error: "No templates registered" };
       }
 
-      return {
-        success: true,
-        templateId: ranked.template.id,
-        message: summary.message ?? `Generated ${summary.createdCount} component(s)`,
-      };
-    } catch (err) {
-      store.abortBatch();
-      return {
-        success: false,
-        error: err instanceof Error ? err.message : "Unknown error",
-      };
-    }
-  },
+      const template = template_id ? getTemplate(template_id) : undefined;
+      const ranked = template
+        ? { template, reasons: [] as string[] }
+        : selectTopTemplate(templates, snapshot, context, {
+            category: category ?? intent.category,
+          });
+
+      if (!ranked?.template) {
+        return { success: false, error: "Template not found" };
+      }
+
+      const compilation = compileTemplateToCommands({
+        template: ranked.template,
+        intent,
+        state: snapshot,
+        context,
+        overrides: params,
+        defaultBindings: getDefaultBinding,
+        createdBy: "assistant",
+      });
+
+      const validationError = validateCanvasCommand(compilation.command);
+      if (validationError) {
+        return { success: false, error: validationError };
+      }
+
+      store.startBatch(source, "AI: generate_template");
+      try {
+        const results = executeCanvasCommand(store, compilation.command);
+        store.commitBatch();
+
+        const summary = summarizeGenerationResults({
+          results,
+          templateName: ranked.template.name,
+          reasons: ranked.reasons ?? [],
+          issues: compilation.issues,
+        });
+
+        if (!summary.success) {
+          return {
+            success: false,
+            error: summary.error ?? "Template generation failed",
+          };
+        }
+
+        return {
+          success: true,
+          templateId: ranked.template.id,
+          message: summary.message ?? `Generated ${summary.createdCount} component(s)`,
+        };
+      } catch (err) {
+        store.abortBatch();
+        return {
+          success: false,
+          error: err instanceof Error ? err.message : "Unknown error",
+        };
+      }
+    }),
 });
 
 export const GenerateTemplateTool = makeAssistantTool({
@@ -1819,6 +2309,568 @@ export const GenerateTemplateTool = makeAssistantTool({
       <ToolStatus status={status} />
     </div>
   ),
+});
+
+// Generate Briefing Tool
+const generateBriefingToolDef = tool({
+  description:
+    "Guided setup for a Morning Briefing space with GitHub repos, Slack mentions, and Vercel deployments.",
+  parameters: z.object({
+    name: z.string().optional(),
+  }),
+  execute: async (args) =>
+    withToolTelemetry("generate_briefing", { args }, async () => {
+      const { name } = args;
+      return {
+        success: true,
+        needsSetup: true,
+        name: name ?? "Morning Briefing",
+      };
+    }),
+});
+
+type GenerateBriefingToolArgs = {
+  name?: string;
+};
+
+type BriefingStep = "repos" | "slack" | "vercel" | "confirm" | "done";
+
+const GenerateBriefingToolUI = ({
+  args,
+  status,
+}: {
+  args: GenerateBriefingToolArgs;
+  status: { type: string };
+}) => {
+  const [step, setStep] = useState<BriefingStep>("repos");
+  const [selectedRepos, setSelectedRepos] = useState<GitHubRepoListItem[]>([]);
+  const [selectedSlackUser, setSelectedSlackUser] = useState<SlackUserListItem | null>(null);
+  const [selectedSlackChannels, setSelectedSlackChannels] = useState<SlackChannelListItem[]>([]);
+  const [selectedProject, setSelectedProject] = useState<VercelProjectListItem | null>(null);
+  const [resolved, setResolved] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [integrationStatus, setIntegrationStatus] = useState<IntegrationStatus | null>(null);
+
+  const slackMentionsAvailable = integrationStatus ? integrationStatus.slack.user : true;
+  const slackBotAvailable = integrationStatus ? integrationStatus.slack.bot : true;
+  const slackStepAvailable = slackMentionsAvailable || slackBotAvailable;
+  const vercelAvailable = integrationStatus ? integrationStatus.vercel : true;
+
+  useEffect(() => {
+    let cancelled = false;
+    getIntegrationStatus()
+      .then((status) => {
+        if (!cancelled) setIntegrationStatus(status);
+      })
+      .catch(() => {
+        if (!cancelled) setIntegrationStatus(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const nextStepAfterRepos = useCallback(() => {
+    if (slackStepAvailable) return "slack";
+    if (vercelAvailable) return "vercel";
+    return "confirm";
+  }, [slackStepAvailable, vercelAvailable]);
+
+  const nextStepAfterSlack = useCallback(() => {
+    if (vercelAvailable) return "vercel";
+    return "confirm";
+  }, [vercelAvailable]);
+
+  const handleCreateBriefing = useCallback(async () => {
+    setError(null);
+    if (selectedRepos.length === 0) {
+      setError("Select at least one GitHub repository.");
+      return;
+    }
+
+    const store = useStore.getState();
+    const source = createToolSource();
+    let batchStarted = false;
+    let createdSpaceId: string | null = null;
+
+    try {
+      registerDefaultTemplates();
+
+      const template = getTemplate("briefing/morning-v1");
+      if (!template) {
+        setError("Briefing template not found.");
+        return;
+      }
+
+      const primaryRepo = selectedRepos[0]?.fullName ?? "assistant-ui/assistant-ui";
+      const now = Date.now();
+      const initialSince = now - 24 * 60 * 60 * 1000;
+      const overrides = {
+        repos: selectedRepos.map((repo) => repo.fullName),
+        primaryRepo,
+        slackUserId: selectedSlackUser?.userId,
+        slackChannels: selectedSlackChannels.map((channel) => ({
+          id: channel.id,
+          name: channel.name,
+        })),
+        vercelProjectId: selectedProject?.id,
+        vercelTeamId: selectedProject?.teamId,
+      };
+
+      const context = serializeCanvasContext(store.canvas);
+      const snapshot = buildStateSnapshotFromSignals();
+      const intent = deriveIntent(snapshot, context);
+
+      const compilation = compileTemplateToCommands({
+        template,
+        intent,
+        state: snapshot,
+        context,
+        overrides,
+        defaultBindings: getDefaultBinding,
+        createdBy: "assistant",
+      });
+
+      const commandList =
+        compilation.command.type === "batch"
+          ? compilation.command.payload.commands
+          : [compilation.command];
+
+      let filteredCommands = commandList.filter((command) => {
+        if (command.type !== "component.create") return false;
+        if (command.payload.typeId === "slack.mentions" && !selectedSlackUser && selectedSlackChannels.length === 0) {
+          return false;
+        }
+        if (command.payload.typeId === "vercel.deployments" && !selectedProject) return false;
+        if (command.payload.typeId === "github.issue-grid" && selectedRepos.length < 2) return false;
+        return true;
+      });
+
+      const vercelProjectId = selectedProject?.id;
+      const vercelTeamId = selectedProject?.teamId;
+      const slackChannelSelection = selectedSlackChannels.map((channel) => ({
+        id: channel.id,
+        name: channel.name,
+      }));
+
+      filteredCommands = filteredCommands.map((command) => {
+        if (command.type !== "component.create") return command;
+
+        if (command.payload.typeId === "slack.mentions" && !selectedSlackUser && selectedSlackChannels.length > 0) {
+          const channel = selectedSlackChannels[0];
+          return {
+            ...command,
+            payload: {
+              ...command.payload,
+              typeId: "slack.channel-activity",
+              config: {
+                channelId: channel.id,
+                channelName: channel.name,
+                limit: 10,
+              },
+              dataBinding: {
+                source: "slack",
+                query: {
+                  type: "channel_activity",
+                  params: {
+                    channelId: channel.id,
+                    limit: 10,
+                  },
+                },
+                refreshInterval: 60000,
+              },
+              meta: {
+                ...command.payload.meta,
+                label: "Channel Activity",
+              },
+            },
+          };
+        }
+
+        if (command.payload.typeId === "vercel.deployments") {
+          const nextConfig = {
+            ...(command.payload.config ?? {}),
+            ...(vercelProjectId ? { projectId: vercelProjectId } : {}),
+            ...(vercelTeamId ? { teamId: vercelTeamId } : {}),
+          } as Record<string, unknown>;
+
+          const nextParams = {
+            ...(command.payload.dataBinding?.query.params ?? {}),
+            ...(vercelProjectId ? { projectId: vercelProjectId } : {}),
+            ...(vercelTeamId ? { teamId: vercelTeamId } : {}),
+          } as Record<string, unknown>;
+
+          if (!vercelProjectId) {
+            delete nextConfig.projectId;
+            delete nextParams.projectId;
+          }
+          if (!vercelTeamId) {
+            delete nextConfig.teamId;
+            delete nextParams.teamId;
+          }
+
+          return {
+            ...command,
+            payload: {
+              ...command.payload,
+              config: nextConfig,
+              dataBinding: command.payload.dataBinding
+                ? {
+                    ...command.payload.dataBinding,
+                    query: {
+                      ...command.payload.dataBinding.query,
+                      params: nextParams,
+                    },
+                  }
+                : command.payload.dataBinding,
+            },
+          };
+        }
+
+        if (command.payload.typeId !== "briefing.recommendations") return command;
+
+        const nextConfig = {
+          ...(command.payload.config ?? {}),
+          sinceTimestamp: initialSince,
+          ...(selectedSlackChannels.length > 0 ? { slackChannels: slackChannelSelection } : {}),
+          ...(vercelProjectId ? { vercelProjectId } : {}),
+          ...(vercelTeamId ? { vercelTeamId } : {}),
+        } as Record<string, unknown>;
+
+        const nextParams = {
+          ...(command.payload.dataBinding?.query.params ?? {}),
+          since: initialSince,
+          ...(selectedSlackChannels.length > 0 ? { slackChannels: slackChannelSelection } : {}),
+          ...(vercelProjectId ? { vercelProjectId } : {}),
+          ...(vercelTeamId ? { vercelTeamId } : {}),
+        } as Record<string, unknown>;
+
+        if (!vercelProjectId) {
+          delete nextConfig.vercelProjectId;
+          delete nextParams.vercelProjectId;
+        }
+        if (!vercelTeamId) {
+          delete nextConfig.vercelTeamId;
+          delete nextParams.vercelTeamId;
+        }
+        if (selectedSlackChannels.length === 0 && !selectedSlackUser) {
+          delete nextConfig.slackChannels;
+          delete nextParams.slackChannels;
+        }
+
+        return {
+          ...command,
+          payload: {
+            ...command.payload,
+            config: nextConfig,
+            dataBinding: command.payload.dataBinding
+              ? {
+                  ...command.payload.dataBinding,
+                  query: {
+                    ...command.payload.dataBinding.query,
+                    params: nextParams,
+                  },
+                }
+              : command.payload.dataBinding,
+          },
+        };
+      });
+
+      if (selectedRepos.length < 2) {
+        filteredCommands = filteredCommands.map((command) => {
+          if (command.type !== "component.create") return command;
+          if (command.payload.typeId !== "github.pr-list") return command;
+          return {
+            ...command,
+            payload: {
+              ...command.payload,
+              size: { cols: 6, rows: 4 },
+            },
+          };
+        });
+      }
+
+      if (filteredCommands.length === 0) {
+        setError("No components were generated for the briefing.");
+        return;
+      }
+
+      setCreating(true);
+      store.startBatch(source, "AI: generate_briefing");
+      batchStarted = true;
+
+      const spaceName = args.name ?? "Morning Briefing";
+      const spaceId = store.createEmptySpace({
+        name: spaceName,
+        createdBy: "assistant",
+        switchTo: true,
+        briefingConfig: {
+          repos: overrides.repos,
+          slackUserId: overrides.slackUserId,
+          slackChannels: overrides.slackChannels,
+          vercelProjectId: overrides.vercelProjectId,
+          vercelTeamId: overrides.vercelTeamId,
+          sinceTimestamp: initialSince,
+        },
+      });
+      createdSpaceId = spaceId;
+
+      const errors: string[] = [];
+      let successfulAdds = 0;
+
+      for (const command of filteredCommands) {
+        if (command.type !== "component.create") continue;
+
+        if (command.payload.typeId.startsWith("slack.")) {
+          try {
+            await assertIntegrationAvailable(command.payload.typeId);
+          } catch (err) {
+            errors.push(err instanceof Error ? err.message : "Slack integration unavailable");
+            continue;
+          }
+        }
+
+        if (command.payload.typeId.startsWith("vercel.")) {
+          try {
+            await assertIntegrationAvailable(command.payload.typeId);
+          } catch (err) {
+            errors.push(err instanceof Error ? err.message : "Vercel integration unavailable");
+            continue;
+          }
+        }
+
+        const { error: addError } = await addComponentWithFetch(useStore.getState, command.payload);
+        if (addError) {
+          errors.push(addError);
+        } else {
+          successfulAdds += 1;
+        }
+      }
+
+      if (errors.length > 0) {
+        if (successfulAdds === 0) {
+          store.deleteSpace(spaceId);
+          store.abortBatch();
+          batchStarted = false;
+        } else {
+          store.commitBatch();
+          batchStarted = false;
+        }
+        setError(`Some components could not be added:\n${errors.join("\n")}`);
+        setResolved(true);
+        setStep("done");
+        return;
+      }
+
+      store.commitBatch();
+      batchStarted = false;
+      setResolved(true);
+      setStep("done");
+    } catch (err) {
+      if (batchStarted) {
+        store.abortBatch();
+      }
+      if (createdSpaceId) {
+        store.deleteSpace(createdSpaceId);
+      }
+      setError(err instanceof Error ? err.message : "Failed to create briefing");
+    } finally {
+      setCreating(false);
+    }
+  }, [args.name, selectedRepos, selectedSlackUser, selectedSlackChannels, selectedProject]);
+
+  const renderStep = () => {
+    if (step === "repos") {
+      return (
+        <div className="flex flex-col gap-2">
+          <div className="text-[11px] text-muted-foreground">
+            Pick one or more GitHub repositories to track.
+          </div>
+          <GitHubRepoPicker
+            id="briefing-repo-picker"
+            onConfirm={async (selection, repos) => {
+              const resolvedRepos = resolveSelectedRepos(selection, repos);
+              if (resolvedRepos.length === 0) {
+                return { success: false, error: "Select at least one repo to continue." };
+              }
+              setSelectedRepos(resolvedRepos);
+              setStep(nextStepAfterRepos());
+              return { success: true };
+            }}
+          />
+        </div>
+      );
+    }
+
+    if (step === "slack") {
+      if (integrationStatus && !slackMentionsAvailable && !slackBotAvailable) {
+        return (
+          <div className="flex flex-col gap-3 text-[11px] text-muted-foreground">
+            <div>
+              Slack isn&apos;t connected yet. Skipping Slack setup for now.
+            </div>
+            <Button size="sm" variant="secondary" onClick={() => setStep(nextStepAfterSlack())}>
+              Continue
+            </Button>
+          </div>
+        );
+      }
+
+      if (!slackMentionsAvailable && slackBotAvailable) {
+        return (
+          <div className="flex flex-col gap-2">
+            <div className="text-[11px] text-muted-foreground">
+              (Optional) Choose Slack channels to monitor activity.
+            </div>
+            <SlackChannelPicker
+              id="briefing-slack-channel-picker"
+              selectionMode="multi"
+              allowAll
+              onConfirm={async (selection, channels) => {
+                const resolvedChannels = resolveSelectedChannels(selection, channels);
+                setSelectedSlackChannels(resolvedChannels);
+                setStep(nextStepAfterSlack());
+                return { success: true };
+              }}
+            />
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setSelectedSlackChannels([]);
+                setStep(nextStepAfterSlack());
+              }}
+            >
+              Skip Slack
+            </Button>
+          </div>
+        );
+      }
+
+      return (
+        <div className="flex flex-col gap-2">
+          <div className="text-[11px] text-muted-foreground">
+            (Optional) Choose which Slack user to track for mentions.
+          </div>
+          <SlackMentionsPicker
+            id="briefing-slack-picker"
+            onConfirm={async (selection, users) => {
+              const resolvedUsers = resolveSelectedUsers(selection, users);
+              setSelectedSlackUser(resolvedUsers[0] ?? null);
+              setSelectedSlackChannels([]);
+              setStep(nextStepAfterSlack());
+              return { success: true };
+            }}
+          />
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              setSelectedSlackUser(null);
+              setSelectedSlackChannels([]);
+              setStep(nextStepAfterSlack());
+            }}
+          >
+            Skip Slack
+          </Button>
+        </div>
+      );
+    }
+
+    if (step === "vercel") {
+      if (integrationStatus && !vercelAvailable) {
+        return (
+          <div className="flex flex-col gap-3 text-[11px] text-muted-foreground">
+            <div>
+              Vercel isn&apos;t connected yet. Skipping deployments for now.
+            </div>
+            <Button size="sm" variant="secondary" onClick={() => setStep("confirm")}>
+              Continue
+            </Button>
+          </div>
+        );
+      }
+
+      return (
+        <div className="flex flex-col gap-2">
+          <div className="text-[11px] text-muted-foreground">
+            (Optional) Choose a Vercel project to monitor deployments.
+          </div>
+          <VercelProjectPicker
+            id="briefing-vercel-picker"
+            onConfirm={async (selection, projects) => {
+              const resolvedProjects = resolveSelectedProjects(selection, projects);
+              setSelectedProject(resolvedProjects[0] ?? null);
+              setStep("confirm");
+              return { success: true };
+            }}
+          />
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              setSelectedProject(null);
+              setStep("confirm");
+            }}
+          >
+            Skip Vercel
+          </Button>
+        </div>
+      );
+    }
+
+    if (step === "confirm") {
+      return (
+        <div className="flex flex-col gap-3 text-xs text-muted-foreground">
+          <div className="flex flex-col gap-1">
+            <span className="text-foreground font-medium">Summary</span>
+            <span>Repos: {selectedRepos.map((repo) => repo.fullName).join(", ")}</span>
+            <span>
+              Slack: {selectedSlackUser
+                ? `Mentions for ${selectedSlackUser.displayName ?? selectedSlackUser.userId}`
+                : selectedSlackChannels.length > 0
+                  ? `Channels (${selectedSlackChannels.map((c) => `#${c.name}`).join(", ")})`
+                  : "Skipped"}
+            </span>
+            <span>
+              Vercel project: {selectedProject ? selectedProject.name : "Skipped"}
+            </span>
+          </div>
+          {error ? (
+            <div className="text-[11px] text-red-600 whitespace-pre-wrap">{error}</div>
+          ) : null}
+          <Button size="sm" onClick={handleCreateBriefing} disabled={creating}>
+            {creating ? "Creating..." : "Create Morning Briefing"}
+          </Button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex flex-col gap-2 text-[11px] text-muted-foreground">
+        <div>Briefing space created.</div>
+        {error ? <div className="text-red-600 whitespace-pre-wrap">{error}</div> : null}
+      </div>
+    );
+  };
+
+  return (
+    <div className="flex flex-col gap-2 text-xs bg-muted/50 rounded px-2 py-1.5 my-1">
+      <div className="flex items-center gap-2">
+        <Sparkles className="h-3 w-3 text-amber-500" />
+        <span>Generate morning briefing</span>
+        <ToolStatus status={status} needsInput={!resolved} resolved={resolved} />
+      </div>
+      {renderStep()}
+    </div>
+  );
+};
+
+export const GenerateBriefingTool = makeAssistantTool({
+  ...generateBriefingToolDef,
+  toolName: "generate_briefing",
+  render: GenerateBriefingToolUI,
 });
 
 // Create Space Tool
@@ -1840,127 +2892,129 @@ const createSpaceToolDef = tool({
       .optional(),
     switch_to: z.boolean().default(true),
   }),
-  execute: async ({ name, components, switch_to }) => {
-    const store = useStore.getState();
-    const source = createToolSource();
-    let createdSpaceId: string | null = null;
-    let addedCount = 0;
-    let batchStarted = false;
+  execute: async (args) =>
+    withToolTelemetry("create_space", { args }, async () => {
+      const { name, components, switch_to } = args;
+      const store = useStore.getState();
+      const source = createToolSource();
+      let createdSpaceId: string | null = null;
+      let addedCount = 0;
+      let batchStarted = false;
 
-    try {
-      if (components && components.length > 0 && switch_to) {
-        for (const comp of components) {
-          const normalizedConfig = resolveConfigFromChat(
-            comp.type_id,
-            comp.config,
-            store.lastUserMessage
-          );
-          const validation = validateComponentConfig(comp.type_id, normalizedConfig);
-          if (!validation.valid) {
+      try {
+        if (components && components.length > 0 && switch_to) {
+          for (const comp of components) {
+            const normalizedConfig = resolveConfigFromChat(
+              comp.type_id,
+              comp.config,
+              store.lastUserMessage
+            );
+            const validation = validateComponentConfig(comp.type_id, normalizedConfig);
+            if (!validation.valid) {
+              return {
+                success: false,
+                error: validation.error,
+                action: validation.actionNeeded,
+                missingFields: validation.missingFields,
+              };
+            }
+          }
+        }
+
+        store.startBatch(source, "AI: create_space");
+        batchStarted = true;
+
+        const spaceId = store.createEmptySpace({
+          name,
+          createdBy: "assistant",
+          switchTo: switch_to,
+        });
+        createdSpaceId = spaceId;
+
+        // Add components if provided
+        if (components && components.length > 0 && switch_to) {
+          const errors: string[] = [];
+          let successfulAdds = 0;
+
+          for (const comp of components) {
+            try {
+              await assertIntegrationAvailable(comp.type_id);
+            } catch (err) {
+              errors.push(
+                `${comp.type_id}: ${err instanceof Error ? err.message : "Integration unavailable"}`
+              );
+              continue;
+            }
+            const normalizedConfig = resolveConfigFromChat(
+              comp.type_id,
+              comp.config,
+              store.lastUserMessage
+            );
+            const dataBinding = mergeConfigToBindingParams(
+              comp.type_id,
+              normalizedConfig,
+              DEFAULT_BINDINGS[comp.type_id]
+            );
+
+            const payload: CreateComponentPayload = {
+              typeId: comp.type_id,
+              config: normalizedConfig ?? {},
+              position: comp.position ? { col: comp.position.col, row: comp.position.row } : undefined,
+              size: comp.size ? { cols: comp.size.cols, rows: comp.size.rows } : DEFAULT_SIZES[comp.type_id],
+              dataBinding,
+              meta: {
+                createdBy: "assistant",
+                label: comp.label,
+              },
+            };
+
+            const { error } = await addComponentWithFetch(useStore.getState, payload);
+            if (error) {
+              errors.push(`${comp.type_id}: ${error}`);
+            } else {
+              successfulAdds += 1;
+            }
+          }
+          addedCount = successfulAdds;
+
+          if (errors.length > 0) {
+            if (successfulAdds === 0) {
+              store.deleteSpace(spaceId);
+              store.abortBatch();
+              batchStarted = false;
+            } else {
+              store.commitBatch();
+              batchStarted = false;
+            }
             return {
               success: false,
-              error: validation.error,
-              action: validation.actionNeeded,
-              missingFields: validation.missingFields,
+              error: `Some components could not be added:\n${errors.join("\n")}`,
+              action: "Resolve these issues before retrying.",
             };
           }
         }
-      }
 
-      store.startBatch(source, "AI: create_space");
-      batchStarted = true;
+        store.commitBatch();
+        batchStarted = false;
 
-      const spaceId = store.createEmptySpace({
-        name,
-        createdBy: "assistant",
-        switchTo: switch_to,
-      });
-      createdSpaceId = spaceId;
-
-      // Add components if provided
-      if (components && components.length > 0 && switch_to) {
-        const errors: string[] = [];
-        let successfulAdds = 0;
-
-        for (const comp of components) {
-          try {
-            await assertIntegrationAvailable(comp.type_id);
-          } catch (err) {
-            errors.push(
-              `${comp.type_id}: ${err instanceof Error ? err.message : "Integration unavailable"}`
-            );
-            continue;
-          }
-          const normalizedConfig = resolveConfigFromChat(
-            comp.type_id,
-            comp.config,
-            store.lastUserMessage
-          );
-          const dataBinding = mergeConfigToBindingParams(
-            comp.type_id,
-            normalizedConfig,
-            DEFAULT_BINDINGS[comp.type_id]
-          );
-
-          const payload: CreateComponentPayload = {
-            typeId: comp.type_id,
-            config: normalizedConfig ?? {},
-            position: comp.position ? { col: comp.position.col, row: comp.position.row } : undefined,
-            size: comp.size ? { cols: comp.size.cols, rows: comp.size.rows } : DEFAULT_SIZES[comp.type_id],
-            dataBinding,
-            meta: {
-              createdBy: "assistant",
-              label: comp.label,
-            },
-          };
-
-          const { error } = await addComponentWithFetch(useStore.getState, payload);
-          if (error) {
-            errors.push(`${comp.type_id}: ${error}`);
-          } else {
-            successfulAdds += 1;
-          }
+        return {
+          success: true,
+          spaceId,
+          message: `Created space "${name}"${components ? ` with ${components.length} components` : ""}`,
+        };
+      } catch (err) {
+        if (batchStarted) {
+          store.abortBatch();
         }
-        addedCount = successfulAdds;
-
-        if (errors.length > 0) {
-          if (successfulAdds === 0) {
-            store.deleteSpace(spaceId);
-            store.abortBatch();
-            batchStarted = false;
-          } else {
-            store.commitBatch();
-            batchStarted = false;
-          }
-          return {
-            success: false,
-            error: `Some components could not be added:\n${errors.join("\n")}`,
-            action: "Resolve these issues before retrying.",
-          };
+        if (createdSpaceId && addedCount === 0) {
+          store.deleteSpace(createdSpaceId);
         }
+        return {
+          success: false,
+          error: err instanceof Error ? err.message : "Unknown error",
+        };
       }
-
-      store.commitBatch();
-      batchStarted = false;
-
-      return {
-        success: true,
-        spaceId,
-        message: `Created space "${name}"${components ? ` with ${components.length} components` : ""}`,
-      };
-    } catch (err) {
-      if (batchStarted) {
-        store.abortBatch();
-      }
-      if (createdSpaceId && addedCount === 0) {
-        store.deleteSpace(createdSpaceId);
-      }
-      return {
-        success: false,
-        error: err instanceof Error ? err.message : "Unknown error",
-      };
-    }
-  },
+    }),
 });
 
 export const CreateSpaceTool = makeAssistantTool({
@@ -1984,36 +3038,38 @@ const switchSpaceToolDef = tool({
   parameters: z.object({
     space: z.string(),
   }),
-  execute: async ({ space }) => {
-    const store = useStore.getState();
-    const source = createToolSource();
-    const spaces = store.getSpaces();
+  execute: async (args) =>
+    withToolTelemetry("switch_space", { args }, async () => {
+      const { space } = args;
+      const store = useStore.getState();
+      const source = createToolSource();
+      const spaces = store.getSpaces();
 
-    const targetSpace = spaces.find((s) => s.id === space || s.name === space);
-    if (!targetSpace) {
-      return {
-        success: false,
-        error: `Space not found: ${space}`,
-      };
-    }
+      const targetSpace = spaces.find((s) => s.id === space || s.name === space);
+      if (!targetSpace) {
+        return {
+          success: false,
+          error: `Space not found: ${space}`,
+        };
+      }
 
-    store.startBatch(source, "AI: switch_space");
-    try {
-      const result = store.loadSpace(targetSpace.id);
-      store.commitBatch();
+      store.startBatch(source, "AI: switch_space");
+      try {
+        const result = store.loadSpace(targetSpace.id);
+        store.commitBatch();
 
-      return {
-        success: result.success,
-        message: `Switched to space "${targetSpace.name}"`,
-      };
-    } catch (err) {
-      store.abortBatch();
-      return {
-        success: false,
-        error: err instanceof Error ? err.message : "Unknown error",
-      };
-    }
-  },
+        return {
+          success: result.success,
+          message: `Switched to space "${targetSpace.name}"`,
+        };
+      } catch (err) {
+        store.abortBatch();
+        return {
+          success: false,
+          error: err instanceof Error ? err.message : "Unknown error",
+        };
+      }
+    }),
 });
 
 export const SwitchSpaceTool = makeAssistantTool({
@@ -2034,51 +3090,53 @@ const pinSpaceToolDef = tool({
   parameters: z.object({
     space: z.string().optional(),
   }),
-  execute: async ({ space }) => {
-    const store = useStore.getState();
-    const source = createToolSource();
+  execute: async (args) =>
+    withToolTelemetry("pin_space", { args }, async () => {
+      const { space } = args;
+      const store = useStore.getState();
+      const source = createToolSource();
 
-    let spaceId: string | null = null;
+      let spaceId: string | null = null;
 
-    if (space) {
-      const spaces = store.getSpaces();
-      const targetSpace = spaces.find((s) => s.id === space || s.name === space);
-      if (!targetSpace) {
+      if (space) {
+        const spaces = store.getSpaces();
+        const targetSpace = spaces.find((s) => s.id === space || s.name === space);
+        if (!targetSpace) {
+          return {
+            success: false,
+            error: `Space not found: ${space}`,
+          };
+        }
+        spaceId = targetSpace.id;
+      } else {
+        const state = store as unknown as { activeSpaceId: string | null };
+        spaceId = state.activeSpaceId;
+      }
+
+      if (!spaceId) {
         return {
           success: false,
-          error: `Space not found: ${space}`,
+          error: "No space specified and no active space",
         };
       }
-      spaceId = targetSpace.id;
-    } else {
-      const state = store as unknown as { activeSpaceId: string | null };
-      spaceId = state.activeSpaceId;
-    }
 
-    if (!spaceId) {
-      return {
-        success: false,
-        error: "No space specified and no active space",
-      };
-    }
+      store.startBatch(source, "AI: pin_space");
+      try {
+        store.pinSpace(spaceId);
+        store.commitBatch();
 
-    store.startBatch(source, "AI: pin_space");
-    try {
-      store.pinSpace(spaceId);
-      store.commitBatch();
-
-      return {
-        success: true,
-        message: "Space pinned",
-      };
-    } catch (err) {
-      store.abortBatch();
-      return {
-        success: false,
-        error: err instanceof Error ? err.message : "Unknown error",
-      };
-    }
-  },
+        return {
+          success: true,
+          message: "Space pinned",
+        };
+      } catch (err) {
+        store.abortBatch();
+        return {
+          success: false,
+          error: err instanceof Error ? err.message : "Unknown error",
+        };
+      }
+    }),
 });
 
 export const PinSpaceTool = makeAssistantTool({
@@ -2099,51 +3157,53 @@ const unpinSpaceToolDef = tool({
   parameters: z.object({
     space: z.string().optional(),
   }),
-  execute: async ({ space }) => {
-    const store = useStore.getState();
-    const source = createToolSource();
+  execute: async (args) =>
+    withToolTelemetry("unpin_space", { args }, async () => {
+      const { space } = args;
+      const store = useStore.getState();
+      const source = createToolSource();
 
-    let spaceId: string | null = null;
+      let spaceId: string | null = null;
 
-    if (space) {
-      const spaces = store.getSpaces();
-      const targetSpace = spaces.find((s) => s.id === space || s.name === space);
-      if (!targetSpace) {
+      if (space) {
+        const spaces = store.getSpaces();
+        const targetSpace = spaces.find((s) => s.id === space || s.name === space);
+        if (!targetSpace) {
+          return {
+            success: false,
+            error: `Space not found: ${space}`,
+          };
+        }
+        spaceId = targetSpace.id;
+      } else {
+        const state = store as unknown as { activeSpaceId: string | null };
+        spaceId = state.activeSpaceId;
+      }
+
+      if (!spaceId) {
         return {
           success: false,
-          error: `Space not found: ${space}`,
+          error: "No space specified and no active space",
         };
       }
-      spaceId = targetSpace.id;
-    } else {
-      const state = store as unknown as { activeSpaceId: string | null };
-      spaceId = state.activeSpaceId;
-    }
 
-    if (!spaceId) {
-      return {
-        success: false,
-        error: "No space specified and no active space",
-      };
-    }
+      store.startBatch(source, "AI: unpin_space");
+      try {
+        store.unpinSpace(spaceId);
+        store.commitBatch();
 
-    store.startBatch(source, "AI: unpin_space");
-    try {
-      store.unpinSpace(spaceId);
-      store.commitBatch();
-
-      return {
-        success: true,
-        message: "Space unpinned",
-      };
-    } catch (err) {
-      store.abortBatch();
-      return {
-        success: false,
-        error: err instanceof Error ? err.message : "Unknown error",
-      };
-    }
-  },
+        return {
+          success: true,
+          message: "Space unpinned",
+        };
+      } catch (err) {
+        store.abortBatch();
+        return {
+          success: false,
+          error: err instanceof Error ? err.message : "Unknown error",
+        };
+      }
+    }),
 });
 
 export const UnpinSpaceTool = makeAssistantTool({
@@ -2187,9 +3247,11 @@ export function CanvasTools() {
       <UpdateComponentTool />
       <ClearCanvasTool />
       <CreateTransformTool />
+      <SetPreferenceRulesTool />
       <LookupSlackUserTool />
       <AddFilteredComponentTool />
       <GenerateTemplateTool />
+      <GenerateBriefingTool />
       <CreateSpaceTool />
       <SwitchSpaceTool />
       <PinSpaceTool />

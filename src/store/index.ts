@@ -51,6 +51,7 @@ const partialize = (state: AgenticCanvasStore) => ({
     transforms: state.workspace.transforms
       ? Array.from(state.workspace.transforms.entries())
       : [],
+    rules: state.workspace.rules,
   },
   activeSpaceId: state.activeSpaceId,
   lastSpaceId: state.lastSpaceId,
@@ -72,7 +73,7 @@ export const useStore = create<AgenticCanvasStore>()(
       })),
       {
         name: "agentic-canvas",
-        version: 3, // v3: Added transforms support
+        version: 4, // v4: Added rules support
         // Persist canvas, workspace (spaces), and navigation state
         partialize,
         // Re-fetch data for all components after rehydration
@@ -85,6 +86,9 @@ export const useStore = create<AgenticCanvasStore>()(
                 state.workspace.transforms = new Map(transformsArray);
               } else if (!state.workspace.transforms) {
                 state.workspace.transforms = new Map();
+              }
+              if (!state.workspace.rules) {
+                state.workspace.rules = { version: "v1" };
               }
             }
             state.initializeData();
@@ -106,6 +110,13 @@ export const useStore = create<AgenticCanvasStore>()(
             // Initialize transforms as empty array if not present
             if (!state.workspace.transforms) {
               state.workspace.transforms = [];
+            }
+          }
+
+          // v3 -> v4: Add rules support
+          if (version < 4 && state.workspace) {
+            if (!state.workspace.rules) {
+              state.workspace.rules = { version: "v1" };
             }
           }
 

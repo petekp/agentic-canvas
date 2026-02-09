@@ -17,8 +17,15 @@ import type {
   CommandResult,
   CanvasSnapshot,
 } from "@/types";
+import type { Rule, RulePack, RuleTarget } from "@/lib/rules/types";
+import { trackClientTelemetry } from "@/lib/telemetry-client";
 import { createUserSource } from "@/lib/undo/types";
 import type { UndoCanvasCommand, SpaceStateSnapshot } from "@/lib/undo/types";
+import {
+  createEmptyRulePack,
+  getRulesForTarget as getRulesForTargetFromPack,
+  setRulesForTarget as setRulesForTargetInPack,
+} from "@/lib/rules/pack";
 
 // Create initial default space
 const defaultSpaceId = `space_${nanoid(10)}`;
@@ -64,6 +71,7 @@ const initialWorkspace: Workspace = {
   spaces: [defaultSpace], // Start with default space
   triggers: [],
   transforms: new Map(), // Start with no transforms
+  rules: createEmptyRulePack(),
   settings: {
     theme: "system",
     voiceEnabled: false,
@@ -91,6 +99,7 @@ export interface CreateSpaceOptions {
   name?: string;
   createdBy?: "user" | "assistant";
   switchTo?: boolean;
+  briefingConfig?: Space["briefingConfig"];
 }
 
 // Slice interface
@@ -110,6 +119,7 @@ export interface WorkspaceSlice {
   // Pin/unpin spaces
   pinSpace: (spaceId: SpaceId) => void;
   unpinSpace: (spaceId: SpaceId) => void;
+  setBriefingConfig: (spaceId: SpaceId, config: Space["briefingConfig"]) => void;
   // Get spaces list for AI context
   getSpaces: () => Space[];
   // Computed helper
@@ -119,6 +129,10 @@ export interface WorkspaceSlice {
   deleteTransform: (id: TransformId) => void;
   getTransform: (id: TransformId) => TransformDefinition | undefined;
   getTransforms: () => TransformDefinition[];
+  // Rules management
+  setRulesForTarget: (target: RuleTarget, rules: Rule[]) => void;
+  getRulesForTarget: (target: RuleTarget) => Rule[];
+  getRulePack: () => RulePack;
 
 }
 
@@ -137,6 +151,17 @@ function hashCanvas(canvas: Canvas): string {
 // Helper to create a deep copy snapshot of components
 function createSnapshot(components: ComponentInstance[]): CanvasSnapshot {
   return { components: structuredClone(components) };
+}
+
+function computeBriefingSinceTimestamp(space: Space, now: number): number {
+  const defaultSince = now - 24 * 60 * 60 * 1000;
+  if (!space.lastVisitedAt) {
+    return defaultSince;
+  }
+  if (space.createdAt && Math.abs(space.lastVisitedAt - space.createdAt) < 60_000) {
+    return defaultSince;
+  }
+  return space.lastVisitedAt;
 }
 
 function createSpaceStateSnapshot(state: AgenticCanvasStore): SpaceStateSnapshot {
@@ -198,6 +223,7 @@ export const createWorkspaceSlice: StateCreator<
       createdAt: now,
       updatedAt: now,
       lastVisitedAt: now,
+      briefingConfig: undefined,
     };
 
     set((state) => {
@@ -234,6 +260,9 @@ export const createWorkspaceSlice: StateCreator<
     // Compute snapshot hash for change detection
     const snapshotHash = hashCanvas(space.snapshot);
     const now = Date.now();
+    const briefingSince = space.briefingConfig
+      ? computeBriefingSinceTimestamp(space, now)
+      : undefined;
 
     // Load space (preserve pinned components)
     set((state) => {
@@ -245,6 +274,16 @@ export const createWorkspaceSlice: StateCreator<
       loadedComponents.forEach((c) => {
         c.id = `cmp_${nanoid(10)}`;
         c.dataState = { status: "idle" };
+        if (c.typeId === "briefing.recommendations" && c.dataBinding && briefingSince) {
+          c.dataBinding.query.params = {
+            ...c.dataBinding.query.params,
+            since: briefingSince,
+          };
+          c.config = {
+            ...c.config,
+            sinceTimestamp: briefingSince,
+          };
+        }
       });
 
       state.canvas.components = [...pinnedComponents, ...loadedComponents];
@@ -256,7 +295,14 @@ export const createWorkspaceSlice: StateCreator<
       // Update lastVisitedAt on the space
       const spaceIndex = state.workspace.spaces.findIndex((s) => s.id === spaceId);
       if (spaceIndex !== -1) {
-        state.workspace.spaces[spaceIndex].lastVisitedAt = now;
+        const target = state.workspace.spaces[spaceIndex];
+        target.lastVisitedAt = now;
+        if (target.briefingConfig && briefingSince) {
+          target.briefingConfig = {
+            ...target.briefingConfig,
+            sinceTimestamp: briefingSince,
+          };
+        }
       }
     });
 
@@ -420,6 +466,7 @@ export const createWorkspaceSlice: StateCreator<
       createdAt: now,
       updatedAt: now,
       lastVisitedAt: now,
+      briefingConfig: space.briefingConfig ? structuredClone(space.briefingConfig) : undefined,
     };
 
     set((state) => {
@@ -466,7 +513,7 @@ export const createWorkspaceSlice: StateCreator<
       typeof nameOrOptions === "string"
         ? { name: nameOrOptions }
         : nameOrOptions ?? {};
-    const { name, createdBy = "user", switchTo = true } = options;
+    const { name, createdBy = "user", switchTo = true, briefingConfig } = options;
 
     // Generate unique name if not provided
     const existingNames = get().workspace.spaces.map((s) => s.name);
@@ -494,6 +541,7 @@ export const createWorkspaceSlice: StateCreator<
       createdAt: now,
       updatedAt: now,
       lastVisitedAt: now,
+      briefingConfig: briefingConfig ? structuredClone(briefingConfig) : undefined,
     };
 
     // Create space, optionally clear canvas and switch to it
@@ -549,6 +597,9 @@ export const createWorkspaceSlice: StateCreator<
     if (space) {
       const snapshotHash = hashCanvas(space.snapshot);
       const now = Date.now();
+      const briefingSince = space.briefingConfig
+        ? computeBriefingSinceTimestamp(space, now)
+        : undefined;
       set((state) => {
         state.activeSpaceId = spaceId;
         state.lastSpaceId = spaceId;
@@ -556,10 +607,59 @@ export const createWorkspaceSlice: StateCreator<
         // Update lastVisitedAt
         const spaceIndex = state.workspace.spaces.findIndex((s) => s.id === spaceId);
         if (spaceIndex !== -1) {
-          state.workspace.spaces[spaceIndex].lastVisitedAt = now;
+          const target = state.workspace.spaces[spaceIndex];
+          target.lastVisitedAt = now;
+          if (target.briefingConfig && briefingSince) {
+            target.briefingConfig = {
+              ...target.briefingConfig,
+              sinceTimestamp: briefingSince,
+            };
+          }
         }
       });
     }
+  },
+
+  setBriefingConfig: (spaceId, config) => {
+    const beforeSnapshot = createSnapshot(get().canvas.components);
+    const beforeSpaceState = createSpaceStateSnapshot(get());
+    const space = get().workspace.spaces.find((s) => s.id === spaceId);
+    if (!space) return;
+
+    const now = Date.now();
+    set((state) => {
+      const target = state.workspace.spaces.find((s) => s.id === spaceId);
+      if (target) {
+        target.briefingConfig = config ? structuredClone(config) : undefined;
+        target.updatedAt = now;
+        state.workspace.updatedAt = now;
+      }
+    });
+
+    const afterSnapshot = createSnapshot(get().canvas.components);
+    const afterSpaceState = createSpaceStateSnapshot(get());
+
+    const command: UndoCanvasCommand = {
+      type: "space_update",
+      spaceId,
+      spaceName: space.name,
+    };
+
+    get().pushUndo({
+      source: createUserSource(),
+      description: `Updated briefing config: ${space.name}`,
+      command,
+      beforeSnapshot,
+      afterSnapshot,
+      beforeSpaceState,
+      afterSpaceState,
+      spaceContext: {
+        activeSpaceId: get().activeSpaceId,
+        activeSpaceName: get().workspace.spaces.find((s) => s.id === get().activeSpaceId)?.name ?? "Default",
+        affectedSpaceIds: [spaceId],
+        wasSpaceSpecificOp: true,
+      },
+    });
   },
 
   hasUnsavedChanges: () => {
@@ -700,6 +800,30 @@ export const createWorkspaceSlice: StateCreator<
 
   getTransforms: () => {
     return Array.from(get().workspace.transforms.values());
+  },
+
+  setRulesForTarget: (target, rules) => {
+    const now = Date.now();
+    set((state) => {
+      state.workspace.rules = setRulesForTargetInPack(state.workspace.rules, target, rules);
+      state.workspace.updatedAt = now;
+    });
+    void trackClientTelemetry({
+      source: "store.rules",
+      event: "set",
+      data: {
+        target,
+        ruleCount: rules.length,
+      },
+    });
+  },
+
+  getRulesForTarget: (target) => {
+    return getRulesForTargetFromPack(get().workspace.rules, target);
+  },
+
+  getRulePack: () => {
+    return get().workspace.rules;
   },
 
 });

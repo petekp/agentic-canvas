@@ -5,11 +5,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
-import { ThreadPrimitive, useAssistantState, useThreadRuntime } from "@assistant-ui/react";
+import { ThreadPrimitive, useAssistantState, useAssistantApi } from "@assistant-ui/react";
 import { motion, useDragControls, useMotionValue } from "motion/react";
 import { useStore } from "@/store";
-import { AssistantProvider } from "./AssistantProvider";
 import { AssistantComposer, AssistantThreadMessages } from "./AssistantThread";
+import { AssistantProvider } from "./AssistantProvider";
 import { CanvasTools } from "@/lib/canvas-tools";
 import { ChevronDown, GripVertical } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -43,25 +43,26 @@ function KeyboardShortcutHandler() {
 
 // Handler for pending chat messages from notifications
 export function PendingChatMessageHandler() {
-  const threadRuntime = useThreadRuntime({ optional: true });
+  const api = useAssistantApi();
   const pendingMessage = useStore((state) => state.pendingChatMessage);
   const clearPendingChatMessage = useStore((state) => state.clearPendingChatMessage);
 
   useEffect(() => {
-    if (pendingMessage && threadRuntime) {
-      // Send the message via the thread composer
-      const composer = threadRuntime.composer;
-      composer.setText(pendingMessage);
-      composer.send();
+    if (pendingMessage) {
+      api.thread().append({
+        role: "user",
+        content: [{ type: "text", text: pendingMessage }],
+      });
       clearPendingChatMessage();
     }
-  }, [pendingMessage, threadRuntime, clearPendingChatMessage]);
+  }, [pendingMessage, api, clearPendingChatMessage]);
 
   return null;
 }
 
 function FloatingChat() {
   const isRunning = useAssistantState((s) => s.thread.isRunning);
+  const messageCount = useAssistantState((s) => s.thread.messages.length);
   const [isOpen, setIsOpen] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [trayHeight, setTrayHeight] = useState(DEFAULT_TRAY_HEIGHT);
@@ -87,6 +88,12 @@ function FloatingChat() {
     if (!isRunning) return;
     setIsOpen(true);
   }, [isRunning]);
+
+  useEffect(() => {
+    if (messageCount > 0) {
+      setIsOpen(true);
+    }
+  }, [messageCount]);
 
   useEffect(() => {
     function updateMaxHeight() {
