@@ -1,4 +1,5 @@
 import { validatePreferencePatch } from "./validate";
+import { getRuleEntry } from "./registry";
 import type { Rule } from "./types";
 
 export interface PreferencePatch {
@@ -50,6 +51,34 @@ export function compilePreference(input: unknown): PreferencePatchResult {
         `All rules must target "${target}".`,
       ],
     };
+  }
+
+  const compatibilityErrors: string[] = [];
+  for (const rule of rules) {
+    const entry = getRuleEntry(rule.type);
+    const label = rule.id ?? rule.type;
+
+    if (!entry) {
+      compatibilityErrors.push(`Rule "${label}" has unknown type "${rule.type}".`);
+      continue;
+    }
+
+    if (entry.phase !== rule.phase) {
+      compatibilityErrors.push(
+        `Rule "${label}" has phase "${rule.phase}" but must be "${entry.phase}".`
+      );
+    }
+
+    const allowedTargets = Array.isArray(entry.target) ? entry.target : [entry.target];
+    if (!allowedTargets.includes(target)) {
+      compatibilityErrors.push(
+        `Rule "${label}" (type "${rule.type}") is not supported for target "${target}".`
+      );
+    }
+  }
+
+  if (compatibilityErrors.length > 0) {
+    return { patch: null, errors: compatibilityErrors };
   }
 
   return { patch: { target, rules, summary } };

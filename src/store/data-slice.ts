@@ -385,6 +385,8 @@ function extractText(value: unknown): string {
   return "";
 }
 
+const MAX_LLM_SCORE_TEXT_CHARS = 500;
+
 function deriveItemKey(value: unknown, index: number): string {
   if (isRecord(value)) {
     const candidates = [
@@ -417,7 +419,7 @@ function prepareItemsForLlmScoring(items: unknown[]): {
   const scoringItems: Array<{ key: string; text: string }> = [];
   const prepared = items.map((item, index) => {
     const key = deriveItemKey(item, index);
-    const text = extractText(item);
+    const text = extractText(item).trim().slice(0, MAX_LLM_SCORE_TEXT_CHARS);
     if (text) {
       scoringItems.push({ key, text });
     }

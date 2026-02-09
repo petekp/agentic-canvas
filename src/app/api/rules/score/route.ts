@@ -3,9 +3,10 @@
 // LLM-backed scoring endpoint for preference rules.
 
 import { NextRequest } from "next/server";
-import { generateText } from "ai";
+import { generateObject } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { appendTelemetry } from "@/lib/telemetry";
+import { z } from "zod";
 
 interface ScoreRequest {
   instruction?: string;
@@ -17,6 +18,15 @@ interface ScoreResponse {
 }
 
 const SCORE_MODEL = "gpt-5-nano";
+
+const ScoreResponseSchema = z.object({
+  scores: z.array(
+    z.object({
+      key: z.string(),
+      score: z.number().min(0).max(1),
+    })
+  ),
+});
 
 const SCORE_SYSTEM_PROMPT = `You are a precise classifier.
 Return ONLY a JSON object with this shape:
@@ -57,29 +67,18 @@ export async function POST(req: NextRequest) {
       items,
     };
 
-    const result = await generateText({
+    const result = await generateObject({
       model: openai(SCORE_MODEL),
       system: SCORE_SYSTEM_PROMPT,
       prompt: JSON.stringify(promptPayload, null, 2),
+      schema: ScoreResponseSchema,
       temperature: 0,
     });
 
-    const parsed = parseScores(result.text);
-    if (!parsed) {
-      await appendTelemetry({
-        level: "warn",
-        source: "api.rules.score",
-        event: "parse_failed",
-      });
-      return Response.json({ scores: [] } satisfies ScoreResponse);
-    }
-
-    const scores = parsed.scores
-      .filter((entry) => entry && typeof entry.key === "string" && typeof entry.score === "number")
-      .map((entry) => ({
-        key: entry.key,
-        score: clamp(entry.score, 0, 1),
-      }));
+    const scores = result.object.scores.map((entry) => ({
+      key: entry.key,
+      score: clamp(entry.score, 0, 1),
+    }));
 
     return Response.json({ scores } satisfies ScoreResponse);
   } catch (error) {
@@ -91,20 +90,6 @@ export async function POST(req: NextRequest) {
       data: { error: error instanceof Error ? error.message : String(error) },
     });
     return Response.json({ scores: [] } satisfies ScoreResponse, { status: 200 });
-  }
-}
-
-function parseScores(text: string): ScoreResponse | null {
-  try {
-    const match = text.match(/\{[\s\S]*\}/);
-    if (!match) return null;
-    const parsed = JSON.parse(match[0]) as ScoreResponse;
-    if (!parsed || typeof parsed !== "object") return null;
-    if (!Array.isArray(parsed.scores)) return null;
-    return parsed;
-  } catch (error) {
-    console.error("Failed to parse LLM scores:", error);
-    return null;
   }
 }
 

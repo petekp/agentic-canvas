@@ -37,6 +37,8 @@ function getText(value: unknown): string {
     value.title,
     value.message,
     value.content,
+    value.body,
+    value.summary,
   ];
   for (const entry of candidates) {
     if (typeof entry === "string") return entry;
@@ -258,6 +260,7 @@ export function applyRulesToItems<T = unknown>(
     for (const rule of sorted.filter((r) => r.phase === phase)) {
       const entry = getRuleEntry(rule.type);
       if (!entry || !ruleTargetsMatch(entry, target)) continue;
+      if (entry.phase !== rule.phase) continue;
       current = entry.apply(current, rule, ctx);
       appliedRuleIds.push(rule.id ?? rule.type);
     }

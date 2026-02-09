@@ -66,4 +66,24 @@ describe("rules validation", () => {
     expect(result.patch?.target).toBe("slack.mentions");
     expect(result.errors).toBeUndefined();
   });
+
+  it("compiler rejects rules not supported for the target", () => {
+    const payload = {
+      target: "github.prs",
+      rules: [
+        {
+          id: "channels",
+          type: "filter.channel.include",
+          phase: "filter",
+          target: "github.prs",
+          params: { channels: ["C123"] },
+        },
+      ],
+    };
+
+    const result = compilePreference(payload);
+    expect(result.patch).toBeNull();
+    expect(Array.isArray(result.errors)).toBe(true);
+    expect(result.errors?.join("\n")).toMatch(/not supported/i);
+  });
 });
