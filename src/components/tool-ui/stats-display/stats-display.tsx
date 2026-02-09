@@ -14,6 +14,7 @@ import {
 } from "../shared/card";
 import type { StatsDisplayProps, StatItem, StatFormat, StatDiff } from "./schema";
 import { Sparkline } from "./sparkline";
+import { getNumberFormatter } from "@/lib/intl-formatters";
 
 interface FormattedValueProps {
   value: string | number;
@@ -30,12 +31,12 @@ function FormattedValue({ value, format, locale }: FormattedValueProps) {
     case "number": {
       const decimals = format.decimals ?? 0;
       if (format.compact) {
-        const parts = new Intl.NumberFormat(locale, {
+        const parts = getNumberFormatter(locale, {
           minimumFractionDigits: decimals,
           maximumFractionDigits: decimals,
           notation: "compact",
         }).formatToParts(value);
-        const fullNumber = new Intl.NumberFormat(locale).format(value);
+        const fullNumber = getNumberFormatter(locale).format(value);
         return (
           <span className="font-light tabular-nums" aria-label={fullNumber}>
             {parts.map((part, i) =>
@@ -48,7 +49,7 @@ function FormattedValue({ value, format, locale }: FormattedValueProps) {
           </span>
         );
       }
-      const formatted = new Intl.NumberFormat(locale, {
+      const formatted = getNumberFormatter(locale, {
         minimumFractionDigits: decimals,
         maximumFractionDigits: decimals,
       }).format(value);
@@ -57,13 +58,13 @@ function FormattedValue({ value, format, locale }: FormattedValueProps) {
     case "currency": {
       const currency = format.currency;
       const decimals = format.decimals ?? 2;
-      const formatted = new Intl.NumberFormat(locale, {
+      const formatted = getNumberFormatter(locale, {
         style: "currency",
         currency,
         minimumFractionDigits: decimals,
         maximumFractionDigits: decimals,
       }).format(value);
-      const spokenValue = new Intl.NumberFormat(locale, {
+      const spokenValue = getNumberFormatter(locale, {
         style: "currency",
         currency,
         currencyDisplay: "name",

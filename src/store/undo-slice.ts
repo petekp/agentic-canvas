@@ -120,6 +120,15 @@ function createSnapshot(components: ComponentInstance[]): CanvasSnapshot {
   return { components: structuredClone(components) };
 }
 
+function getCommandTypeForTelemetry(entry: EnhancedUndoEntry): string {
+  const command = entry.command as unknown;
+  if (command && typeof command === "object" && "type" in command) {
+    const typeValue = (command as { type?: unknown }).type;
+    if (typeof typeValue === "string") return typeValue;
+  }
+  return entry.commandType;
+}
+
 function getDefaultSpaceContext(get: () => AgenticCanvasStore): UndoSpaceContext {
   const state = get();
   const activeSpace = state.workspace.spaces.find((s) => s.id === state.activeSpaceId);
@@ -235,7 +244,7 @@ export const createUndoSlice: StateCreator<
         data: {
           entryId: entry.id,
           batchId: state.activeBatch.id,
-          commandType: entry.command.type,
+          commandType: getCommandTypeForTelemetry(entry),
           description: entry.description,
         },
       });
@@ -266,7 +275,7 @@ export const createUndoSlice: StateCreator<
       event: "entry_added",
       data: {
         entryId: entry.id,
-        commandType: entry.command.type,
+        commandType: getCommandTypeForTelemetry(entry),
         description: entry.description,
         canUndo: entry.canUndo,
         blockedReason: entry.undoBlockedReason ?? null,
@@ -373,7 +382,7 @@ export const createUndoSlice: StateCreator<
         event: "undo_applied",
         data: {
           entryId: entry.id,
-          commandType: entry.command.type,
+          commandType: getCommandTypeForTelemetry(entry),
           description: entry.description,
         },
       });
@@ -448,7 +457,7 @@ export const createUndoSlice: StateCreator<
         event: "redo_applied",
         data: {
           entryId: entry.id,
-          commandType: entry.command.type,
+          commandType: getCommandTypeForTelemetry(entry),
           description: entry.description,
         },
       });

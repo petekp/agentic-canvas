@@ -385,7 +385,10 @@ export function OptionList({
     ],
   );
 
-  const actionsConfig = normalizeActionsConfig(responseActions);
+  const actionsConfig = useMemo(
+    () => normalizeActionsConfig(responseActions),
+    [responseActions],
+  );
   const canConfirm = selectedIds.size >= (minSelections ?? 0);
 
   const confirmSelection = useCallback(async () => {

@@ -5,7 +5,8 @@
 // Uses component-registry.ts for lazy-loaded renderers (code-splitting)
 
 import { useCallback, Suspense } from "react";
-import { useCanvas, useComponentData } from "@/hooks";
+import { useCanvas } from "@/hooks/useCanvas";
+import { useComponentData } from "@/hooks/useComponentData";
 import type { ComponentInstance, DataLoadingState } from "@/types";
 import { Button } from "@/components/ui/button";
 import { RefreshCw, X, Loader2 } from "lucide-react";

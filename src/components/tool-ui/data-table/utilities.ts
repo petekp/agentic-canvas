@@ -1,6 +1,8 @@
 /**
  * Sort an array of objects by a key
  */
+import { getCollator } from "@/lib/intl-formatters";
+
 export function sortData<T, K extends Extract<keyof T, string>>(
   data: T[],
   key: K,
@@ -8,7 +10,7 @@ export function sortData<T, K extends Extract<keyof T, string>>(
   locale?: string,
 ): T[] {
   const get = (obj: T, k: K): unknown => (obj as Record<string, unknown>)[k];
-  const collator = new Intl.Collator(locale, {
+  const collator = getCollator(locale, {
     numeric: true,
     sensitivity: "base",
   });

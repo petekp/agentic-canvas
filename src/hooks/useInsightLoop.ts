@@ -34,9 +34,7 @@ export function useInsightLoop() {
   const userId = useCurrentUserId();
   const isRunningRef = useRef(false);
 
-  const lastPollTime = useStore((state) => state.lastPollTime);
-  const addNotification = useStore((state) => state.addNotification);
-  const components = useStore((state) => state.canvas.components);
+  const lastPollTimeAll = useStore((state) => state.lastPollTime.all);
 
   // Run insights after polling completes (calls server API)
   const runInsights = useCallback(async () => {
@@ -45,6 +43,9 @@ export function useInsightLoop() {
     isRunningRef.current = true;
 
     try {
+      const { canvas, addNotification } = useStore.getState();
+      const components = canvas.components;
+
       // Build context from current state
       const context: InsightContext = {
         canvasComponents: components.map((c) => ({
@@ -115,16 +116,16 @@ export function useInsightLoop() {
     } finally {
       isRunningRef.current = false;
     }
-  }, [components, addNotification, userId]);
+  }, [userId]);
 
   // Trigger after each poll
   useEffect(() => {
-    if (!lastPollTime.all) return;
+    if (!lastPollTimeAll) return;
 
     // Delay slightly to let polling data settle
     const timer = setTimeout(runInsights, 2000);
     return () => clearTimeout(timer);
-  }, [lastPollTime.all, runInsights]);
+  }, [lastPollTimeAll, runInsights]);
 
   return { runInsights };
 }

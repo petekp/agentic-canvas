@@ -5,7 +5,7 @@
 
 import { useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { useSpaces } from "@/hooks";
+import { useSpaces } from "@/hooks/useSpaces";
 import type { SpaceId } from "@/types";
 
 /**

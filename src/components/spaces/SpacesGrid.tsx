@@ -4,7 +4,7 @@
 // See: .claude/plans/spaces-navigation-v0.2.md
 
 import { useState, useMemo, useCallback } from "react";
-import { useSpaces } from "@/hooks";
+import { useSpaces } from "@/hooks/useSpaces";
 import { useSpaceNavigation } from "@/hooks/useSpaceNavigation";
 import { SpaceCard } from "./SpaceCard";
 import { CreateSpaceCard } from "./CreateSpaceCard";

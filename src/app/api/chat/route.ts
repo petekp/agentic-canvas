@@ -25,7 +25,7 @@
 // Most interactions need 1-2 steps; 3 handles complex multi-tool scenarios.
 
 import { openai } from "@ai-sdk/openai";
-import { streamText, convertToModelMessages, type UIMessage, stepCountIs } from "ai";
+import { streamText, convertToModelMessages, type UIMessage, stepCountIs, type ToolSet } from "ai";
 import { frontendTools } from "@assistant-ui/react-ai-sdk";
 import { createSystemPrompt } from "@/lib/ai-tools";
 import { appendTelemetry } from "@/lib/telemetry";
@@ -115,6 +115,17 @@ function extractLastUserText(messages: UIMessage[]): string | null {
   return null;
 }
 
+function toFrontendToolSet(tools: unknown): ToolSet | undefined {
+  if (!tools || typeof tools !== "object" || Array.isArray(tools)) return undefined;
+
+  // `frontendTools()` returns a schema-only tool map (no `execute`), which is intentional:
+  // tool calls are executed on the client via assistant-ui. The AI SDK accepts this shape
+  // at runtime, but its `ToolSet` type currently assumes executable tools.
+  return frontendTools(
+    tools as Record<string, { description?: string; parameters: object }>
+  ) as unknown as ToolSet;
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -141,7 +152,10 @@ export async function POST(req: Request) {
       data: {
         messageCount: messages.length,
         lastUserMessage,
-        toolCount: Array.isArray(tools) ? tools.length : undefined,
+        toolCount:
+          tools && typeof tools === "object" && !Array.isArray(tools)
+            ? Object.keys(tools as Record<string, unknown>).length
+            : undefined,
         activeSpaceName,
       },
     });
@@ -182,7 +196,7 @@ export async function POST(req: Request) {
       messages: modelMessages,
       // Convert frontend tools to AI SDK format
       // These tools execute on the client, not the server
-      tools: frontendTools(tools),
+      tools: toFrontendToolSet(tools),
       // Limit to 3 steps to prevent tool call loops
       stopWhen: stepCountIs(3),
     });

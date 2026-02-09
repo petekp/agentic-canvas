@@ -4,7 +4,7 @@
 // Uses compound component pattern for flexible customization
 // See: Polling + Notifications system plan
 
-import { useCallback, useMemo } from "react";
+import { useCallback } from "react";
 import { useStore } from "@/store";
 import { X, Check, Bell, BellOff } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -46,12 +46,10 @@ export function NotificationPanel({ onClose }: NotificationPanelProps) {
   );
 
   // Filter active notifications (not dismissed, not expired)
-  const notifications = useMemo(() => {
-    const now = Date.now();
-    return rawNotifications.filter(
-      (n) => !n.dismissed && (!n.expiresAt || n.expiresAt > now)
-    );
-  }, [rawNotifications]);
+  const now = Date.now();
+  const notifications = rawNotifications.filter(
+    (n) => !n.dismissed && (!n.expiresAt || n.expiresAt > now)
+  );
 
   const handleAction = useCallback(
     async (notification: Notification, action: NotificationAction) => {

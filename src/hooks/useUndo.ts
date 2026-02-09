@@ -5,6 +5,7 @@ import { useCallback, useEffect } from "react";
 import { useShallow } from "zustand/shallow";
 import { useStore } from "@/store";
 import type { CommandSource, BatchId } from "@/lib/undo/types";
+import { isEditableEventTarget } from "@/lib/keyboard-shortcuts";
 
 // ============================================================================
 // Main Undo Hook
@@ -149,12 +150,7 @@ export function useUndoKeyboardShortcuts() {
       // Check for Cmd/Ctrl+Z or Cmd/Ctrl+Shift+Z
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
         // Don't intercept if user is in an input field
-        const target = e.target as HTMLElement;
-        if (
-          target.tagName === "INPUT" ||
-          target.tagName === "TEXTAREA" ||
-          target.isContentEditable
-        ) {
+        if (isEditableEventTarget(e.target)) {
           return;
         }
 

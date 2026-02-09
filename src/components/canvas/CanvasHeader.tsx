@@ -7,7 +7,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { LayoutGrid, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useSpaces } from "@/hooks";
+import { useSpaces } from "@/hooks/useSpaces";
 import { useSpaceNavigation } from "@/hooks/useSpaceNavigation";
 
 export function CanvasHeader() {

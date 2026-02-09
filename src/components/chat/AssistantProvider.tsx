@@ -78,10 +78,11 @@ export function AssistantProvider({ children }: AssistantProviderProps) {
 function AssistantMessageSync() {
   const messages = useAssistantState((s) => s.thread.messages);
   const setMessages = useStore((s) => s.setMessages);
+  const fallbackEpochRef = useRef(Date.now());
 
   const normalized = useMemo(
     () =>
-      messages.map((message) => {
+      messages.map((message, index) => {
         const parts = Array.isArray(message.content)
           ? message.content
           : [];
@@ -90,11 +91,13 @@ function AssistantMessageSync() {
           .map((part) => part.text)
           .join("");
 
+        const createdAt = message.createdAt?.getTime() ?? fallbackEpochRef.current + index;
+
         return {
-          id: message.id ?? `msg_${message.role}_${message.createdAt?.getTime() ?? Date.now()}`,
+          id: message.id ?? `msg_${message.role}_${createdAt}_${index}`,
           role: message.role as "user" | "assistant",
           content: text,
-          createdAt: message.createdAt?.getTime() ?? Date.now(),
+          createdAt,
         };
       }),
     [messages]

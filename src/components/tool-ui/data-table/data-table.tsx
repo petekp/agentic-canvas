@@ -136,18 +136,32 @@ export function DataTable<T extends object = RowData>({
     [sortBy, sortDirection, controlledSort, onSortChange],
   );
 
-  const contextValue: DataTableContextValue<T> = {
-    columns,
-    data,
-    rowIdKey,
-    sortBy,
-    sortDirection,
-    toggleSort: handleSort,
-    id,
-    isLoading,
-    locale: resolvedLocale,
-    onRowClick,
-  };
+  const contextValue: DataTableContextValue<T> = React.useMemo(
+    () => ({
+      columns,
+      data,
+      rowIdKey,
+      sortBy,
+      sortDirection,
+      toggleSort: handleSort,
+      id,
+      isLoading,
+      locale: resolvedLocale,
+      onRowClick,
+    }),
+    [
+      columns,
+      data,
+      rowIdKey,
+      sortBy,
+      sortDirection,
+      handleSort,
+      id,
+      isLoading,
+      resolvedLocale,
+      onRowClick,
+    ],
+  );
 
   const sortAnnouncement = React.useMemo(() => {
     const col = columns.find((c) => c.key === sortBy);
