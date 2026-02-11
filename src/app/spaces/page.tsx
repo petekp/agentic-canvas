@@ -3,10 +3,12 @@
 
 import { ChatPanelLazy } from "@/components/chat/ChatPanelLazy";
 import { SpacesGrid } from "@/components/spaces/SpacesGrid";
+import { SpaceRouteSyncListener } from "@/components/spaces/SpaceRouteSyncListener";
 
 export default function SpacesPage() {
   return (
     <main className="relative h-screen overflow-hidden">
+      <SpaceRouteSyncListener />
       <SpacesGrid />
       <ChatPanelLazy />
     </main>

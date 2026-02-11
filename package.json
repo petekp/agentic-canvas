@@ -8,7 +8,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "eval:min": "./scripts/run-min-evals.sh",
+    "eval:min:list": "./scripts/run-min-evals.sh --list"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.23",

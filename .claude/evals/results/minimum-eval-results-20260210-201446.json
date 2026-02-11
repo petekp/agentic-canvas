@@ -1,0 +1,110 @@
+{
+  "generated_at": "2026-02-11T04:15:13Z",
+  "eval_file": ".claude/evals/minimum-eval-set.v0.1.json",
+  "app_url": "http://localhost:3003",
+  "space_url": null,
+  "session": "min-eval-1770783286",
+  "telemetry_log_path": ".claude/telemetry/agentic-canvas.log",
+  "summary": {
+    "pass": 2,
+    "fail": 0,
+    "partial": 0,
+    "total": 2
+  },
+  "cases": [
+    {
+      "id": "V1",
+      "prompt": "Add a Vercel deployments component showing the latest 5 production deployments.",
+      "expected_outcome": "tool_success",
+      "status": "PASS",
+      "checks": {
+        "passed": [
+          "tool_calls_any",
+          "outcome:tool_success",
+          "ui:A Vercel deployments component is visible."
+        ],
+        "failed": [],
+        "unknown_ui": []
+      },
+      "snapshot_excerpt": [
+        "- document:",
+        "  - alert",
+        "  - main:",
+        "    - button \"Back to Spaces\" [ref=e1]",
+        "    - button \"Scratch Unsaved changes\" [ref=e2]: Scratch",
+        "    - 'button \"Undo: AI: add_component (Cmd+Z)\"'",
+        "    - button \"Nothing to redo\" [ref=e3] [disabled]",
+        "    - button [ref=e4]",
+        "    - button \"Generate\" [ref=e5]",
+        "    - button \"Add Component\" [ref=e6]",
+        "    - text: Deployments",
+        "    - button \"Refresh\" [ref=e7]",
+        "    - button \"Remove\" [ref=e8]",
+        "    - text: Recent Deployments",
+        "    - list:",
+        "      - listitem: Canceled lockfile? 57de260 by AVGVSTVS96·3m ago",
+        "      - listitem: \"Error refactor: rename `useCloudChat` returned `threads` to `threadStore` c79f957 by AVGVSTVS96·30m ago\"",
+        "      - listitem: \"Error fix(cloud-ai-sdk): persist user messages before send 0ddebba by AVGVSTVS96·45m ago\"",
+        "      - listitem: Ready updates d3f481f by AVGVSTVS96·59m ago",
+        "      - listitem: \"Ready chore: update versions f38f10f by github-actions[bot]·4h ago\"",
+        "      - listitem: \"Canceled prod chore(changeset): add missing changeset for #3264 (#3269) 91df50d by AVGVSTVS96·4h ago\"",
+        "      - listitem: \"Ready chore(changeset): add missing changeset for cli/create template updates d652eb7 by AVGVSTVS96·5h ago\"",
+        "      - listitem: Ready offscreen b54e435 by Yonom·14h ago",
+        "      - listitem: Ready offscreen 468864e by Yonom·14h ago",
+        "      - listitem: \"Ready fix(react-ai-sdk): address review feedback on type safety 120cf6d by 0xyjk·14h ago\"",
+        "    - button \"Drag assistant\" [ref=e9]: Drag",
+        "    - text: Assistant",
+        "    - button \"Collapse assistant tray\" [ref=e10]",
+        "    - paragraph: Add a Vercel deployments component showing the latest 5 production deployments.",
+        "    - paragraph",
+        "    - text: Add Latest 5 Production Deployments",
+        "    - button \"Drag assistant\" [ref=e11] [nth=1]",
+        "    - textbox \"Ask about your canvas...\" [ref=e12]",
+        "    - button [ref=e13] [nth=1] [disabled]",
+        "    - text: ⌘K to focus Ready"
+      ]
+    },
+    {
+      "id": "P1",
+      "prompt": "Add a PostHog site health widget to this space.",
+      "expected_outcome": "tool_success",
+      "status": "PASS",
+      "checks": {
+        "passed": [
+          "tool_calls_any",
+          "outcome:tool_success",
+          "ui:A PostHog site health component is visible."
+        ],
+        "failed": [],
+        "unknown_ui": []
+      },
+      "snapshot_excerpt": [
+        "- document:",
+        "  - alert",
+        "  - main:",
+        "    - button \"Back to Spaces\" [ref=e1]",
+        "    - button \"Scratch Unsaved changes\" [ref=e2]: Scratch",
+        "    - 'button \"Undo: AI: add_component (Cmd+Z)\"'",
+        "    - button \"Nothing to redo\" [ref=e3] [disabled]",
+        "    - button [ref=e4]",
+        "    - button \"Generate\" [ref=e5]",
+        "    - button \"Add Component\" [ref=e6]",
+        "    - text: Site Health",
+        "    - button \"Refresh\" [ref=e7]",
+        "    - button \"Remove\" [ref=e8]",
+        "    - article: Visitors 10 Pageviews 90 New 43",
+        "    - text: Daily visitors 7d ago today",
+        "    - button \"Drag assistant\" [ref=e9]: Drag",
+        "    - text: Assistant",
+        "    - button \"Collapse assistant tray\" [ref=e10]",
+        "    - paragraph: Add a PostHog site health widget to this space.",
+        "    - paragraph",
+        "    - text: Add site health",
+        "    - button \"Drag assistant\" [ref=e11] [nth=1]",
+        "    - textbox \"Ask about your canvas...\" [ref=e12]",
+        "    - button [ref=e13] [nth=1] [disabled]",
+        "    - text: ⌘K to focus Ready"
+      ]
+    }
+  ]
+}

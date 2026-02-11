@@ -21,6 +21,7 @@ import { resolveConfigFromChat } from "@/lib/tool-config";
 import { inferSlackUserFromText } from "@/lib/component-config";
 import { buildSlackMentionsFilterCode } from "@/lib/slack-mentions-filter";
 import { applySlackMentionsChannelActivityDefaults } from "@/lib/slack-mentions-defaults";
+import { normalizeFilterCodeForType } from "@/lib/filter-code";
 import {
   formatAddFilteredComponentToolMessage,
   formatToolErrorMessage,
@@ -41,6 +42,7 @@ import {
   summarizeGenerationResults,
   validateCanvasCommand,
 } from "@/lib/templates/execution";
+import { syncSpaceRoute } from "@/lib/space-route-sync";
 import type { AssistantCommandSource } from "@/lib/undo/types";
 import type { CreateComponentPayload, UpdateComponentPayload, DataBinding } from "@/types";
 import {
@@ -892,6 +894,7 @@ const COMPONENT_REQUIRED_CONFIG: Record<string, { fields: string[]; message: str
 const CONFIG_TO_PARAMS_FIELDS: Record<string, string[]> = {
   "github.pr-list": ["repo", "state", "filter", "limit"],
   "github.issue-grid": ["repo", "state", "filter", "limit"],
+  "github.activity-timeline": ["repo", "limit", "username"],
   "github.team-activity": ["repo", "timeWindow"],
   "slack.channel-activity": [
     "channelId",
@@ -1335,14 +1338,27 @@ const removeComponentToolDef = tool({
 export const RemoveComponentTool = makeAssistantTool({
   ...removeComponentToolDef,
   toolName: "remove_component",
-  render: ({ args, status }) => (
-    <div className="flex items-center gap-2 text-xs bg-muted/50 rounded px-2 py-1.5 my-1">
-      <Trash2 className="h-3 w-3 text-red-500" />
-      <span>Remove component</span>
-      <span className="text-muted-foreground font-mono">{args.component_id.slice(0, 8)}</span>
-      <ToolStatus status={status} />
-    </div>
-  ),
+  render: ({ args, status, result }) => {
+    const componentIdBadge =
+      typeof args.component_id === "string" && args.component_id.length > 0
+        ? args.component_id.slice(0, 8)
+        : "unknown";
+    const errorMessage = formatToolErrorMessage(result);
+
+    return (
+      <div className="flex flex-col gap-1 text-xs bg-muted/50 rounded px-2 py-1.5 my-1">
+        <div className="flex items-center gap-2">
+          <Trash2 className="h-3 w-3 text-red-500" />
+          <span>Remove component</span>
+          <span className="text-muted-foreground font-mono">{componentIdBadge}</span>
+          <ToolStatus status={status} result={result} />
+        </div>
+        {errorMessage ? (
+          <div className="text-[11px] text-red-600">{errorMessage}</div>
+        ) : null}
+      </div>
+    );
+  },
 });
 
 // Move Component Tool
@@ -1893,6 +1909,11 @@ This creates the transform AND adds the component together.`,
           };
         }
 
+        const normalizedFilterCode = normalizeFilterCodeForType(
+          type_id,
+          filter_code
+        );
+
         try {
           await assertIntegrationAvailable(type_id);
         } catch (err) {
@@ -1908,7 +1929,7 @@ This creates the transform AND adds the component together.`,
         const transformId = store.createTransform({
           name: filter_name,
           description: filter_description,
-          code: filter_code,
+          code: normalizedFilterCode,
           compatibleWith: [{ source: type_id.split(".")[0], queryType: type_id.split(".")[1] || "default" }],
           createdBy: "assistant",
         });
@@ -2057,7 +2078,7 @@ const AddFilteredComponentToolUI = ({
 
         const filterCode = mentionIntent && mentionsUser
           ? buildSlackMentionsFilterCode(mentionsUser)
-          : args.filter_code;
+          : normalizeFilterCodeForType(args.type_id, args.filter_code);
 
         transformId = store.createTransform({
           name: args.filter_name,
@@ -2996,6 +3017,11 @@ const createSpaceToolDef = tool({
 
         store.commitBatch();
         batchStarted = false;
+        if (switch_to) {
+          setTimeout(() => {
+            syncSpaceRoute(spaceId);
+          }, 0);
+        }
 
         return {
           success: true,
@@ -3057,6 +3083,9 @@ const switchSpaceToolDef = tool({
       try {
         const result = store.loadSpace(targetSpace.id);
         store.commitBatch();
+        setTimeout(() => {
+          syncSpaceRoute(targetSpace.id);
+        }, 0);
 
         return {
           success: result.success,

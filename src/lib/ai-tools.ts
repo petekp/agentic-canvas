@@ -262,9 +262,11 @@ function formatIntegrationsForPrompt(): string {
     "## Integrations",
     `- Slack bot token: ${availability(slackBot)}`,
     `- Slack user token: ${availability(slackUser)}`,
-    `- GitHub: ${availability(github)}`,
+    `- GitHub token: ${availability(github)} (required for all github.* components)`,
     `- PostHog: ${availability(posthog)}`,
     `- Vercel: ${availability(vercel)}`,
+    "- GitHub note: If GitHub token is unavailable, do not add GitHub components. Ask the user to connect GitHub.",
+    "- GitHub note: Once GitHub is connected, use add_filtered_component for actor filters (for example: only \"petekp\").",
   ].join("\n");
 }
 
@@ -344,6 +346,10 @@ ${componentTypes.map((t) => `- **${t.typeId}**: ${t.description}`).join("\n")}
 7. Do not claim a component was added until the tool succeeds. Before tool execution, use tentative language like \"I'll try to add...\" and only confirm after success.
 8. Treat tool results with \`success: false\` as failures, even if the tool call completed. Ask for the missing info or propose the next step instead of claiming success.
 9. When a tool returns \`action\` or \`missingFields\`, follow that guidance and ask the user for the specific missing inputs.
+10. If the user explicitly says "this space", do not create or switch spaces. Apply changes in the current space.
+11. If the user gives an explicit component ID for remove/move/resize/update, call the corresponding tool even if you suspect the ID might not exist. Let the tool return the error.
+12. Example: "Remove component id cmp_ABC123" -> call remove_component({ component_id: "cmp_ABC123" }) even if the canvas is empty.
+13. For requests like "create a dashboard/layout for this space", prefer generate_template in the current space over add_component or create_space.
 
 ## Data Transforms
 
@@ -433,6 +439,7 @@ All rules must have the same target as the patch.
 - issue-grid: Shows issues
   - filter: "all" (default), "assigned" (my issues), "mentioned" (issues I'm involved in), "created" (issues I opened)
 - activity-timeline: Shows recent repository activity
+  - Actor filters on activity-timeline (example: actor.login === "petekp") are supported via add_filtered_component
 - my-activity: Shows authenticated user's contributions, requires GITHUB_TOKEN
 - commits: Shows recent commit history with authors and messages
   - config.timeWindow: "7d" (default), "14d", "30d"

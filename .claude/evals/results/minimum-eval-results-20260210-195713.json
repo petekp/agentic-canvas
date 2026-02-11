@@ -1,0 +1,53 @@
+{
+  "generated_at": "2026-02-11T03:57:18Z",
+  "eval_file": ".claude/evals/minimum-eval-set.v0.1.json",
+  "app_url": "http://localhost:3003",
+  "space_url": "http://localhost:3003/spaces/space_ErMvTRd5id",
+  "session": "min-eval-1770782233",
+  "telemetry_log_path": ".claude/telemetry/agentic-canvas.log",
+  "summary": {
+    "pass": 0,
+    "fail": 1,
+    "partial": 0,
+    "total": 1
+  },
+  "cases": [
+    {
+      "id": "G1",
+      "prompt": "Add a github activity feed component that only shows activity by petekp.",
+      "expected_outcome": "tool_success",
+      "status": "FAIL",
+      "checks": {
+        "passed": [
+          "must_not_say:GitHub integration is unavailable",
+          "must_not_say:can't add GitHub components",
+          "ui:One activity component is visible."
+        ],
+        "failed": [
+          "tool_calls_any",
+          "outcome:tool_success"
+        ],
+        "unknown_ui": []
+      },
+      "snapshot_excerpt": [
+        "- document:",
+        "  - alert",
+        "  - main:",
+        "    - heading \"Spaces\" [ref=e1] [level=1]",
+        "    - heading \"Scratch\" [ref=e2] [level=3]",
+        "    - button \"Open menu\" [ref=e3]",
+        "    - text: Empty just now",
+        "    - button \"New Space\" [ref=e4]",
+        "    - button \"Drag assistant\" [ref=e5]: Drag",
+        "    - text: Assistant",
+        "    - button \"Collapse assistant tray\" [ref=e6]",
+        "    - paragraph: Add a github activity feed component that only shows activity by petekp.",
+        "    - paragraph: Since a GitHub token is unavailable, I can add a generic activity timeline without user-based filtering. Would you like me to proceed with that?",
+        "    - button \"Drag assistant\" [ref=e7] [nth=1]",
+        "    - textbox \"Ask about your canvas...\" [ref=e8]",
+        "    - button [ref=e9] [disabled]",
+        "    - text: ⌘K to focus Ready"
+      ]
+    }
+  ]
+}

@@ -153,6 +153,33 @@ function createSnapshot(components: ComponentInstance[]): CanvasSnapshot {
   return { components: structuredClone(components) };
 }
 
+function getPinnedComponentSignature(component: ComponentInstance): string {
+  return JSON.stringify({
+    typeId: component.typeId,
+    position: component.position,
+    size: component.size,
+    config: component.config,
+    dataBinding: component.dataBinding,
+    createdAt: component.meta.createdAt,
+    createdBy: component.meta.createdBy,
+    label: component.meta.label,
+    template: component.meta.template,
+  });
+}
+
+function dedupePinnedComponents(components: ComponentInstance[]): ComponentInstance[] {
+  const seen = new Set<string>();
+
+  return components.filter((component) => {
+    const signature = getPinnedComponentSignature(component);
+    if (seen.has(signature)) {
+      return false;
+    }
+    seen.add(signature);
+    return true;
+  });
+}
+
 function computeBriefingSinceTimestamp(space: Space, now: number): number {
   const defaultSince = now - 24 * 60 * 60 * 1000;
   if (!space.lastVisitedAt) {
@@ -255,7 +282,10 @@ export const createWorkspaceSlice: StateCreator<
 
     // Capture current state for pinned components
     const currentComponents = get().canvas.components;
-    const pinnedComponents = currentComponents.filter((c) => c.meta.pinned);
+    const pinnedComponents = dedupePinnedComponents(
+      currentComponents.filter((c) => c.meta.pinned)
+    );
+    const loadedComponentIds: string[] = [];
 
     // Compute snapshot hash for change detection
     const snapshotHash = hashCanvas(space.snapshot);
@@ -266,13 +296,25 @@ export const createWorkspaceSlice: StateCreator<
 
     // Load space (preserve pinned components)
     set((state) => {
-      const loadedComponents: ComponentInstance[] = JSON.parse(
+      const snapshotComponents: ComponentInstance[] = JSON.parse(
         JSON.stringify(space.snapshot.components)
       );
+
+      const snapshotPinned = dedupePinnedComponents(
+        snapshotComponents.filter((component) => component.meta.pinned)
+      );
+      const snapshotNonPinned = snapshotComponents.filter((component) => !component.meta.pinned);
+      const currentPinnedSignatures = new Set(pinnedComponents.map(getPinnedComponentSignature));
+      const snapshotPinnedToLoad = snapshotPinned.filter(
+        (component) => !currentPinnedSignatures.has(getPinnedComponentSignature(component))
+      );
+
+      const loadedComponents = [...snapshotPinnedToLoad, ...snapshotNonPinned];
 
       // Regenerate IDs to avoid conflicts
       loadedComponents.forEach((c) => {
         c.id = `cmp_${nanoid(10)}`;
+        loadedComponentIds.push(c.id);
         c.dataState = { status: "idle" };
         if (c.typeId === "briefing.recommendations" && c.dataBinding && briefingSince) {
           c.dataBinding.query.params = {
@@ -329,8 +371,9 @@ export const createWorkspaceSlice: StateCreator<
     });
 
     // Trigger data fetches for loaded components
-    const loadedComponents = get().canvas.components.filter(
-      (c) => !pinnedComponents.some((p) => p.id === c.id)
+    const loadedComponentIdSet = new Set(loadedComponentIds);
+    const loadedComponents = get().canvas.components.filter((c) =>
+      loadedComponentIdSet.has(c.id)
     );
     for (const comp of loadedComponents) {
       if (comp.dataBinding) {

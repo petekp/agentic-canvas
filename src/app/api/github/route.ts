@@ -45,6 +45,7 @@ interface GitHubRequest {
     | "user_repos";
   params: {
     repo?: string;
+    username?: string;
     repos?: string[];
     orgs?: string[];
     limit?: number;
@@ -61,6 +62,13 @@ export async function POST(req: NextRequest) {
     const { type, params }: GitHubRequest = await req.json();
     const repo = params.repo || DEFAULT_REPO;
 
+    if (!GITHUB_TOKEN) {
+      return Response.json(
+        { error: "GITHUB_TOKEN not configured. Connect GitHub to continue." },
+        { status: 401 }
+      );
+    }
+
     await appendTelemetry({
       level: "info",
       source: "api.github",
@@ -71,6 +79,7 @@ export async function POST(req: NextRequest) {
         repos: params.repos,
         orgs: params.orgs,
         limit: params.limit,
+        username: params.username,
         filter: params.filter,
         state: params.state,
         timeWindow: params.timeWindow,
@@ -80,14 +89,8 @@ export async function POST(req: NextRequest) {
     const headers: HeadersInit = {
       Accept: "application/vnd.github.v3+json",
       "User-Agent": "agentic-canvas",
+      Authorization: `Bearer ${GITHUB_TOKEN}`,
     };
-
-    let unauthenticated = false;
-    if (GITHUB_TOKEN) {
-      headers.Authorization = `Bearer ${GITHUB_TOKEN}`;
-    } else {
-      unauthenticated = true;
-    }
 
     let data: unknown;
     let ttl = 60000; // Default 1 minute cache
@@ -120,12 +123,6 @@ export async function POST(req: NextRequest) {
         ttl = 120000; // 2 minute cache
         break;
       case "user_repos":
-        if (!GITHUB_TOKEN) {
-          return Response.json(
-            { error: "GITHUB_TOKEN not configured. Connect GitHub to list your repos." },
-            { status: 401 }
-          );
-        }
         data = await fetchUserRepos(headers);
         ttl = 300000; // 5 minute cache
         break;
@@ -136,9 +133,6 @@ export async function POST(req: NextRequest) {
     return Response.json({
       data,
       ttl,
-      ...(unauthenticated && {
-        warning: "GITHUB_TOKEN not configured. Using unauthenticated access (60 requests/hour limit).",
-      }),
     });
   } catch (error) {
     console.error("GitHub API error:", error);
@@ -573,11 +567,15 @@ async function fetchActivity(
   headers: HeadersInit
 ) {
   const limit = params.limit ?? 10;
+  const username =
+    typeof params.username === "string" && params.username.trim().length > 0
+      ? params.username.trim()
+      : undefined;
+  const endpoint = username
+    ? `${GITHUB_API}/users/${encodeURIComponent(username)}/events?per_page=${limit}`
+    : `${GITHUB_API}/repos/${repo}/events?per_page=${limit}`;
 
-  const res = await fetch(
-    `${GITHUB_API}/repos/${repo}/events?per_page=${limit}`,
-    { headers }
-  );
+  const res = await fetch(endpoint, { headers });
 
   if (!res.ok) {
     throw new Error(`GitHub API error: ${res.status} ${res.statusText}`);
@@ -592,7 +590,8 @@ async function fetchActivity(
     PullRequestReviewCommentEvent: "comment",
     IssuesEvent: "issue",
     IssueCommentEvent: "comment",
-    CreateEvent: "release",
+    CreateEvent: "create",
+    DeleteEvent: "delete",
     ReleaseEvent: "release",
     WatchEvent: "star",
     ForkEvent: "fork",
@@ -605,7 +604,7 @@ async function fetchActivity(
     payload: {
       action?: string;
       commits?: Array<{ message: string }>;
-      pull_request?: { title: string };
+      pull_request?: { title?: string; merged?: boolean };
       review?: { body: string };
       comment?: { body: string };
       issue?: { title: string };
@@ -618,13 +617,26 @@ async function fetchActivity(
 
     // Build a more descriptive message
     switch (event.type) {
-      case "PushEvent":
+      case "PushEvent": {
         const commits = event.payload.commits?.length ?? 0;
-        message = `Pushed ${commits} commit${commits !== 1 ? "s" : ""}`;
+        if (commits > 0) {
+          message = `Pushed ${commits} commit${commits !== 1 ? "s" : ""}`;
+          break;
+        }
+        const ref = event.payload.ref?.replace(/^refs\/heads\//, "");
+        message = ref ? `Pushed updates to ${ref}` : "Pushed updates";
         break;
-      case "PullRequestEvent":
-        message = `${event.payload.action} PR: ${event.payload.pull_request?.title ?? ""}`;
+      }
+      case "PullRequestEvent": {
+        const action = event.payload.action ?? "updated";
+        const verb =
+          action === "closed" && event.payload.pull_request?.merged
+            ? "Merged"
+            : `${action.charAt(0).toUpperCase()}${action.slice(1)}`;
+        const title = event.payload.pull_request?.title?.trim();
+        message = title ? `${verb} PR: ${title}` : `${verb} a PR`;
         break;
+      }
       case "PullRequestReviewEvent": {
         const prTitle = event.payload.pull_request?.title;
         const action = event.payload.action ?? "reviewed";
@@ -636,15 +648,29 @@ async function fetchActivity(
         message = prTitle2 ? `Commented on PR: ${prTitle2}` : "Commented on a PR";
         break;
       }
-      case "IssuesEvent":
-        message = `${event.payload.action} issue: ${event.payload.issue?.title ?? ""}`;
+      case "IssuesEvent": {
+        const action = event.payload.action ?? "updated";
+        const title = event.payload.issue?.title?.trim();
+        message = title ? `${action} issue: ${title}` : `${action} an issue`;
         break;
-      case "IssueCommentEvent":
-        message = `Commented on: ${event.payload.issue?.title ?? ""}`;
+      }
+      case "IssueCommentEvent": {
+        const title = event.payload.issue?.title?.trim();
+        message = title ? `Commented on: ${title}` : "Commented on an issue";
         break;
-      case "CreateEvent":
-        message = `Created ${event.payload.ref_type}: ${event.payload.ref ?? ""}`;
+      }
+      case "CreateEvent": {
+        const refType = event.payload.ref_type ?? "resource";
+        const ref = event.payload.ref?.trim();
+        message = ref ? `Created ${refType}: ${ref}` : `Created ${refType}`;
         break;
+      }
+      case "DeleteEvent": {
+        const refType = event.payload.ref_type ?? "resource";
+        const ref = event.payload.ref?.trim();
+        message = ref ? `Deleted ${refType}: ${ref}` : `Deleted ${refType}`;
+        break;
+      }
       case "WatchEvent":
         message = "Starred the repo";
         break;

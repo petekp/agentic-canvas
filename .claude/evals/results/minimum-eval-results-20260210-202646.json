@@ -1,0 +1,58 @@
+{
+  "generated_at": "2026-02-11T04:26:59Z",
+  "eval_file": ".claude/evals/minimum-eval-set.v0.1.json",
+  "app_url": "http://localhost:3003",
+  "space_url": null,
+  "session": "min-eval-1770784006",
+  "telemetry_log_path": ".claude/telemetry/agentic-canvas.log",
+  "summary": {
+    "pass": 0,
+    "fail": 1,
+    "partial": 0,
+    "total": 1
+  },
+  "cases": [
+    {
+      "id": "T1",
+      "prompt": "Create a release-focused dashboard layout for this space.",
+      "expected_outcome": "tool_success",
+      "status": "FAIL",
+      "checks": {
+        "passed": [
+          "tool_calls_any",
+          "outcome:tool_success"
+        ],
+        "failed": [
+          "ui:Multiple components are added as a coherent layout."
+        ],
+        "unknown_ui": []
+      },
+      "snapshot_excerpt": [
+        "- document:",
+        "  - alert",
+        "  - main:",
+        "    - button \"Back to Spaces\" [ref=e1]",
+        "    - button \"Scratch Unsaved changes\" [ref=e2]: Scratch",
+        "    - 'button \"Undo: AI: generate_template (Cmd+Z)\"'",
+        "    - button \"Nothing to redo\" [ref=e3] [disabled]",
+        "    - button [ref=e4]",
+        "    - button \"Generate\" [ref=e5]",
+        "    - button \"Add Component\" [ref=e6]",
+        "    - text: Stat Tile",
+        "    - button \"Refresh\" [ref=e7]",
+        "    - button \"Remove\" [ref=e8]",
+        "    - article: open prs 43",
+        "    - button \"Drag assistant\" [ref=e9]: Drag",
+        "    - text: Assistant",
+        "    - button \"Collapse assistant tray\" [ref=e10]",
+        "    - paragraph: Create a release-focused dashboard layout for this space.",
+        "    - paragraph",
+        "    - text: Generate template",
+        "    - button \"Drag assistant\" [ref=e11] [nth=1]",
+        "    - textbox \"Ask about your canvas...\" [ref=e12]",
+        "    - button [ref=e13] [nth=1] [disabled]",
+        "    - text: ⌘K to focus Ready"
+      ]
+    }
+  ]
+}

@@ -16,6 +16,7 @@ export const ACTIVITY_TYPE_ICONS: Record<string, string> = {
   issue: "📋",
   comment: "💬",
   create: "✨",
+  delete: "🗑",
   release: "🏷",
   other: "•",
 };

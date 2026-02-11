@@ -362,7 +362,8 @@ export const createDataSlice: StateCreator<
 
 // Generate cache key from binding
 function generateCacheKey(binding: DataBinding): string {
-  return `${binding.source}:${binding.query.type}:${JSON.stringify(binding.query.params)}`;
+  const transformKey = binding.transformId ?? "no-transform";
+  return `${binding.source}:${binding.query.type}:${JSON.stringify(binding.query.params)}:${transformKey}`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

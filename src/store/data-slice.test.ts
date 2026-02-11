@@ -122,6 +122,82 @@ describe("data-slice fetchData", () => {
     expect(secondReady?.dataState.status).toBe("ready");
   });
 
+  it("does not reuse cache entries across bindings with different transforms", async () => {
+    const store = createTestStore();
+
+    const petekpTransformId = store.getState().createTransform({
+      name: "Only petekp",
+      description: "Filter to petekp",
+      code: "return data.filter((item) => item.actor === 'petekp');",
+      compatibleWith: [],
+      createdBy: "assistant",
+    });
+    const avTransformId = store.getState().createTransform({
+      name: "Only AVGVSTVS96",
+      description: "Filter to AVGVSTVS96",
+      code: "return data.filter((item) => item.actor === 'AVGVSTVS96');",
+      compatibleWith: [],
+      createdBy: "assistant",
+    });
+
+    const firstBinding: DataBinding = {
+      source: "mock-github",
+      query: { type: "activity", params: {} },
+      refreshInterval: null,
+      transformId: petekpTransformId,
+    };
+    const secondBinding: DataBinding = {
+      source: "mock-github",
+      query: { type: "activity", params: {} },
+      refreshInterval: null,
+      transformId: avTransformId,
+    };
+
+    globalThis.fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        data: [
+          { id: "1", actor: "petekp" },
+          { id: "2", actor: "AVGVSTVS96" },
+        ],
+        ttl: 60_000,
+      }),
+    })) as unknown as typeof fetch;
+
+    const first = store.getState().addComponent({
+      typeId: "github.activity-timeline",
+      config: {},
+    });
+    const second = store.getState().addComponent({
+      typeId: "github.activity-timeline",
+      config: {},
+    });
+
+    const firstId = first.affectedComponentIds[0];
+    const secondId = second.affectedComponentIds[0];
+
+    await store.getState().fetchData(firstId, firstBinding);
+    await store.getState().fetchData(secondId, secondBinding);
+
+    const fetchCalls = (globalThis.fetch as unknown as { mock: { calls: unknown[] } }).mock.calls;
+    expect(fetchCalls.length).toBe(2);
+
+    const firstReady = store.getState().canvas.components.find((c) => c.id === firstId);
+    const secondReady = store.getState().canvas.components.find((c) => c.id === secondId);
+
+    expect(firstReady?.dataState.status).toBe("ready");
+    expect(secondReady?.dataState.status).toBe("ready");
+
+    if (firstReady?.dataState.status === "ready") {
+      const rows = firstReady.dataState.data as Array<{ actor: string }>;
+      expect(rows).toEqual([{ actor: "petekp", id: "1" }]);
+    }
+    if (secondReady?.dataState.status === "ready") {
+      const rows = secondReady.dataState.data as Array<{ actor: string }>;
+      expect(rows).toEqual([{ actor: "AVGVSTVS96", id: "2" }]);
+    }
+  });
+
   it("blocks transforms that are not assistant-generated", async () => {
     const store = createTestStore();
     const addResult = store.getState().addComponent({

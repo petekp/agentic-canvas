@@ -31,20 +31,34 @@ describe("createSystemPrompt", () => {
   it("includes integration availability hints so the assistant can pick fallbacks", () => {
     const prevSlackBot = process.env.SLACK_BOT_TOKEN;
     const prevSlackUser = process.env.SLACK_USER_TOKEN;
+    const prevGithub = process.env.GITHUB_TOKEN;
 
     process.env.SLACK_BOT_TOKEN = "xoxb-test";
     delete process.env.SLACK_USER_TOKEN;
+    delete process.env.GITHUB_TOKEN;
 
     const prompt = createSystemPrompt({ canvas: makeCanvas() });
     expect(prompt).toContain("## Integrations");
     expect(prompt).toMatch(/Slack bot token:\s*available/i);
     expect(prompt).toMatch(/Slack user token:\s*unavailable/i);
+    expect(prompt).toMatch(/GitHub token:\s*unavailable/i);
+    expect(prompt).toContain("required for all github.* components");
+    expect(prompt).toContain("do not add GitHub components");
+    expect(prompt).toContain('If the user explicitly says "this space"');
+    expect(prompt).toContain("If the user gives an explicit component ID");
+    expect(prompt).toContain('call remove_component({ component_id: "cmp_ABC123" })');
+    expect(prompt).toContain("prefer generate_template in the current space");
 
     process.env.SLACK_BOT_TOKEN = prevSlackBot;
     if (prevSlackUser === undefined) {
       delete process.env.SLACK_USER_TOKEN;
     } else {
       process.env.SLACK_USER_TOKEN = prevSlackUser;
+    }
+    if (prevGithub === undefined) {
+      delete process.env.GITHUB_TOKEN;
+    } else {
+      process.env.GITHUB_TOKEN = prevGithub;
     }
   });
 });

@@ -1,0 +1,451 @@
+{
+  "generated_at": "2026-02-11T04:17:20Z",
+  "eval_file": ".claude/evals/minimum-eval-set.v0.1.json",
+  "app_url": "http://localhost:3003",
+  "space_url": null,
+  "session": "min-eval-1770783317",
+  "telemetry_log_path": ".claude/telemetry/agentic-canvas.log",
+  "summary": {
+    "pass": 6,
+    "fail": 4,
+    "partial": 0,
+    "total": 10
+  },
+  "cases": [
+    {
+      "id": "G1",
+      "prompt": "Add a github activity feed component that only shows activity by petekp.",
+      "expected_outcome": "tool_success",
+      "status": "FAIL",
+      "checks": {
+        "passed": [
+          "tool_calls_any",
+          "must_not_say:GitHub integration is unavailable",
+          "must_not_say:can't add GitHub components",
+          "ui:One activity component is visible."
+        ],
+        "failed": [
+          "outcome:tool_success"
+        ],
+        "unknown_ui": []
+      },
+      "snapshot_excerpt": [
+        "- document:",
+        "  - alert",
+        "  - main:",
+        "    - button \"Back to Spaces\" [ref=e1]",
+        "    - button \"Scratch Unsaved changes\" [ref=e2]: Scratch",
+        "    - 'button \"Undo: AI: add_filtered_component (Cmd+Z)\"'",
+        "    - button \"Nothing to redo\" [ref=e3] [disabled]",
+        "    - button [ref=e4]",
+        "    - button \"Generate\" [ref=e5]",
+        "    - button \"Add Component\" [ref=e6]",
+        "    - text: Activity Timeline",
+        "    - button \"Refresh\" [ref=e7]",
+        "    - button \"Remove\" [ref=e8]",
+        "    - list",
+        "    - button \"Drag assistant\" [ref=e9]: Drag",
+        "    - text: Assistant",
+        "    - button \"Collapse assistant tray\" [ref=e10]",
+        "    - paragraph: Add a github activity feed component that only shows activity by petekp.",
+        "    - paragraph",
+        "    - text: \"Add filtered activity timeline: Pete's Activity switch_to is not defined\"",
+        "    - button \"Drag assistant\" [ref=e11] [nth=1]",
+        "    - textbox \"Ask about your canvas...\" [ref=e12]",
+        "    - button [ref=e13] [nth=1] [disabled]",
+        "    - text: ⌘K to focus Ready"
+      ]
+    },
+    {
+      "id": "G2",
+      "prompt": "Add a widget showing my personal GitHub activity from my own account.",
+      "expected_outcome": "graceful_block",
+      "status": "PASS",
+      "checks": {
+        "passed": [
+          "tool_calls_none:add_component",
+          "tool_calls_none:add_filtered_component",
+          "must_say_any",
+          "outcome:graceful_block",
+          "ui:No new component is added."
+        ],
+        "failed": [],
+        "unknown_ui": []
+      },
+      "snapshot_excerpt": [
+        "- document:",
+        "  - alert",
+        "  - main:",
+        "    - button \"Back to Spaces\" [ref=e1]",
+        "    - button \"Scratch\" [ref=e2]",
+        "    - 'button \"Undo: Loaded space: Scratch (Cmd+Z)\"'",
+        "    - button \"Nothing to redo\" [ref=e3] [disabled]",
+        "    - button [ref=e4]",
+        "    - button \"Generate\" [ref=e5]",
+        "    - button \"Add Component\" [ref=e6]",
+        "    - paragraph: Canvas is empty",
+        "    - paragraph: Add components to get started",
+        "    - button \"Drag assistant\" [ref=e7]: Drag",
+        "    - text: Assistant",
+        "    - button \"Collapse assistant tray\" [ref=e8]",
+        "    - paragraph: Add a widget showing my personal GitHub activity from my own account.",
+        "    - paragraph: To show your personal GitHub activity, I'll need the GitHub token which is not currently available. Would you like me to add any other components instead?",
+        "    - button \"Drag assistant\" [ref=e9] [nth=1]",
+        "    - textbox \"Ask about your canvas...\" [ref=e10]",
+        "    - button [ref=e11] [nth=1] [disabled]",
+        "    - text: ⌘K to focus Ready"
+      ]
+    },
+    {
+      "id": "S1",
+      "prompt": "Add a Slack channel activity tile for engineering.",
+      "expected_outcome": "needs_input",
+      "status": "PASS",
+      "checks": {
+        "passed": [
+          "tool_calls_any",
+          "outcome:needs_input",
+          "ui:Slack channel picker is shown (option list)."
+        ],
+        "failed": [],
+        "unknown_ui": []
+      },
+      "snapshot_excerpt": [
+        "- document:",
+        "  - alert",
+        "  - main:",
+        "    - button \"Back to Spaces\" [ref=e1]",
+        "    - button \"Scratch\" [ref=e2]",
+        "    - 'button \"Undo: Loaded space: Scratch (Cmd+Z)\"'",
+        "    - button \"Nothing to redo\" [ref=e3] [disabled]",
+        "    - button [ref=e4]",
+        "    - button \"Generate\" [ref=e5]",
+        "    - button \"Add Component\" [ref=e6]",
+        "    - paragraph: Canvas is empty",
+        "    - paragraph: Add components to get started",
+        "    - button \"Drag assistant\" [ref=e7]: Drag",
+        "    - text: Assistant",
+        "    - button \"Collapse assistant tray\" [ref=e8]",
+        "    - paragraph: Add a Slack channel activity tile for engineering.",
+        "    - paragraph",
+        "    - text: \"Add Engineering Channel Activity Which Slack channel should I use? (e.g. #general)\"",
+        "    - listbox \"Options\" [ref=e9]:",
+        "      - option \"#general Public channel\" [ref=e10]",
+        "      - option \"#today-i-ship Public channel\" [ref=e11]",
+        "      - button \"Confirm\" [ref=e12] [disabled]",
+        "    - button \"Drag assistant\" [ref=e13] [nth=1]",
+        "    - textbox \"Ask about your canvas...\" [ref=e14]",
+        "    - button [ref=e15] [nth=1] [disabled]",
+        "    - text: ⌘K to focus Ready"
+      ]
+    },
+    {
+      "id": "S2",
+      "prompt": "Add a Slack mentions feed for @petepetrash.",
+      "expected_outcome": "tool_success",
+      "status": "PASS",
+      "checks": {
+        "passed": [
+          "tool_calls_any",
+          "outcome:tool_success",
+          "ui:A Slack mentions component is visible."
+        ],
+        "failed": [],
+        "unknown_ui": []
+      },
+      "snapshot_excerpt": [
+        "- document:",
+        "  - alert",
+        "  - main:",
+        "    - button \"Back to Spaces\" [ref=e1]",
+        "    - button \"Scratch\" [ref=e2]",
+        "    - 'button \"Undo: Loaded space: Scratch (Cmd+Z)\"'",
+        "    - button \"Nothing to redo\" [ref=e3] [disabled]",
+        "    - button [ref=e4]",
+        "    - button \"Generate\" [ref=e5]",
+        "    - button \"Add Component\" [ref=e6]",
+        "    - paragraph: Canvas is empty",
+        "    - paragraph: Add components to get started",
+        "    - button \"Drag assistant\" [ref=e7]: Drag",
+        "    - text: Assistant",
+        "    - button \"Collapse assistant tray\" [ref=e8]",
+        "    - paragraph: Add a Slack mentions feed for @petepetrash.",
+        "    - paragraph",
+        "    - text: \"Lookup Slack users: petepetrash\"",
+        "    - button \"Drag assistant\" [ref=e9] [nth=1]",
+        "    - textbox \"Ask about your canvas...\" [ref=e10]",
+        "    - button [ref=e11] [nth=1] [disabled]",
+        "    - text: ⌘K to focus Ready"
+      ]
+    },
+    {
+      "id": "V1",
+      "prompt": "Add a Vercel deployments component showing the latest 5 production deployments.",
+      "expected_outcome": "tool_success",
+      "status": "PASS",
+      "checks": {
+        "passed": [
+          "tool_calls_any",
+          "outcome:tool_success",
+          "ui:A Vercel deployments component is visible."
+        ],
+        "failed": [],
+        "unknown_ui": []
+      },
+      "snapshot_excerpt": [
+        "- document:",
+        "  - alert",
+        "  - main:",
+        "    - button \"Back to Spaces\" [ref=e1]",
+        "    - button \"Scratch Unsaved changes\" [ref=e2]: Scratch",
+        "    - 'button \"Undo: AI: add_component (Cmd+Z)\"'",
+        "    - button \"Nothing to redo\" [ref=e3] [disabled]",
+        "    - button [ref=e4]",
+        "    - button \"Generate\" [ref=e5]",
+        "    - button \"Add Component\" [ref=e6]",
+        "    - text: Deployments",
+        "    - button \"Refresh\" [ref=e7]",
+        "    - button \"Remove\" [ref=e8]",
+        "    - text: Recent Deployments",
+        "    - list:",
+        "      - listitem: Canceled lockfile? 57de260 by AVGVSTVS96·4m ago",
+        "      - listitem: \"Error refactor: rename `useCloudChat` returned `threads` to `threadStore` c79f957 by AVGVSTVS96·31m ago\"",
+        "      - listitem: \"Error fix(cloud-ai-sdk): persist user messages before send 0ddebba by AVGVSTVS96·47m ago\"",
+        "      - listitem: Ready updates d3f481f by AVGVSTVS96·1h ago",
+        "      - listitem: \"Ready chore: update versions f38f10f by github-actions[bot]·4h ago\"",
+        "      - listitem: \"Canceled prod chore(changeset): add missing changeset for #3264 (#3269) 91df50d by AVGVSTVS96·4h ago\"",
+        "      - listitem: \"Ready chore(changeset): add missing changeset for cli/create template updates d652eb7 by AVGVSTVS96·5h ago\"",
+        "      - listitem: Ready offscreen b54e435 by Yonom·14h ago",
+        "      - listitem: Ready offscreen 468864e by Yonom·14h ago",
+        "      - listitem: \"Ready fix(react-ai-sdk): address review feedback on type safety 120cf6d by 0xyjk·14h ago\"",
+        "    - button \"Drag assistant\" [ref=e9]: Drag",
+        "    - text: Assistant",
+        "    - button \"Collapse assistant tray\" [ref=e10]",
+        "    - paragraph: Add a Vercel deployments component showing the latest 5 production deployments.",
+        "    - paragraph",
+        "    - text: Add Latest Production Deployments",
+        "    - button \"Drag assistant\" [ref=e11] [nth=1]",
+        "    - textbox \"Ask about your canvas...\" [ref=e12]",
+        "    - button [ref=e13] [nth=1] [disabled]",
+        "    - text: ⌘K to focus Ready"
+      ]
+    },
+    {
+      "id": "P1",
+      "prompt": "Add a PostHog site health widget to this space.",
+      "expected_outcome": "tool_success",
+      "status": "PASS",
+      "checks": {
+        "passed": [
+          "tool_calls_any",
+          "outcome:tool_success",
+          "ui:A PostHog site health component is visible."
+        ],
+        "failed": [],
+        "unknown_ui": []
+      },
+      "snapshot_excerpt": [
+        "- document:",
+        "  - alert",
+        "  - main:",
+        "    - button \"Back to Spaces\" [ref=e1]",
+        "    - button \"Scratch Unsaved changes\" [ref=e2]: Scratch",
+        "    - 'button \"Undo: AI: add_component (Cmd+Z)\"'",
+        "    - button \"Nothing to redo\" [ref=e3] [disabled]",
+        "    - button [ref=e4]",
+        "    - button \"Generate\" [ref=e5]",
+        "    - button \"Add Component\" [ref=e6]",
+        "    - text: Site Health",
+        "    - button \"Refresh\" [ref=e7]",
+        "    - button \"Remove\" [ref=e8]",
+        "    - article: Visitors 10 Pageviews 90 New 43",
+        "    - text: Daily visitors 7d ago today",
+        "    - button \"Drag assistant\" [ref=e9]: Drag",
+        "    - text: Assistant",
+        "    - button \"Collapse assistant tray\" [ref=e10]",
+        "    - paragraph: Add a PostHog site health widget to this space.",
+        "    - paragraph",
+        "    - text: Add site health",
+        "    - button \"Drag assistant\" [ref=e11] [nth=1]",
+        "    - textbox \"Ask about your canvas...\" [ref=e12]",
+        "    - button [ref=e13] [nth=1] [disabled]",
+        "    - text: ⌘K to focus Ready"
+      ]
+    },
+    {
+      "id": "R1",
+      "prompt": "Keep the existing mentions tile, but prioritize direct questions and then most recent messages.",
+      "expected_outcome": "tool_success",
+      "status": "PASS",
+      "checks": {
+        "passed": [
+          "tool_calls_any",
+          "tool_calls_none:add_component",
+          "tool_calls_none:add_filtered_component",
+          "outcome:tool_success",
+          "ui:No replacement tile is created solely for this preference change."
+        ],
+        "failed": [],
+        "unknown_ui": []
+      },
+      "snapshot_excerpt": [
+        "- document:",
+        "  - alert",
+        "  - main:",
+        "    - button \"Back to Spaces\" [ref=e1]",
+        "    - button \"Scratch\" [ref=e2]",
+        "    - 'button \"Undo: Loaded space: Scratch (Cmd+Z)\"'",
+        "    - button \"Nothing to redo\" [ref=e3] [disabled]",
+        "    - button [ref=e4]",
+        "    - button \"Generate\" [ref=e5]",
+        "    - button \"Add Component\" [ref=e6]",
+        "    - paragraph: Canvas is empty",
+        "    - paragraph: Add components to get started",
+        "    - button \"Drag assistant\" [ref=e7]: Drag",
+        "    - text: Assistant",
+        "    - button \"Collapse assistant tray\" [ref=e8]",
+        "    - paragraph: Add a Slack mentions feed for @petepetrash.",
+        "    - paragraph",
+        "    - text: \"Lookup Slack users: @petepetrash\"",
+        "    - paragraph: Keep the existing mentions tile, but prioritize direct questions and then most recent messages.",
+        "    - paragraph: I'll set up a preference rule to prioritize direct questions followed by the most recent messages in your Slack mentions. One moment please.",
+        "    - paragraph",
+        "    - text: Set rules for slack.mentions Prioritize direct questions, then show most recent messages. Score via LLM (Score items higher when they are direct questions that need a reply.) × 1. Sort by score, then recent.",
+        "    - button \"Drag assistant\" [ref=e9] [nth=1]",
+        "    - textbox \"Ask about your canvas...\" [ref=e10]",
+        "    - button [ref=e11] [nth=1] [disabled]",
+        "    - text: ⌘K to focus Ready"
+      ]
+    },
+    {
+      "id": "T1",
+      "prompt": "Create a release-focused dashboard layout for this space.",
+      "expected_outcome": "tool_success",
+      "status": "FAIL",
+      "checks": {
+        "passed": [
+          "ui:Multiple components are added as a coherent layout."
+        ],
+        "failed": [
+          "tool_calls_any",
+          "outcome:tool_success"
+        ],
+        "unknown_ui": []
+      },
+      "snapshot_excerpt": [
+        "- document:",
+        "  - alert",
+        "  - main:",
+        "    - button \"Back to Spaces\" [ref=e1]",
+        "    - button \"Scratch Unsaved changes\" [ref=e2]: Scratch",
+        "    - 'button \"Undo: AI: create_space (Cmd+Z)\"'",
+        "    - button \"Nothing to redo\" [ref=e3] [disabled]",
+        "    - button [ref=e4]",
+        "    - button \"Generate\" [ref=e5]",
+        "    - button \"Add Component\" [ref=e6]",
+        "    - text: Pr List",
+        "    - button \"Refresh\" [ref=e7]",
+        "    - button \"Remove\" [ref=e8]",
+        "    - list \"Data table (mobile card view)\":",
+        "      - text: \"Table data shown as expandable cards. Each card represents one row. Columns: #, Title, Author, State, Updated.\"",
+        "      - 'listitem \"Row 1: 2854\"':",
+        "        - 'heading \"Row 1: 2854. Expand for details\" [level=3]':",
+        "          - 'button \"Row 1: 2854. Expand for details\"':",
+        "            - 'heading \"#: 2854\" [level=3]': \"2854\"",
+        "            - group \"Summary information\":",
+        "              - 'cell \"Title: fix(assistant-stream): handle tool execution errors gracefully\"'",
+        "              - 'cell \"State: open\"'",
+        "      - 'listitem \"Row 2: 2775\"':",
+        "        - 'heading \"Row 2: 2775. Expand for details\" [level=3]':",
+        "          - 'button \"Row 2: 2775. Expand for details\"':",
+        "            - 'heading \"#: 2775\" [level=3]': \"2775\"",
+        "            - group \"Summary information\":",
+        "              - 'cell \"Title: fix: non-append-only argsText updates for tool calls\"'",
+        "              - 'cell \"State: open\"'",
+        "      - 'listitem \"Row 3: 2645\"':",
+        "        - 'heading \"Row 3: 2645. Expand for details\" [level=3]':",
+        "          - 'button \"Row 3: 2645. Expand for details\"':",
+        "            - 'heading \"#: 2645\" [level=3]': \"2645\"",
+        "            - group \"Summary information\":",
+        "              - 'cell \"Title: Aui 25 dedicated mastra implementation\"'",
+        "              - 'cell \"State: open\"'",
+        "      - 'listitem \"Row 4: 2540\"':",
+        "        - 'heading \"Row 4: 2540. Expand for details\" [level=3]':",
+        "          - 'button \"Row 4: 2540. Expand for details\"':",
+        "            - 'heading \"#: 2540\" [level=3]': \"2540\""
+      ]
+    },
+    {
+      "id": "W1",
+      "prompt": "Create a new space called Weekly Review and switch to it.",
+      "expected_outcome": "tool_success",
+      "status": "FAIL",
+      "checks": {
+        "passed": [
+          "tool_calls_any",
+          "outcome:tool_success"
+        ],
+        "failed": [
+          "ui:Active space title becomes Weekly Review."
+        ],
+        "unknown_ui": []
+      },
+      "snapshot_excerpt": [
+        "- document:",
+        "  - alert",
+        "  - main:",
+        "    - button \"Back to Spaces\" [ref=e1]",
+        "    - button \"Scratch\" [ref=e2]",
+        "    - 'button \"Undo: Loaded space: Scratch (Cmd+Z)\"'",
+        "    - button \"Nothing to redo\" [ref=e3] [disabled]",
+        "    - button [ref=e4]",
+        "    - button \"Generate\" [ref=e5]",
+        "    - button \"Add Component\" [ref=e6]",
+        "    - paragraph: Canvas is empty",
+        "    - paragraph: Add components to get started",
+        "    - button \"Drag assistant\" [ref=e7]",
+        "    - textbox \"Ask about your canvas...\" [ref=e8]",
+        "    - button [ref=e9] [nth=1] [disabled]",
+        "    - text: ⌘K to focus Ready"
+      ]
+    },
+    {
+      "id": "E1",
+      "prompt": "Remove component id cmp_DOES_NOT_EXIST.",
+      "expected_outcome": "graceful_error",
+      "status": "FAIL",
+      "checks": {
+        "passed": [],
+        "failed": [
+          "tool_calls_any",
+          "outcome:graceful_error",
+          "ui:Assistant reports component was not found, without claiming success."
+        ],
+        "unknown_ui": []
+      },
+      "snapshot_excerpt": [
+        "- document:",
+        "  - alert",
+        "  - main:",
+        "    - button \"Back to Spaces\" [ref=e1]",
+        "    - button \"Scratch\" [ref=e2]",
+        "    - 'button \"Undo: Loaded space: Scratch (Cmd+Z)\"'",
+        "    - button \"Nothing to redo\" [ref=e3] [disabled]",
+        "    - button [ref=e4]",
+        "    - button \"Generate\" [ref=e5]",
+        "    - button \"Add Component\" [ref=e6]",
+        "    - paragraph: Canvas is empty",
+        "    - paragraph: Add components to get started",
+        "    - button \"Drag assistant\" [ref=e7]: Drag",
+        "    - text: Assistant",
+        "    - button \"Collapse assistant tray\" [ref=e8]",
+        "    - paragraph: Remove component id cmp_DOES_NOT_EXIST.",
+        "    - paragraph: \"It seems that the component ID `cmp_DOES_NOT_EXIST` might not be present on the canvas. If you meant a different component ID, please provide the correct one. Otherwise, let me know how else I can assist you!\"",
+        "    - button \"Drag assistant\" [ref=e9] [nth=1]",
+        "    - textbox \"Ask about your canvas...\" [ref=e10]",
+        "    - button [ref=e11] [nth=1] [disabled]",
+        "    - text: ⌘K to focus Ready"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,149 @@
+{
+  "name": "agentic-canvas-minimum-eval-set",
+  "version": "0.1.0",
+  "captured_at": "2026-02-11",
+  "integration_baseline": {
+    "source": "GET /api/integrations (localhost:3003)",
+    "slack": { "bot": true, "user": true },
+    "posthog": true,
+    "vercel": true,
+    "github": true
+  },
+  "cases": [
+    {
+      "id": "G1",
+      "category": "github",
+      "prompt": "Add a github activity feed component that only shows activity by petekp.",
+      "preconditions": ["Active space is loaded."],
+      "expected": {
+        "outcome": "tool_success",
+        "tool_calls_any": ["add_filtered_component"],
+        "tool_calls_none": [],
+        "must_not_say": ["GitHub integration is unavailable", "can't add GitHub components"],
+        "ui": ["One activity component is visible."],
+        "telemetry": [
+          "tool.add_filtered_component start",
+          "tool.add_filtered_component result success:true"
+        ]
+      }
+    },
+    {
+      "id": "G2",
+      "category": "github",
+      "prompt": "Add a widget showing my personal GitHub activity from my own account.",
+      "preconditions": ["github token is available in baseline."],
+      "expected": {
+        "outcome": "tool_success",
+        "tool_calls_any": ["add_component"],
+        "tool_calls_none": ["add_filtered_component"],
+        "ui": ["A GitHub my-activity component is visible."],
+        "telemetry": ["tool.add_component result success:true"]
+      }
+    },
+    {
+      "id": "S1",
+      "category": "slack",
+      "prompt": "Add a Slack channel activity tile for engineering.",
+      "preconditions": ["No explicit channelId/channelName provided in prompt."],
+      "expected": {
+        "outcome": "needs_input",
+        "tool_calls_any": ["add_component"],
+        "tool_calls_none": [],
+        "ui": ["Slack channel picker is shown (option list)."],
+        "telemetry": ["tool.add_component start", "success:false with missingFields containing channelId"]
+      }
+    },
+    {
+      "id": "S2",
+      "category": "slack",
+      "prompt": "Add a Slack mentions feed for @petepetrash.",
+      "preconditions": ["slack user token is available in baseline."],
+      "expected": {
+        "outcome": "tool_success",
+        "tool_calls_any": ["add_component", "lookup_slack_user"],
+        "tool_calls_none": [],
+        "ui": ["A Slack mentions component is visible."],
+        "telemetry": ["tool.add_component result success:true"]
+      }
+    },
+    {
+      "id": "V1",
+      "category": "vercel",
+      "prompt": "Add a Vercel deployments component showing the latest 5 production deployments.",
+      "preconditions": ["vercel integration is available."],
+      "expected": {
+        "outcome": "tool_success",
+        "tool_calls_any": ["add_component"],
+        "tool_calls_none": [],
+        "ui": ["A Vercel deployments component is visible."],
+        "telemetry": ["tool.add_component result success:true"]
+      }
+    },
+    {
+      "id": "P1",
+      "category": "posthog",
+      "prompt": "Add a PostHog site health widget to this space.",
+      "preconditions": ["posthog integration is available."],
+      "expected": {
+        "outcome": "tool_success",
+        "tool_calls_any": ["add_component"],
+        "tool_calls_none": [],
+        "ui": ["A PostHog site health component is visible."],
+        "telemetry": ["tool.add_component result success:true"]
+      }
+    },
+    {
+      "id": "R1",
+      "category": "rules",
+      "prompt": "Keep the existing mentions tile, but prioritize direct questions and then most recent messages.",
+      "setup_prompts": ["Add a Slack mentions feed for @petepetrash."],
+      "preconditions": ["A Slack mentions component already exists in the active space."],
+      "expected": {
+        "outcome": "tool_success",
+        "tool_calls_any": ["set_preference_rules"],
+        "tool_calls_none": ["add_component", "add_filtered_component"],
+        "ui": ["No replacement tile is created solely for this preference change."],
+        "telemetry": ["tool.set_preference_rules result success:true"]
+      }
+    },
+    {
+      "id": "T1",
+      "category": "templates",
+      "prompt": "Create a release-focused dashboard layout for this space.",
+      "preconditions": ["Active space is loaded."],
+      "expected": {
+        "outcome": "tool_success",
+        "tool_calls_any": ["generate_template"],
+        "tool_calls_none": [],
+        "ui": ["Multiple components are added as a coherent layout."],
+        "telemetry": ["tool.generate_template result success:true"]
+      }
+    },
+    {
+      "id": "W1",
+      "category": "spaces",
+      "prompt": "Create a new space called Weekly Review and switch to it.",
+      "preconditions": ["Spaces feature enabled."],
+      "expected": {
+        "outcome": "tool_started",
+        "tool_calls_any": ["create_space"],
+        "tool_calls_none": [],
+        "ui": ["Active space title becomes Weekly Review."],
+        "telemetry": ["tool.create_space result success:true"]
+      }
+    },
+    {
+      "id": "E1",
+      "category": "error_handling",
+      "prompt": "Remove component id cmp_DOES_NOT_EXIST.",
+      "preconditions": ["Component id does not exist."],
+      "expected": {
+        "outcome": "graceful_error",
+        "tool_calls_any": ["remove_component"],
+        "tool_calls_none": [],
+        "ui": ["Assistant reports component was not found, without claiming success."],
+        "telemetry": ["tool.remove_component result success:false"]
+      }
+    }
+  ]
+}

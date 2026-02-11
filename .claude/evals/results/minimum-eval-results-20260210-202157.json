@@ -1,0 +1,88 @@
+{
+  "generated_at": "2026-02-11T04:22:20Z",
+  "eval_file": ".claude/evals/minimum-eval-set.v0.1.json",
+  "app_url": "http://localhost:3003",
+  "space_url": null,
+  "session": "min-eval-1770783717",
+  "telemetry_log_path": ".claude/telemetry/agentic-canvas.log",
+  "summary": {
+    "pass": 1,
+    "fail": 1,
+    "partial": 0,
+    "total": 2
+  },
+  "cases": [
+    {
+      "id": "W1",
+      "prompt": "Create a new space called Weekly Review and switch to it.",
+      "expected_outcome": "tool_success",
+      "status": "FAIL",
+      "checks": {
+        "passed": [
+          "tool_calls_any",
+          "ui:Active space title becomes Weekly Review."
+        ],
+        "failed": [
+          "outcome:tool_success"
+        ],
+        "unknown_ui": []
+      },
+      "snapshot_excerpt": [
+        "- document:",
+        "  - alert",
+        "  - main:",
+        "    - heading \"Spaces\" [ref=e1] [level=1]",
+        "    - heading \"Scratch\" [ref=e2] [level=3]",
+        "    - button \"Open menu\" [ref=e3]",
+        "    - text: Empty just now",
+        "    - heading \"Weekly Review\" [ref=e4] [level=3]",
+        "    - button \"Open menu\" [ref=e5] [nth=1]",
+        "    - text: Empty just now",
+        "    - button \"New Space\" [ref=e6]",
+        "    - button \"Drag assistant\" [ref=e7]",
+        "    - textbox \"Ask about your canvas...\" [ref=e8]",
+        "    - button [ref=e9] [disabled]",
+        "    - text: ⌘K to focus Ready"
+      ]
+    },
+    {
+      "id": "E1",
+      "prompt": "Remove component id cmp_DOES_NOT_EXIST.",
+      "expected_outcome": "graceful_error",
+      "status": "PASS",
+      "checks": {
+        "passed": [
+          "tool_calls_any",
+          "outcome:graceful_error",
+          "ui:Assistant reports component was not found, without claiming success."
+        ],
+        "failed": [],
+        "unknown_ui": []
+      },
+      "snapshot_excerpt": [
+        "- document:",
+        "  - alert",
+        "  - main:",
+        "    - button \"Back to Spaces\" [ref=e1]",
+        "    - button \"Scratch\" [ref=e2]",
+        "    - 'button \"Undo: Loaded space: Scratch (Cmd+Z)\"'",
+        "    - button \"Nothing to redo\" [ref=e3] [disabled]",
+        "    - button [ref=e4]",
+        "    - button \"Generate\" [ref=e5]",
+        "    - button \"Add Component\" [ref=e6]",
+        "    - paragraph: Canvas is empty",
+        "    - paragraph: Add components to get started",
+        "    - button \"Drag assistant\" [ref=e7]: Drag",
+        "    - text: Assistant",
+        "    - button \"Collapse assistant tray\" [ref=e8]",
+        "    - paragraph: Remove component id cmp_DOES_NOT_EXIST.",
+        "    - paragraph",
+        "    - text: Remove component cmp_DOES",
+        "    - button \"Drag assistant\" [ref=e9] [nth=1]",
+        "    - textbox \"Ask about your canvas...\" [ref=e10]",
+        "    - button [ref=e11] [nth=1] [disabled]",
+        "    - text: ⌘K to focus Ready"
+      ]
+    }
+  ]
+}

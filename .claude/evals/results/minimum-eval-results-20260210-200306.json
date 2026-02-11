@@ -1,0 +1,57 @@
+{
+  "generated_at": "2026-02-11T04:03:12Z",
+  "eval_file": ".claude/evals/minimum-eval-set.v0.1.json",
+  "app_url": "http://localhost:3003",
+  "space_url": null,
+  "session": "min-eval-1770782586",
+  "telemetry_log_path": ".claude/telemetry/agentic-canvas.log",
+  "summary": {
+    "pass": 0,
+    "fail": 1,
+    "partial": 0,
+    "total": 1
+  },
+  "cases": [
+    {
+      "id": "E1",
+      "prompt": "Remove component id cmp_DOES_NOT_EXIST.",
+      "expected_outcome": "graceful_error",
+      "status": "FAIL",
+      "checks": {
+        "passed": [
+          "ui:Assistant reports component was not found, without claiming success."
+        ],
+        "failed": [
+          "tool_calls_any",
+          "outcome:graceful_error"
+        ],
+        "unknown_ui": []
+      },
+      "snapshot_excerpt": [
+        "- document:",
+        "  - alert",
+        "  - main:",
+        "    - button \"Back to Spaces\" [ref=e1]",
+        "    - textbox [ref=e2]: Scratch",
+        "    - button [ref=e3]",
+        "    - button [ref=e4] [nth=1]",
+        "    - 'button \"Undo: Loaded space: Scratch (Cmd+Z)\"'",
+        "    - button \"Nothing to redo\" [ref=e5] [disabled]",
+        "    - button [ref=e6] [nth=2]",
+        "    - button \"Generate\" [ref=e7]",
+        "    - button \"Add Component\" [ref=e8]",
+        "    - paragraph: Canvas is empty",
+        "    - paragraph: Add components to get started",
+        "    - button \"Drag assistant\" [ref=e9]: Drag",
+        "    - text: Assistant",
+        "    - button \"Collapse assistant tray\" [ref=e10]",
+        "    - paragraph: Remove component id cmp_DOES_NOT_EXIST.",
+        "    - paragraph: \"It seems that the component with ID `cmp_DOES_NOT_EXIST` does not exist on the canvas. If there's anything else you need help with, feel free to ask!\"",
+        "    - button \"Drag assistant\" [ref=e11] [nth=1]",
+        "    - textbox \"Ask about your canvas...\" [ref=e12]",
+        "    - button [ref=e13] [nth=3] [disabled]",
+        "    - text: ⌘K to focus Ready"
+      ]
+    }
+  ]
+}
