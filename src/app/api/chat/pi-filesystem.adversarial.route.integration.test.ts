@@ -39,6 +39,28 @@ function finishChunk(reason: "stop" | "tool-calls") {
   };
 }
 
+async function waitForLedgerEvents(input: {
+  runtimeRoot: string;
+  sessionId: string;
+  expectedCount: number;
+  timeoutMs?: number;
+}): Promise<Awaited<ReturnType<typeof readToolLoopEventsFromFilesystem>>> {
+  const timeoutMs = input.timeoutMs ?? 2_000;
+  const deadline = Date.now() + timeoutMs;
+  let events = await readToolLoopEventsFromFilesystem(input.runtimeRoot, input.sessionId);
+
+  while (Date.now() < deadline) {
+    const integrity = validateToolLoopIntegrity(events);
+    if (events.length === input.expectedCount && integrity.ok) {
+      return events;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    events = await readToolLoopEventsFromFilesystem(input.runtimeRoot, input.sessionId);
+  }
+
+  return events;
+}
+
 async function runAdversarialChatToolCall(input: {
   toolName: "read_file" | "write_file";
   toolInput: Record<string, unknown>;
@@ -129,7 +151,11 @@ async function runAdversarialChatToolCall(input: {
     activeSpaceId: input.activeSpaceId,
   });
 
-  const events = await readToolLoopEventsFromFilesystem(input.runtimeRoot, session.sessionId);
+  const events = await waitForLedgerEvents({
+    runtimeRoot: input.runtimeRoot,
+    sessionId: session.sessionId,
+    expectedCount: 2,
+  });
   expect(events).toHaveLength(2);
   expect(validateToolLoopIntegrity(events)).toEqual({ ok: true });
   return events;
