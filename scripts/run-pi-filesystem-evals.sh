@@ -48,7 +48,9 @@ case "$PHASE" in
     ;;
   adversarial)
     echo "Running PI filesystem adversarial evals..."
-    pnpm test src/lib/pi-filesystem-tools.adversarial.test.ts
+    pnpm test \
+      src/lib/pi-filesystem-tools.adversarial.test.ts \
+      src/app/api/chat/pi-filesystem.adversarial.route.integration.test.ts
     ;;
   all)
     echo "Running all PI filesystem eval phases..."
@@ -56,7 +58,8 @@ case "$PHASE" in
       src/lib/pi-filesystem-tools.contract.test.ts \
       src/lib/pi-filesystem-tools.readonly.test.ts \
       src/lib/pi-filesystem-tools.mutation.test.ts \
-      src/lib/pi-filesystem-tools.adversarial.test.ts
+      src/lib/pi-filesystem-tools.adversarial.test.ts \
+      src/app/api/chat/pi-filesystem.adversarial.route.integration.test.ts
     ;;
   *)
     echo "Invalid phase: $PHASE (expected contract|readonly|mutation|adversarial|all)" >&2

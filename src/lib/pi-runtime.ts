@@ -782,6 +782,10 @@ export async function streamWithPiRuntime(
     persistToFilesystem,
   };
 
+  // Preserve deterministic call->result ordering in ledger writes even when
+  // stream callbacks enqueue writes without awaiting each append.
+  let ledgerWriteQueue: Promise<void> = Promise.resolve();
+
   if (persistToFilesystem) {
     void maybeRunPiRetentionJobs({
       runtimeRoot,
@@ -826,8 +830,12 @@ export async function streamWithPiRuntime(
     emitPiEvent: (payload) => {
       emitPiEvent(emitContext, payload);
     },
-    appendToolLoopEvent: (event) =>
-      appendToolLoopEventToFilesystem(runtimeRoot, options.session.sessionId, event),
+    appendToolLoopEvent: (event) => {
+      ledgerWriteQueue = ledgerWriteQueue.then(() =>
+        appendToolLoopEventToFilesystem(runtimeRoot, options.session.sessionId, event)
+      );
+      return ledgerWriteQueue;
+    },
   };
 
   const runtimeEngine = await resolvePiRuntimeEngine();
