@@ -13,6 +13,7 @@ pnpm test src/lib/pi-adapter-contract.test.ts \
   src/app/api/pi/retention/route.test.ts \
   src/app/api/pi/runtime/route.test.ts \
   src/app/api/chat/route.test.ts \
+  src/app/api/chat/pi-filesystem.route.integration.test.ts \
   src/app/api/chat/pi-mono.route.integration.test.ts \
   src/store/workspace-slice.morning-brief.test.ts \
   src/lib/morning-brief.test.ts

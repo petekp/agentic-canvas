@@ -19,6 +19,36 @@ Agentic Canvas is a working v0.1+ system with spaces-first navigation, assistant
 
 ## Timeline
 
+### 2026-02-11 - Deterministic Chat-Loop FS E2E + Ledger Integrity
+
+**What changed:**
+- Added deterministic `/api/chat` integration coverage that executes real server-side filesystem tools through the runtime loop:
+  - `src/app/api/chat/pi-filesystem.route.integration.test.ts`
+  - Uses a deterministic mock language model stream to trigger `write_file` then `read_file`
+  - Verifies mutation under `PI_FS_ALLOWED_ROOT`
+  - Verifies ledger evidence and call/result integrity under `PI_RUNTIME_ROOT/sessions/.../ledger/*.jsonl`
+- Wired the new integration test into existing eval/smoke runners:
+  - `scripts/run-pi-phase1-gates.sh`
+  - `scripts/run-pi-filesystem-smoke.sh`
+- Added local fs-testing env profile scaffolding:
+  - `.env.example` (`PI_FILESYSTEM_TOOLS_ENABLED`, `PI_FS_ALLOWED_ROOT`, fs limits, delete gate defaults)
+- Added manual browser verification checklist for fs tool flow:
+  - `.claude/plans/pi-local-prototype-scope-v0.1.md`
+- Executed live local phase-2 smoke against running dev server (2026-02-11):
+  - `pnpm run eval:pi:phase2:smoke --expect-engine-source external --expect-engine-id external.pi-mono.runtime --expect-chat-text "pi-mono dry run" --with-fs-smoke`
+  - Result: pass (`runtime`, `retention`, `/api/chat` SSE, and filesystem smoke checks)
+
+**Why:** Close the remaining end-to-end validation gap by proving filesystem tools execute through the chat runtime loop with durable ledger artifacts and repeatable local verification.
+
+**Agent impact:**
+- Use `src/app/api/chat/pi-filesystem.route.integration.test.ts` as the canonical deterministic runtime-loop + ledger evidence test.
+- `pnpm run eval:pi:fs:smoke` now validates both direct tool smoke and `/api/chat` filesystem-loop behavior.
+- Use the checklist in `.claude/plans/pi-local-prototype-scope-v0.1.md` when manually verifying runtime tool execution in browser.
+
+**Deprecated:** None
+
+---
+
 ### 2026-02-11 - Local Prototype Filesystem Tooling + Eval Hardening
 
 **What changed:**

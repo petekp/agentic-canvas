@@ -107,6 +107,31 @@ Mandatory for each slice:
   - Mutation evals
   - Adversarial evals
   - Local filesystem smoke run
+- [x] Deterministic `/api/chat` filesystem-loop E2E coverage:
+  - Forces `write_file` + `read_file` through chat runtime loop
+  - Verifies real file mutation under allowed root
+  - Verifies ledger call/result integrity under `.runtime/pi/.../ledger/*.jsonl`
+- [x] Live local phase-2 smoke validation:
+  - Ran `eval:pi:phase2:smoke` with `--with-fs-smoke` against running `pnpm dev`
+  - Verified runtime diagnostics, retention endpoint, `/api/chat` SSE path, and fs smoke chain
+
+## Manual Browser Checklist (Filesystem Tool Flow)
+
+1. Start app with local fs profile:
+   - `PI_FILESYSTEM_TOOLS_ENABLED=1`
+   - `PI_FS_ALLOWED_ROOT=<sandbox dir>`
+2. In the app chat, submit a prompt that requires file mutation, e.g.:
+   - “Create `sandbox/manual-check.txt` with text `hello fs` and then read it back.”
+3. Confirm visible tool activity in chat stream:
+   - `write_file` call appears
+   - `read_file` call appears
+4. Confirm file mutation evidence on disk:
+   - File exists under `PI_FS_ALLOWED_ROOT/sandbox/manual-check.txt`
+   - Content matches requested text
+5. Confirm ledger evidence for the same session:
+   - Open `.runtime/pi/sessions/<encoded-session-id>/ledger/<yyyy-mm-dd>.jsonl`
+   - Verify both `call` and `result` events exist for `write_file` and `read_file`
+   - Verify each result has matching `toolCallId` + `idempotencyKey` from its call event
 
 ## Change Control
 

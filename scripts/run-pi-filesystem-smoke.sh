@@ -28,5 +28,7 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
 echo "Running PI filesystem smoke checks..."
-pnpm test src/lib/pi-filesystem-tools.smoke.test.ts
+pnpm test \
+  src/lib/pi-filesystem-tools.smoke.test.ts \
+  src/app/api/chat/pi-filesystem.route.integration.test.ts
 echo "PI filesystem smoke checks passed."
