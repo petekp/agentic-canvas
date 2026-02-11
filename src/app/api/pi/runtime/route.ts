@@ -1,4 +1,3 @@
-import type { NextRequest } from "next/server";
 import { getPiRuntimeDiagnostics } from "@/lib/pi-runtime";
 import { appendTelemetry } from "@/lib/telemetry";
 
@@ -7,7 +6,7 @@ function isDiagnosticsEnabled(): boolean {
   return value === "1" || value === "true";
 }
 
-export async function GET(_req: NextRequest) {
+export async function GET() {
   if (!isDiagnosticsEnabled()) {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
