@@ -45,3 +45,6 @@ tmp-*.png
 
 # pnpm patch workspaces (keep .patch files tracked)
 patches/*/
+
+# Generated eval artifacts
+.claude/evals/results/

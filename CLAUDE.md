@@ -83,6 +83,9 @@ Cognitive load. Fixed grids constrain layout decisions, making both user placeme
 - **Internal types use PascalCase** — `CanvasCommand`, `DataLoadingState`
 - **Spaces are first-class** — use space APIs and routing (`/spaces`, `/spaces/[id]`)
 - **Tools live in canvas-tools** — use `makeAssistantTool` in `src/lib/canvas-tools.tsx`
+- **assistant-ui transport is canonical** — use `AssistantChatTransport` + AI SDK `validateUIMessages(...)` at `/api/chat`; avoid hand-rolled message normalization for the standard path
+- **Don’t duplicate adapter helpers** — keep tool schema projection via `frontendTools(...)`; avoid adding thin wrappers that mirror SDK/util behavior
+- **Runtime seam stays thin** — delegate orchestration/extensions to external pi engine when configured; keep route protocol unchanged
 
 ## Telemetry & Headless Debugging
 
@@ -207,6 +210,19 @@ const { messages, sendMessage, status, stop } = useChat({
 z.record(z.string(), z.unknown())
 // NOT: z.record(z.unknown())
 ```
+
+### assistant-ui + AI SDK boundary
+- At `/api/chat`, validate incoming UI messages with `validateUIMessages(...)` before `convertToModelMessages(...)`.
+- For historical tool-result ingestion from model messages, unwrap wrapped payloads (`output.value` / `result.value`) before ledger persistence.
+- External pi runtime delegation is configured via:
+  - `PI_RUNTIME_ENGINE_MODULE`
+  - `PI_RUNTIME_ENGINE_EXPORT` (optional)
+- Prefer existing utilities over custom protocol code in external engines:
+  - pi runtime/model orchestration from `@mariozechner/pi-ai`
+  - assistant stream transport from AI SDK `createUIMessageStream(...)` + `createUIMessageStreamResponse(...)`
+- Retention runs on traffic via `streamWithPiRuntime(...)` and can also be triggered explicitly at `POST /api/pi/retention`.
+- If `PI_RETENTION_API_TOKEN` is set, `POST /api/pi/retention` requires `Authorization: Bearer <token>`.
+- Runtime engine diagnostics are available at `GET /api/pi/runtime` when `PI_RUNTIME_DIAGNOSTICS_ENABLED=1`.
 
 ## Patterns to Avoid
 

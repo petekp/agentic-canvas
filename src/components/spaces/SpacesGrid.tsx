@@ -29,6 +29,10 @@ export function SpacesGrid() {
   // Sort spaces: pinned first, then by lastVisitedAt (most recent first)
   const sortedSpaces = useMemo(() => {
     return [...spaces].sort((a, b) => {
+      // Morning Brief is always first
+      if (a.kind === "system.morning_brief" && b.kind !== "system.morning_brief") return -1;
+      if (a.kind !== "system.morning_brief" && b.kind === "system.morning_brief") return 1;
+
       // Pinned spaces first
       if (a.pinned && !b.pinned) return -1;
       if (!a.pinned && b.pinned) return 1;

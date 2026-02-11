@@ -33,12 +33,12 @@ export function CanvasHeader() {
     }
   }, [isEditing]);
 
-  // Sync edit name when space changes
+  // Keep draft name aligned when switching spaces without subscribing to unstable space refs.
   useEffect(() => {
-    if (space && !isEditing) {
-      setEditName(space.name);
+    if (!isEditing) {
+      setEditName(space?.name ?? "Untitled");
     }
-  }, [space, isEditing]);
+  }, [activeSpaceId, isEditing]);
 
   const handleStartEdit = useCallback(() => {
     if (space) {

@@ -285,6 +285,65 @@ describe("data-slice fetchData", () => {
     }
   });
 
+  it("requests morning brief output and stores lifecycle payload", async () => {
+    const store = createTestStore();
+    const addResult = store.getState().addComponent({
+      typeId: "system.morning-brief",
+      config: {},
+    });
+    const componentId = addResult.affectedComponentIds[0];
+
+    const fetchMock = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? "{}"));
+      expect(body.outputType).toBe("morning_brief");
+      return {
+        ok: true,
+        json: async () => ({
+          data: {
+            state: "presented",
+            current: {
+              version: 1,
+              generatedAt: new Date().toISOString(),
+              generatedBy: "assistant",
+              mission: {
+                id: "m1",
+                title: "Stabilize release readiness",
+                rationale: "Deployments are failing.",
+                owner: "You",
+                horizon: "today",
+                priorityScore: 80,
+              },
+              evidence: [],
+              levers: [],
+              assumptions: [],
+              confidence: "medium",
+              freshnessSummary: "Freshness range 1-1 minutes; stale items 0.",
+            },
+            history: [],
+            userOverrides: [],
+          },
+          ttl: 1000,
+        }),
+      };
+    });
+
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    await store.getState().fetchData(componentId, {
+      source: "briefing",
+      query: { type: "morning_brief", params: { repos: ["owner/repo"] } },
+      refreshInterval: null,
+    });
+
+    const ready = store.getState().canvas.components.find((c) => c.id === componentId);
+    expect(ready?.dataState.status).toBe("ready");
+    if (ready?.dataState.status === "ready") {
+      const data = ready.dataState.data as { state?: string; current?: { mission?: { title?: string } } };
+      expect(data.state).toBe("presented");
+      expect(data.current?.mission?.title).toContain("Stabilize");
+    }
+  });
+
   it("applies LLM scores from /api/rules/score and sorts by score", async () => {
     const store = createTestStore();
 

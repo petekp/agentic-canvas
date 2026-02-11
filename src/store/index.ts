@@ -15,6 +15,135 @@ import { createWorkspaceSlice, type WorkspaceSlice } from "./workspace-slice";
 import { createChatSlice, type ChatSlice } from "./chat-slice";
 import { createUndoSlice, type UndoSlice } from "./undo-slice";
 import { createNotificationSlice, type NotificationSlice } from "./notification-slice";
+import {
+  createDefaultMorningBriefRuntimeState,
+  ensureMorningBriefTriggers,
+} from "@/lib/morning-brief-triggers";
+
+const SPACE_KIND_VALUES = new Set([
+  "system.morning_brief",
+  "mission",
+  "project",
+  "ad_hoc",
+] as const);
+const MORNING_BRIEF_SPACE_NAME = "Your Morning Brief";
+
+function inferPersistedSpaceKind(space: Record<string, unknown>): "system.morning_brief" | "ad_hoc" | "mission" | "project" {
+  if (
+    typeof space.kind === "string" &&
+    SPACE_KIND_VALUES.has(space.kind as "system.morning_brief" | "ad_hoc" | "mission" | "project")
+  ) {
+    return space.kind as "system.morning_brief" | "ad_hoc" | "mission" | "project";
+  }
+  const name = typeof space.name === "string" ? space.name.toLowerCase() : "";
+  if (name.includes("morning brief")) {
+    return "system.morning_brief";
+  }
+  return "ad_hoc";
+}
+
+function normalizePersistedSpaces(spaces: unknown): unknown {
+  if (!Array.isArray(spaces)) {
+    return spaces;
+  }
+
+  const normalized = spaces.map((entry) => {
+    const space = (entry ?? {}) as Record<string, unknown>;
+    const kind = inferPersistedSpaceKind(space);
+    const createdAt = typeof space.createdAt === "number" ? space.createdAt : Date.now();
+    const updatedAt = typeof space.updatedAt === "number" ? space.updatedAt : createdAt;
+    const lastVisitedAt =
+      typeof space.lastVisitedAt === "number" ? space.lastVisitedAt : updatedAt;
+    const pinned =
+      kind === "system.morning_brief"
+        ? true
+        : typeof space.pinned === "boolean"
+          ? space.pinned
+          : false;
+    const createdBy =
+      typeof space.createdBy === "string" && (space.createdBy === "assistant" || space.createdBy === "user")
+        ? space.createdBy
+        : kind === "system.morning_brief"
+          ? "assistant"
+          : "user";
+    const maybeMeta =
+      space.meta && typeof space.meta === "object"
+        ? (space.meta as Record<string, unknown>)
+        : {};
+
+    const meta = {
+      kind,
+      pinned,
+      systemManaged: kind === "system.morning_brief",
+      createdBy,
+      createdAt:
+        typeof maybeMeta.createdAt === "number" ? maybeMeta.createdAt : createdAt,
+      updatedAt:
+        typeof maybeMeta.updatedAt === "number" ? maybeMeta.updatedAt : updatedAt,
+      lastVisitedAt:
+        typeof maybeMeta.lastVisitedAt === "number"
+          ? maybeMeta.lastVisitedAt
+          : lastVisitedAt,
+    };
+
+    return {
+      ...space,
+      kind,
+      pinned,
+      createdBy,
+      createdAt: meta.createdAt,
+      updatedAt: meta.updatedAt,
+      lastVisitedAt: meta.lastVisitedAt,
+      meta,
+    };
+  });
+
+  const hasMorningBrief = normalized.some(
+    (space) =>
+      typeof space === "object" &&
+      space !== null &&
+      (space as { kind?: string }).kind === "system.morning_brief"
+  );
+  if (hasMorningBrief) {
+    return normalized;
+  }
+
+  const now = Date.now();
+  const morningBrief = {
+    id: `space_${Math.random().toString(36).slice(2, 12)}`,
+    name: MORNING_BRIEF_SPACE_NAME,
+    kind: "system.morning_brief",
+    meta: {
+      kind: "system.morning_brief",
+      pinned: true,
+      systemManaged: true,
+      createdBy: "assistant",
+      createdAt: now,
+      updatedAt: now,
+      lastVisitedAt: now,
+    },
+    description: "System-managed mission orientation for your day",
+    snapshot: {
+      grid: {
+        columns: 12,
+        rows: 8,
+        gap: 12,
+        cellWidth: 0,
+        cellHeight: 0,
+      },
+      components: [],
+    },
+    triggerIds: [],
+    pinned: true,
+    createdBy: "assistant",
+    createdAt: now,
+    updatedAt: now,
+    lastVisitedAt: now,
+    briefingConfig: undefined,
+  };
+
+  return [morningBrief, ...normalized];
+}
 
 // Combined store type
 export type AgenticCanvasStore = CanvasSlice &
@@ -47,6 +176,8 @@ const partialize = (state: AgenticCanvasStore) => ({
       },
     })),
     settings: state.workspace.settings,
+    triggers: state.workspace.triggers,
+    morningBrief: state.workspace.morningBrief,
     // Serialize transforms Map to array for persistence (handle undefined for backwards compat)
     transforms: state.workspace.transforms
       ? Array.from(state.workspace.transforms.entries())
@@ -73,7 +204,7 @@ export const useStore = create<AgenticCanvasStore>()(
       })),
       {
         name: "agentic-canvas",
-        version: 4, // v4: Added rules support
+        version: 7, // v7: Add Morning Brief auto-open setting defaults
         // Persist canvas, workspace (spaces), and navigation state
         partialize,
         // Re-fetch data for all components after rehydration
@@ -90,6 +221,20 @@ export const useStore = create<AgenticCanvasStore>()(
               if (!state.workspace.rules) {
                 state.workspace.rules = { version: "v1" };
               }
+              if (
+                typeof state.workspace.settings?.autoOpenMorningBrief !== "boolean"
+              ) {
+                state.workspace.settings = {
+                  ...state.workspace.settings,
+                  autoOpenMorningBrief: true,
+                };
+              }
+              state.workspace.triggers = ensureMorningBriefTriggers(
+                Array.isArray(state.workspace.triggers) ? state.workspace.triggers : []
+              );
+              state.workspace.morningBrief =
+                state.workspace.morningBrief ?? createDefaultMorningBriefRuntimeState();
+              state.workspace.spaces = normalizePersistedSpaces(state.workspace.spaces) as typeof state.workspace.spaces;
             }
             state.initializeData();
           }
@@ -118,6 +263,31 @@ export const useStore = create<AgenticCanvasStore>()(
             if (!state.workspace.rules) {
               state.workspace.rules = { version: "v1" };
             }
+          }
+
+          // v4 -> v5: Normalize space kinds/metadata and ensure Morning Brief exists
+          if (version < 5 && state.workspace) {
+            state.workspace.spaces = normalizePersistedSpaces(state.workspace.spaces) as typeof state.workspace.spaces;
+          }
+
+          // v5 -> v6: Ensure Morning Brief trigger/runtime state exists
+          if (version < 6 && state.workspace) {
+            state.workspace.triggers = ensureMorningBriefTriggers(
+              Array.isArray(state.workspace.triggers) ? state.workspace.triggers : []
+            );
+            state.workspace.morningBrief =
+              state.workspace.morningBrief ?? createDefaultMorningBriefRuntimeState();
+          }
+
+          // v6 -> v7: Ensure auto-open setting exists
+          if (version < 7 && state.workspace) {
+            state.workspace.settings = {
+              ...state.workspace.settings,
+              autoOpenMorningBrief:
+                typeof state.workspace.settings?.autoOpenMorningBrief === "boolean"
+                  ? state.workspace.settings.autoOpenMorningBrief
+                  : true,
+            };
           }
 
           return state;

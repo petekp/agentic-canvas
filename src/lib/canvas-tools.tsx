@@ -620,6 +620,7 @@ function getTypeName(typeId: string): string {
     "slack.mentions": "mentions",
     "slack.thread-watch": "thread watch",
     "briefing.recommendations": "briefing recommendations",
+    "system.morning-brief": "morning brief",
   };
   if (!typeId) return "component";
   return names[typeId] ?? typeId.split(".").pop() ?? typeId;

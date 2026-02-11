@@ -10,10 +10,9 @@
 // This pattern keeps canvas mutations in the browser where Zustand lives,
 // avoiding complex server→client state sync.
 //
-// MESSAGE NORMALIZATION:
-// AI SDK v6 expects messages with a `parts` array, but legacy formats use
-// `content` strings. normalizeMessages() bridges this gap, letting us accept
-// messages from various sources (saved conversations, older clients).
+// MESSAGE VALIDATION:
+// We rely on assistant-ui's AI SDK transport to send canonical v6 UI messages
+// and validate route input with AI SDK helpers.
 //
 // SYSTEM PROMPT COMPOSITION:
 // 1. Optional frontend system message (from AssistantChatTransport)
@@ -25,10 +24,14 @@
 // Most interactions need 1-2 steps; 3 handles complex multi-tool scenarios.
 
 import { openai } from "@ai-sdk/openai";
-import { streamText, convertToModelMessages, type UIMessage, stepCountIs, type ToolSet } from "ai";
-import { frontendTools } from "@assistant-ui/react-ai-sdk";
+import { convertToModelMessages, type UIMessage, validateUIMessages } from "ai";
 import { createSystemPrompt } from "@/lib/ai-tools";
 import { appendTelemetry } from "@/lib/telemetry";
+import {
+  resolveChatSessionScope,
+  streamWithPiPhase1Adapter,
+  toFrontendToolSet,
+} from "@/lib/pi-phase1-adapter";
 
 // Allow streaming responses up to 30 seconds
 export const maxDuration = 30;
@@ -41,56 +44,9 @@ export const maxDuration = 30;
 // recentChanges?: RecentChange[] - Recent canvas changes
 // activeSpaceName?: string | null - Currently active space name
 // spaces?: Space[] - Available spaces
-
-/**
- * Normalizes incoming messages to AI SDK v6's parts-based format.
- *
- * Handles three legacy formats:
- * 1. { content: "string" } → { parts: [{ type: "text", text: "string" }] }
- * 2. { content: [{ type: "text", text: "..." }] } → { parts: [...] }
- * 3. { parts: [...] } → unchanged (already v6 format)
- *
- * WHY: assistant-ui internally converts between formats during serialization.
- * Saved conversations or older API clients might send legacy formats.
- * Without normalization, convertToModelMessages() throws cryptic errors.
- */
-function normalizeMessages(messages: unknown[]): UIMessage[] {
-  return messages.map((msg: unknown) => {
-    const m = msg as Record<string, unknown>;
-    const id = (m.id as string) ?? `msg_${Date.now()}`;
-    const role = (m.role as "user" | "assistant" | "system") ?? "user";
-
-    // If message already has parts, use as-is
-    if (Array.isArray(m.parts) && m.parts.length > 0) {
-      return { id, role, parts: m.parts, metadata: m.metadata } as unknown as UIMessage;
-    }
-
-    // Convert legacy content string to parts array
-    if (typeof m.content === "string") {
-      return {
-        id,
-        role,
-        parts: [{ type: "text" as const, text: m.content }],
-        metadata: m.metadata,
-      } as unknown as UIMessage;
-    }
-
-    // Convert legacy content array (assistant-ui internal format) to parts
-    if (Array.isArray(m.content)) {
-      const parts = m.content.map((c: unknown) => {
-        const part = c as Record<string, unknown>;
-        if (part.type === "text" && typeof part.text === "string") {
-          return { type: "text" as const, text: part.text };
-        }
-        return part;
-      });
-      return { id, role, parts, metadata: m.metadata } as unknown as UIMessage;
-    }
-
-    // Fallback: return with empty parts
-    return { id, role, parts: [], metadata: m.metadata } as unknown as UIMessage;
-  });
-}
+// workspaceId?: string - Current workspace id
+// threadId?: string - Current thread id
+// activeSpaceId?: string - Current space id
 
 function extractLastUserText(messages: UIMessage[]): string | null {
   for (let i = messages.length - 1; i >= 0; i -= 1) {
@@ -115,17 +71,6 @@ function extractLastUserText(messages: UIMessage[]): string | null {
   return null;
 }
 
-function toFrontendToolSet(tools: unknown): ToolSet | undefined {
-  if (!tools || typeof tools !== "object" || Array.isArray(tools)) return undefined;
-
-  // `frontendTools()` returns a schema-only tool map (no `execute`), which is intentional:
-  // tool calls are executed on the client via assistant-ui. The AI SDK accepts this shape
-  // at runtime, but its `ToolSet` type currently assumes executable tools.
-  return frontendTools(
-    tools as Record<string, { description?: string; parameters: object }>
-  ) as unknown as ToolSet;
-}
-
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -139,11 +84,20 @@ export async function POST(req: Request) {
       spaces,
       transforms,
       rules,
+      workspaceId,
+      threadId,
+      activeSpaceId,
     } = body;
 
-    // Normalize messages to ensure parts array format (handles legacy content format)
-    const messages = normalizeMessages(rawMessages ?? []);
+    const messages = await validateUIMessages({
+      messages: rawMessages ?? [],
+    });
     const lastUserMessage = extractLastUserText(messages);
+    const sessionScope = resolveChatSessionScope({
+      workspaceId,
+      threadId,
+      activeSpaceId,
+    });
 
     await appendTelemetry({
       level: "info",
@@ -157,6 +111,10 @@ export async function POST(req: Request) {
             ? Object.keys(tools as Record<string, unknown>).length
             : undefined,
         activeSpaceName,
+        workspaceId: sessionScope.workspaceId,
+        threadId: sessionScope.threadId,
+        spaceId: sessionScope.spaceId,
+        sessionId: sessionScope.sessionId,
       },
     });
 
@@ -188,22 +146,21 @@ export async function POST(req: Request) {
     // Use model directly
     const model = openai("gpt-4o");
 
-    // Stream the response with tool support
-    // Tools are defined on the client via makeAssistantTool and forwarded here
-    const result = streamText({
+    // Stream response through phase-1 pi adapter.
+    // Orchestration stays AI SDK-backed for now, but we normalize pi events
+    // and persist filesystem-first session episodes.
+    const result = await streamWithPiPhase1Adapter({
       model,
       system: systemPrompt,
       messages: modelMessages,
-      // Convert frontend tools to AI SDK format
-      // These tools execute on the client, not the server
       tools: toFrontendToolSet(tools),
-      // Limit to 3 steps to prevent tool call loops
-      stopWhen: stepCountIs(3),
+      session: sessionScope,
+      abortSignal: req.signal,
     });
 
     // Return the streaming response with error handling
     return result.toUIMessageStreamResponse({
-      onError: (error) => {
+      onError: (error: unknown) => {
         console.error("[Chat API] Stream error:", error);
         void appendTelemetry({
           level: "error",

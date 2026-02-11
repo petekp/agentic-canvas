@@ -212,7 +212,8 @@ function formatSpacesForPrompt(spaces: Space[], activeSpaceName?: string | null)
       const pinStatus = space.pinned ? " (pinned)" : "";
       const activeStatus = space.name === activeSpaceName ? " **[ACTIVE]**" : "";
       const createdBy = space.createdBy === "assistant" ? " (AI-created)" : "";
-      return `- ${space.name}${pinStatus}${createdBy}${activeStatus}: ${space.snapshot.components.length} components`;
+      const kind = ` [${space.kind}]`;
+      return `- ${space.name}${kind}${pinStatus}${createdBy}${activeStatus}: ${space.snapshot.components.length} components`;
     })
     .join("\n");
 }

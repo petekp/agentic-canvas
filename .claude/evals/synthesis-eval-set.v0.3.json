@@ -1,0 +1,87 @@
+{
+  "name": "agentic-canvas-synthesis-eval-set",
+  "version": "0.3.0",
+  "captured_at": "2026-02-11",
+  "description": "Morning Brief lifecycle evals with contract checks for levers, evidence grounding, freshness, and override controls.",
+  "cases": [
+    {
+      "id": "MB1",
+      "category": "morning_brief_contract",
+      "setup_prompts": [
+        "Switch to the space named Your Morning Brief."
+      ],
+      "prompt": "Produce a Morning Brief with these section headers exactly: Today's Mission, Why It Matters Now, Top Levers, Evidence, Assumptions & Confidence. In Top Levers include at least 2 bullet actions. In Why It Matters Now explicitly use a because/based on evidence clause. Include freshness ages in minutes.",
+      "expected": {
+        "outcome": "response_only",
+        "must_match_regex": [
+          "Today's Mission",
+          "Why It Matters Now",
+          "Top Levers",
+          "Evidence",
+          "Assumptions\\s*&\\s*Confidence"
+        ],
+        "required_levers": 2,
+        "lever_regex": "(?im)^\\s*-\\s*listitem:\\s+.+",
+        "claim_evidence_alignment": true,
+        "evidence_freshness_max_age_minutes": 180,
+        "must_allow_override_actions": [
+          "Reframe mission",
+          "Lower priority",
+          "Use different objective",
+          "Snooze"
+        ],
+        "scoring": {
+          "hard_fail": ["morning_brief_contract", "formatting"],
+          "soft_score": {
+            "threshold": 0.8,
+            "weights": {
+              "morning_brief_contract": 0.7,
+              "formatting": 0.3
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "MB2",
+      "category": "morning_brief_low_confidence",
+      "setup_prompts": [
+        "Switch to the space named Your Morning Brief."
+      ],
+      "prompt": "Create a cautious Morning Brief when data may be stale. Use the same 5 section headers. Include exactly 2 bullet levers and at least one explicit assumption. Mention freshness in minutes and keep confidence low or medium.",
+      "expected": {
+        "outcome": "response_only",
+        "must_label_assumptions": true,
+        "must_match_regex": [
+          "Today's Mission",
+          "Why It Matters Now",
+          "Top Levers",
+          "Evidence",
+          "Assumptions\\s*&\\s*Confidence",
+          "Confidence:\\s*(Low|Medium|low|medium)"
+        ],
+        "required_levers": 2,
+        "lever_regex": "(?im)^\\s*-\\s*listitem:\\s+.+",
+        "claim_evidence_alignment": true,
+        "evidence_freshness_max_age_minutes": 180,
+        "must_allow_override_actions": [
+          "Reframe mission",
+          "Lower priority",
+          "Use different objective",
+          "Snooze"
+        ],
+        "scoring": {
+          "hard_fail": ["morning_brief_contract", "uncertainty", "formatting"],
+          "soft_score": {
+            "threshold": 0.8,
+            "weights": {
+              "morning_brief_contract": 0.6,
+              "uncertainty": 0.2,
+              "formatting": 0.2
+            }
+          }
+        }
+      }
+    }
+  ]
+}

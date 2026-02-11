@@ -16,6 +16,13 @@ import type {
   TeamActivityData,
   VercelDeploymentData,
 } from "@/components/canvas/renderers/types";
+import type {
+  Assumption,
+  EvidenceItem,
+  Lever,
+  MorningBriefComponentData,
+  MorningBriefDataSource,
+} from "@/types";
 
 interface BriefingRequest {
   since?: number;
@@ -25,6 +32,7 @@ interface BriefingRequest {
   vercelProjectId?: string;
   vercelTeamId?: string;
   generateNarrative?: boolean;
+  outputType?: "recommendations" | "morning_brief";
 }
 
 interface InternalResponse<T> {
@@ -56,6 +64,7 @@ const MAX_REPOS = 5;
 const MAX_SECTION_ITEMS = 4;
 const MAX_NARRATIVE_ITEMS = 4;
 const NARRATIVE_MODEL = "gpt-5.2";
+const EVIDENCE_STALE_MINUTES = 180;
 
 const NARRATIVE_SYSTEM_PROMPT = `You are an AI chief of staff preparing a concise morning briefing.
 
@@ -96,6 +105,8 @@ export async function POST(req: NextRequest) {
       : [];
     const vercelProjectId = body.vercelProjectId?.trim();
     const vercelTeamId = body.vercelTeamId?.trim();
+    const outputType =
+      body.outputType === "morning_brief" ? "morning_brief" : "recommendations";
 
     await appendTelemetry({
       level: "info",
@@ -110,6 +121,7 @@ export async function POST(req: NextRequest) {
         vercelProjectId,
         vercelTeamId,
         generateNarrative: body.generateNarrative !== false,
+        outputType,
       },
     });
 
@@ -377,6 +389,7 @@ export async function POST(req: NextRequest) {
     });
 
     let summary = summaryBase;
+    let narrativeItems: NarrativeItem[] = [];
 
     if (body.generateNarrative !== false && process.env.OPENAI_API_KEY) {
       const repoStats = reposToFetch.map((repo) => ({
@@ -409,6 +422,7 @@ export async function POST(req: NextRequest) {
       }
 
       if (narrative?.items && narrative.items.length > 0) {
+        narrativeItems = narrative.items;
         sections.unshift({
           title: "AI Recommendations",
           items: narrative.items,
@@ -416,12 +430,35 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const response: BriefingRecommendationsData = {
-      summary,
-      sinceLabel: formatSinceLabel(since),
-      sections,
-      generatedAt: now,
-    };
+    const response =
+      outputType === "morning_brief"
+        ? buildMorningBriefResponse({
+            now,
+            summary,
+            repos: reposToFetch,
+            prs: prsSince,
+            issues: issuesSince,
+            deployments: deploymentsSince,
+            slackMentions: slackMentionsSince,
+            slackMessages: channelActivitySince,
+            prItems,
+            issueItems,
+            deploymentItems,
+            slackItems: slackCombined,
+            narrativeItems,
+            errors,
+            requestedSources: {
+              github: reposToFetch.length > 0,
+              slack: Boolean(slackUserId || slackChannels.length > 0),
+              vercel: Boolean(vercelProjectId),
+            },
+          })
+        : ({
+            summary,
+            sinceLabel: formatSinceLabel(since),
+            sections,
+            generatedAt: now,
+          } satisfies BriefingRecommendationsData);
 
     await appendTelemetry({
       level: "info",
@@ -432,6 +469,7 @@ export async function POST(req: NextRequest) {
         summary,
         errors: errors.length,
         ttl,
+        outputType,
       },
     });
 
@@ -556,6 +594,350 @@ function buildSummary(counts: {
   }
 
   return `${prefix}since your last visit: ${parts.join(", ")}.`;
+}
+
+interface BuildMorningBriefInput {
+  now: number;
+  summary: string;
+  repos: string[];
+  prs: Array<PRData & { repo: string }>;
+  issues: Array<IssueData & { repo: string }>;
+  deployments: VercelDeploymentData[];
+  slackMentions: SlackMentionData[];
+  slackMessages: SlackMessageData[];
+  prItems: NarrativeItem[];
+  issueItems: NarrativeItem[];
+  deploymentItems: NarrativeItem[];
+  slackItems: NarrativeItem[];
+  narrativeItems: NarrativeItem[];
+  errors: string[];
+  requestedSources: {
+    github: boolean;
+    slack: boolean;
+    vercel: boolean;
+  };
+}
+
+function buildMorningBriefResponse(input: BuildMorningBriefInput): MorningBriefComponentData {
+  const mission = buildMissionStatement(input);
+  const evidence = buildEvidence(input);
+  const levers = buildLevers(input);
+  const assumptions = buildAssumptions(input, evidence);
+  const confidence = deriveConfidence(evidence, assumptions, levers);
+
+  return {
+    current: {
+      version: 1,
+      generatedAt: new Date(input.now).toISOString(),
+      generatedBy: "assistant",
+      mission,
+      evidence,
+      levers,
+      assumptions,
+      confidence,
+      freshnessSummary: buildFreshnessSummary(evidence),
+    },
+    history: [],
+    state: "presented",
+    userOverrides: [],
+  };
+}
+
+function buildMissionStatement(input: BuildMorningBriefInput): MorningBriefComponentData["current"]["mission"] {
+  const deploymentErrors = input.deployments.filter((deployment) => deployment.state === "ERROR").length;
+  const slackCount = input.slackMentions.length + input.slackMessages.length;
+  const repoLabel = input.repos.length > 0 ? formatRepoLabel(input.repos[0]) : "your workspace";
+  const title =
+    deploymentErrors > 0
+      ? `Stabilize release readiness for ${repoLabel}`
+      : input.prs.length >= input.issues.length && input.prs.length > 0
+        ? `Unblock pull request flow across active repos`
+        : input.issues.length > 0
+          ? `Reduce issue backlog risk before it compounds`
+          : slackCount > 0
+            ? `Resolve active team blockers from Slack signals`
+            : `Establish mission focus for today's execution`;
+
+  const rationale = `Based on evidence from current signals, ${input.summary} Primary signals: ${input.prs.length} PRs, ${input.issues.length} issues, ${input.deployments.length} deployments, ${slackCount} Slack events.`;
+  const priorityScore = Math.max(
+    20,
+    Math.min(
+      100,
+      Math.round(
+        35 +
+          input.prs.length * 4 +
+          input.issues.length * 3 +
+          deploymentErrors * 12 +
+          slackCount * 2
+      )
+    )
+  );
+
+  return {
+    id: "mission_primary",
+    title,
+    rationale,
+    owner: "You",
+    horizon: "today",
+    priorityScore,
+  };
+}
+
+function buildEvidence(input: BuildMorningBriefInput): EvidenceItem[] {
+  const evidence: EvidenceItem[] = [];
+
+  for (const pr of input.prs.slice(0, 4)) {
+    const observedAt = pr.updatedAt ?? pr.createdAt;
+    evidence.push({
+      id: `ev_pr_${pr.id}`,
+      source: "github",
+      entity: pr.repo,
+      metric: "open_pr",
+      valueText: `PR #${pr.number}: ${pr.title}`,
+      valueNumber: pr.number,
+      observedAt: toIso(observedAt),
+      freshnessMinutes: freshnessMinutes(observedAt, input.now),
+      link: `https://github.com/${pr.repo}/pull/${pr.number}`,
+      confidence: priorityFromLabels(pr.labels, "medium") === "high" ? "high" : "medium",
+    });
+  }
+
+  for (const issue of input.issues.slice(0, 4)) {
+    evidence.push({
+      id: `ev_issue_${issue.id}`,
+      source: "github",
+      entity: issue.repo,
+      metric: "open_issue",
+      valueText: `Issue #${issue.number}: ${issue.title}`,
+      valueNumber: issue.number,
+      observedAt: toIso(issue.createdAt),
+      freshnessMinutes: freshnessMinutes(issue.createdAt, input.now),
+      link: `https://github.com/${issue.repo}/issues/${issue.number}`,
+      confidence: priorityFromLabels(issue.labels, "medium") === "high" ? "high" : "medium",
+    });
+  }
+
+  for (const deployment of input.deployments.slice(0, 3)) {
+    evidence.push({
+      id: `ev_dep_${deployment.id}`,
+      source: "vercel",
+      entity: deployment.name,
+      metric: "deployment_state",
+      valueText: `${deployment.name} ${deployment.state.toLowerCase()}`,
+      observedAt: toIso(deployment.createdAt),
+      freshnessMinutes: freshnessMinutes(deployment.createdAt, input.now),
+      link: deployment.inspectorUrl ?? deployment.url ?? undefined,
+      confidence: deployment.state === "ERROR" ? "high" : "medium",
+    });
+  }
+
+  for (const mention of input.slackMentions.slice(0, 3)) {
+    evidence.push({
+      id: `ev_slack_mention_${mention.ts}`,
+      source: "slack",
+      entity: mention.channel,
+      metric: "mention",
+      valueText: formatSlackMention(mention),
+      observedAt: toIso(mention.timestamp),
+      freshnessMinutes: freshnessMinutes(mention.timestamp, input.now),
+      link: mention.permalink,
+      confidence: "medium",
+    });
+  }
+
+  for (const message of input.slackMessages.slice(0, 2)) {
+    evidence.push({
+      id: `ev_slack_msg_${message.ts}`,
+      source: "slack",
+      entity: "channel",
+      metric: "channel_activity",
+      valueText: formatSlackMessage(message),
+      observedAt: toIso(message.timestamp),
+      freshnessMinutes: freshnessMinutes(message.timestamp, input.now),
+      confidence: "low",
+    });
+  }
+
+  input.errors.slice(0, 3).forEach((message, index) => {
+    evidence.push({
+      id: `ev_error_${index + 1}`,
+      source: "custom",
+      entity: "integrations",
+      metric: "integration_error",
+      valueText: message,
+      observedAt: toIso(input.now),
+      freshnessMinutes: 0,
+      confidence: "low",
+    });
+  });
+
+  if (evidence.length === 0) {
+    evidence.push({
+      id: "ev_signal_gap",
+      source: "custom",
+      entity: "workspace",
+      metric: "signal_gap",
+      valueText: "No recent evidence was observed from configured sources.",
+      observedAt: toIso(input.now),
+      freshnessMinutes: 0,
+      confidence: "low",
+    });
+  }
+
+  return evidence;
+}
+
+function buildLevers(input: BuildMorningBriefInput): Lever[] {
+  const ordered = [
+    ...input.narrativeItems,
+    ...input.prItems,
+    ...input.issueItems,
+    ...input.deploymentItems,
+    ...input.slackItems,
+  ];
+
+  const seen = new Set<string>();
+  const levers: Lever[] = [];
+
+  for (const item of ordered) {
+    const key = item.text.trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+
+    const impactScore = item.priority === "high" ? 85 : item.priority === "medium" ? 65 : 45;
+    levers.push({
+      id: `lever_${levers.length + 1}`,
+      label: item.text,
+      actionType: item.actionUrl ? "open_link" : "manual",
+      actionPayload: item.actionUrl ? { url: item.actionUrl } : undefined,
+      expectedImpact: item.text,
+      impactScore,
+      confidence: item.priority === "high" ? "high" : item.priority === "medium" ? "medium" : "low",
+    });
+
+    if (levers.length >= 5) break;
+  }
+
+  if (levers.length === 0) {
+    levers.push({
+      id: "lever_1",
+      label: "Request refreshed data sources before taking action",
+      actionType: "manual",
+      expectedImpact: "Improves confidence for the next mission decision.",
+      impactScore: 40,
+      confidence: "low",
+    });
+  }
+
+  return levers;
+}
+
+function buildAssumptions(
+  input: BuildMorningBriefInput,
+  evidence: EvidenceItem[]
+): Assumption[] {
+  const assumptions: Assumption[] = [];
+  const staleSources = new Set<MorningBriefDataSource>(
+    evidence
+      .filter((item) => item.freshnessMinutes > EVIDENCE_STALE_MINUTES)
+      .map((item) => item.source)
+  );
+
+  if (staleSources.size > 0) {
+    assumptions.push({
+      id: "assumption_stale_sources",
+      text: "Some evidence is stale and may not reflect current conditions.",
+      reason: "stale_data",
+      sourceScope: Array.from(staleSources),
+    });
+  }
+
+  if (input.requestedSources.github && input.prs.length + input.issues.length === 0) {
+    assumptions.push({
+      id: "assumption_missing_github",
+      text: "GitHub returned little or no actionable signal for this window.",
+      reason: "missing_data",
+      sourceScope: ["github"],
+    });
+  }
+
+  if (input.requestedSources.slack && input.slackMentions.length + input.slackMessages.length === 0) {
+    assumptions.push({
+      id: "assumption_missing_slack",
+      text: "Slack signals were unavailable or below threshold for this brief.",
+      reason: "missing_data",
+      sourceScope: ["slack"],
+    });
+  }
+
+  if (input.requestedSources.vercel && input.deployments.length === 0) {
+    assumptions.push({
+      id: "assumption_missing_vercel",
+      text: "No recent deployment events were available from Vercel.",
+      reason: "missing_data",
+      sourceScope: ["vercel"],
+    });
+  }
+
+  if (input.errors.length > 0) {
+    assumptions.push({
+      id: "assumption_integration_errors",
+      text: `Integration errors may reduce confidence: ${input.errors.slice(0, 2).join("; ")}`,
+      reason: "insufficient_sample",
+      sourceScope: ["custom"],
+    });
+  }
+
+  if (
+    assumptions.length === 0 &&
+    evidence.every((item) => item.source === "custom")
+  ) {
+    assumptions.push({
+      id: "assumption_low_signal",
+      text: "This brief is operating with low-signal inputs and should be treated as provisional.",
+      reason: "insufficient_sample",
+      sourceScope: ["custom"],
+    });
+  }
+
+  return assumptions;
+}
+
+function deriveConfidence(
+  evidence: EvidenceItem[],
+  assumptions: Assumption[],
+  levers: Lever[]
+): "low" | "medium" | "high" {
+  if (evidence.length >= 5 && levers.length >= 2 && assumptions.length <= 1) {
+    return "high";
+  }
+  if (evidence.length >= 2 && levers.length >= 1) {
+    return "medium";
+  }
+  return "low";
+}
+
+function buildFreshnessSummary(evidence: EvidenceItem[]): string {
+  if (evidence.length === 0) {
+    return "No evidence captured.";
+  }
+
+  const freshest = Math.min(...evidence.map((item) => item.freshnessMinutes));
+  const stalest = Math.max(...evidence.map((item) => item.freshnessMinutes));
+  const staleCount = evidence.filter((item) => item.freshnessMinutes > EVIDENCE_STALE_MINUTES).length;
+  return `Freshness range ${freshest}-${stalest} minutes; stale items ${staleCount}.`;
+}
+
+function freshnessMinutes(timestamp: number | undefined, now: number): number {
+  if (!Number.isFinite(timestamp)) return EVIDENCE_STALE_MINUTES + 1;
+  return Math.max(0, Math.round((now - Number(timestamp)) / 60000));
+}
+
+function toIso(timestamp: number | undefined): string {
+  if (!Number.isFinite(timestamp)) {
+    return new Date().toISOString();
+  }
+  return new Date(Number(timestamp)).toISOString();
 }
 
 function buildDerivedSignals(input: {

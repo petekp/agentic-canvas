@@ -537,6 +537,7 @@ async function fetchBriefingData(
       normalizeParam(params.vercelTeamId) ??
       activeSpace?.briefingConfig?.vercelTeamId,
     generateNarrative: params.generateNarrative ?? true,
+    outputType: binding.query.type === "morning_brief" ? "morning_brief" : "recommendations",
   };
 
   try {
@@ -555,7 +556,7 @@ async function fetchBriefingData(
   } catch {
     const repos = Array.isArray(requestBody.repos) ? requestBody.repos : [];
     const repoLabel = repos.length > 0 ? repos.join(", ") : "your repos";
-    return {
+    const fallback = {
       data: {
         summary: "Your briefing space is set up. Ask me to catch you up when you're ready.",
         sinceLabel: "Since your last visit",
@@ -575,6 +576,54 @@ async function fetchBriefingData(
       },
       ttl: 300000,
     };
+
+    if (requestBody.outputType === "morning_brief") {
+      return {
+        ttl: fallback.ttl,
+        data: {
+          current: {
+            version: 1,
+            generatedAt: new Date(now).toISOString(),
+            generatedBy: "assistant",
+            mission: {
+              id: "mission_fallback",
+              title: "Rebuild mission context from fresh sources",
+              rationale:
+                "Morning Brief data sources were unavailable, so this mission is provisional.",
+              owner: "You",
+              horizon: "today",
+              priorityScore: 35,
+            },
+            evidence: [],
+            levers: [
+              {
+                id: "lever_retry",
+                label: "Retry Morning Brief refresh",
+                actionType: "manual",
+                expectedImpact: "Regain evidence-backed mission orientation.",
+                impactScore: 45,
+                confidence: "low",
+              },
+            ],
+            assumptions: [
+              {
+                id: "assume_fetch_error",
+                text: "One or more integrations failed during refresh.",
+                reason: "missing_data",
+                sourceScope: ["custom"],
+              },
+            ],
+            confidence: "low",
+            freshnessSummary: "No live evidence captured.",
+          },
+          history: [],
+          state: "presented",
+          userOverrides: [],
+        },
+      };
+    }
+
+    return fallback;
   }
 }
 

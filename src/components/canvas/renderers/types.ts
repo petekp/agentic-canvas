@@ -1,6 +1,8 @@
 // Type definitions for content renderers
 // Extracted from ComponentContent.tsx for code-splitting
 
+export type { MorningBriefComponentData } from "@/types";
+
 /** API response shape for stat tiles */
 export interface StatTileData {
   value: number;
@@ -278,3 +280,5 @@ export interface BriefingRecommendationsData {
   }>;
   generatedAt: number;
 }
+
+export type MorningBriefRendererData = import("@/types").MorningBriefComponentData;

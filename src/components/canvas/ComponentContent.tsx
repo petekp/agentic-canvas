@@ -4,7 +4,14 @@
 // Positioning is handled by react-grid-layout, this just handles content
 // Uses component-registry.ts for lazy-loaded renderers (code-splitting)
 
-import { useCallback, Suspense } from "react";
+import {
+  Component,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  type ReactNode,
+} from "react";
 import { useCanvas } from "@/hooks/useCanvas";
 import { useComponentData } from "@/hooks/useComponentData";
 import type { ComponentInstance, DataLoadingState } from "@/types";
@@ -94,6 +101,33 @@ function RendererFallback() {
   );
 }
 
+interface RendererErrorBoundaryProps {
+  children: ReactNode;
+}
+
+interface RendererErrorBoundaryState {
+  hasError: boolean;
+}
+
+class RendererErrorBoundary extends Component<
+  RendererErrorBoundaryProps,
+  RendererErrorBoundaryState
+> {
+  state: RendererErrorBoundaryState = { hasError: false };
+
+  static getDerivedStateFromError(): RendererErrorBoundaryState {
+    return { hasError: true };
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return <ErrorState message="Failed to load component renderer" />;
+    }
+
+    return this.props.children;
+  }
+}
+
 // ============================================================================
 // Data Content Router using Registry
 // ============================================================================
@@ -147,7 +181,9 @@ function DataContent({
 
   return (
     <Suspense fallback={<RendererFallback />}>
-      <Renderer {...props} />
+      <RendererErrorBoundary>
+        <Renderer {...props} />
+      </RendererErrorBoundary>
     </Suspense>
   );
 }
@@ -163,6 +199,20 @@ interface ContentStateProps {
   label?: string;
   componentId: string;
   isRefining: boolean;
+  onRefresh: () => void;
+}
+
+function MorningBriefIdleBootstrap({ onRefresh }: { onRefresh: () => void }) {
+  const requestedRef = useRef(false);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    if (requestedRef.current) return;
+    requestedRef.current = true;
+    void onRefresh();
+  }, [onRefresh]);
+
+  return <LoadingState label="Auto-refreshing Morning Brief..." />;
 }
 
 function ContentState({
@@ -172,6 +222,7 @@ function ContentState({
   label,
   componentId,
   isRefining,
+  onRefresh,
 }: ContentStateProps) {
   switch (dataState.status) {
     case "loading":
@@ -181,6 +232,9 @@ function ContentState({
       return <ErrorState message={dataState.error.message} />;
 
     case "idle":
+      if (typeId === "system.morning-brief") {
+        return <MorningBriefIdleBootstrap onRefresh={onRefresh} />;
+      }
       return <IdleState />;
 
     case "ready":
@@ -239,6 +293,7 @@ export function ComponentContent({
           label={component.meta.label}
           componentId={component.id}
           isRefining={isRefining}
+          onRefresh={refresh}
         />
       </div>
     </div>

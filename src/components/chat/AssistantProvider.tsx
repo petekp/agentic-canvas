@@ -12,6 +12,9 @@ import { createUIMessageFromAppendMessage } from "@/lib/ai-sdk-message";
 import { useEffect, useMemo, useRef } from "react";
 
 type SendRequestBody = {
+  workspaceId: string;
+  threadId: string;
+  activeSpaceId: string | null;
   canvas: unknown;
   recentChanges: unknown;
   activeSpaceName: string | null;
@@ -36,6 +39,9 @@ export function AssistantProvider({ children }: AssistantProviderProps) {
       body: () => {
         const state = useStore.getState();
         return {
+          workspaceId: state.workspace.id,
+          threadId: state.workspace.threadId,
+          activeSpaceId: state.activeSpaceId,
           canvas: state.canvas,
           recentChanges: formatRecentChanges(
             [...state.undoStack].reverse().slice(0, 10),

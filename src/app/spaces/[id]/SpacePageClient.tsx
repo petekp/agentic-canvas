@@ -12,7 +12,7 @@ import { SpaceRouteSyncListener } from "@/components/spaces/SpaceRouteSyncListen
 
 export function SpacePageClient({ id }: { id: string }) {
   const router = useRouter();
-  const { spaces, activeSpaceId, loadSpace } = useSpaces();
+  const { spaces, activeSpaceId, canvasComponentCount, loadSpace } = useSpaces();
   const previousActiveSpaceIdRef = useRef<string | null>(activeSpaceId);
 
   // Load the space when navigating to this route
@@ -21,7 +21,8 @@ export function SpacePageClient({ id }: { id: string }) {
     previousActiveSpaceIdRef.current = activeSpaceId;
 
     // Check if space exists
-    const spaceExists = spaces.some((s) => s.id === id);
+    const routeSpace = spaces.find((s) => s.id === id);
+    const spaceExists = Boolean(routeSpace);
 
     if (!spaceExists) {
       // Space doesn't exist - redirect to grid
@@ -38,10 +39,15 @@ export function SpacePageClient({ id }: { id: string }) {
     }
 
     // Load space if not already active
-    if (id !== activeSpaceId) {
+    const shouldHydrateMorningBrief =
+      id === activeSpaceId &&
+      canvasComponentCount === 0 &&
+      routeSpace?.kind === "system.morning_brief";
+
+    if (id !== activeSpaceId || shouldHydrateMorningBrief) {
       loadSpace(id);
     }
-  }, [id, activeSpaceId, spaces, loadSpace, router]);
+  }, [id, activeSpaceId, spaces, canvasComponentCount, loadSpace, router]);
 
   // Don't render until space is loaded
   if (activeSpaceId !== id) {

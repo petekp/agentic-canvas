@@ -157,6 +157,7 @@ const TYPE_METADATA: Record<string, { name: string; category: "data" | "metric" 
   "vercel.project-status": { name: "Project Status", category: "metric" },
   // Briefing components
   "briefing.recommendations": { name: "Briefing Recommendations", category: "data" },
+  "system.morning-brief": { name: "Morning Brief", category: "data" },
 };
 
 /**
@@ -277,6 +278,28 @@ function summarizeComponent(
       if (briefing.summary) {
         const trimmed = briefing.summary.length > 60 ? `${briefing.summary.slice(0, 57)}...` : briefing.summary;
         highlights.push(trimmed);
+      }
+    } else if (component.typeId === "system.morning-brief") {
+      const brief = data as {
+        current?: {
+          mission?: { title?: string; priorityScore?: number };
+          levers?: unknown[];
+          confidence?: string;
+        };
+        state?: string;
+      };
+      const missionTitle = brief.current?.mission?.title;
+      summary = missionTitle
+        ? `${typeMeta.name}: ${missionTitle}`
+        : `${typeMeta.name} lifecycle state ${brief.state ?? "unknown"}`;
+      if (typeof brief.current?.mission?.priorityScore === "number") {
+        highlights.push(`Priority ${brief.current.mission.priorityScore}`);
+      }
+      if (Array.isArray(brief.current?.levers)) {
+        highlights.push(`${brief.current.levers.length} levers`);
+      }
+      if (typeof brief.current?.confidence === "string") {
+        highlights.push(`${brief.current.confidence} confidence`);
       }
     }
   } else if (component.dataState.status === "loading") {
@@ -583,6 +606,30 @@ function extractDataDetails(component: ComponentInstance): string[] {
         details.push(`    └ ... and ${section.items.length - 2} more`);
       }
     }
+  } else if (component.typeId === "system.morning-brief") {
+    const brief = data as {
+      state?: string;
+      current?: {
+        mission?: { title?: string; rationale?: string };
+        assumptions?: Array<{ text?: string }>;
+      };
+    };
+    if (brief.current?.mission?.title) {
+      details.push(`  - Mission: ${brief.current.mission.title}`);
+    }
+    if (brief.current?.mission?.rationale) {
+      const rationale =
+        brief.current.mission.rationale.length > 90
+          ? `${brief.current.mission.rationale.slice(0, 87)}...`
+          : brief.current.mission.rationale;
+      details.push(`  - Rationale: ${rationale}`);
+    }
+    if (brief.state) {
+      details.push(`  - Lifecycle: ${brief.state}`);
+    }
+    if (Array.isArray(brief.current?.assumptions) && brief.current.assumptions.length > 0) {
+      details.push(`  - Assumptions: ${brief.current.assumptions.length}`);
+    }
   }
 
   return details;
@@ -707,6 +754,12 @@ export function getAvailableComponentTypes(): { typeId: string; name: string; de
       typeId: "briefing.recommendations",
       name: "Briefing Recommendations",
       description: "AI-generated briefing summary and suggested follow-ups (6x4 default).",
+    },
+    {
+      typeId: "system.morning-brief",
+      name: "Morning Brief",
+      description:
+        "Mission-oriented morning brief with evidence, lifecycle, and override-aware recommendations (6x5 default).",
     },
   ];
 }

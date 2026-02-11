@@ -132,6 +132,9 @@ export const CONTENT_RENDERERS: Record<string, ContentRenderer> = {
   "briefing.recommendations": lazy(
     () => import("@/components/canvas/renderers/BriefingRecommendationsContent")
   ),
+  "system.morning-brief": lazy(
+    () => import("@/components/canvas/renderers/MorningBriefContent")
+  ),
 };
 
 // ============================================================================
@@ -338,6 +341,15 @@ export const COMPONENT_TYPES: ComponentTypeConfig[] = [
     config: {},
     size: { cols: 6, rows: 4 },
     queryType: "recommendations",
+    source: "briefing",
+  },
+  {
+    typeId: "system.morning-brief",
+    label: "Morning Brief",
+    category: "briefing",
+    config: {},
+    size: { cols: 6, rows: 5 },
+    queryType: "morning_brief",
     source: "briefing",
   },
 ];

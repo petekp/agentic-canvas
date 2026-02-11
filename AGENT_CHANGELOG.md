@@ -17,6 +17,82 @@ Agentic Canvas is a **working v0.1 implementation** with canvas + chat interface
 
 ## Timeline
 
+### 2026-02-11 - Pi Adapter Contract Baseline (Phase 1)
+
+**What changed:** (uncommitted)
+- Added explicit phase-1 integration spec for `pi` + `assistant-ui`:
+  - `.claude/plans/pi-assistant-adapter-v0.1.md`
+- Added machine-checked protocol contracts:
+  - `src/lib/pi-adapter-contract.ts`
+  - `src/lib/pi-adapter-contract.test.ts`
+- Added phase-1 adapter seam implementation:
+  - `src/lib/pi-phase1-adapter.ts`
+  - `src/lib/pi-phase1-adapter.test.ts`
+  - `src/app/api/chat/route.ts` now routes through `streamWithPiPhase1Adapter(...)`
+  - `src/components/chat/AssistantProvider.tsx` now forwards `workspaceId`, `threadId`, and `activeSpaceId`
+- Added dedicated filesystem-first runtime seam behind the adapter:
+  - `src/lib/pi-runtime.ts`
+  - `src/lib/pi-runtime.test.ts`
+  - `src/lib/pi-phase1-adapter.ts` now delegates stream orchestration to `streamWithPiRuntime(...)`
+  - Runtime now writes both `episodes/` (pi stream) and `ledger/` (tool call/result loop)
+  - Runtime ingests historical tool results from incoming model messages and appends replay-safe ledger results by idempotency key
+  - Runtime now runs throttled retention/compaction jobs during chat traffic (`maybeRunPiRetentionJobs`)
+  - Runtime now resolves a pluggable external engine via `PI_RUNTIME_ENGINE_MODULE` (optional `PI_RUNTIME_ENGINE_EXPORT`) and falls back to the in-repo AI-SDK engine.
+  - `streamWithPiRuntime(...)` is now async so external engine resolution can happen at request time.
+- Added eval gate runner:
+  - `scripts/run-pi-phase1-gates.sh`
+  - `pnpm run eval:pi:phase1`
+- Added `/api/chat` phase-1 integration coverage for route semantics:
+  - `src/app/api/chat/route.test.ts`
+  - Covers abort propagation, stream error mapping/telemetry, and partial stream pass-through
+  - Included in `eval:pi:phase1` gates
+- Added runtime seam coverage for external engine delegation:
+  - `src/lib/pi-runtime.test.ts` now verifies external engine module delegation preserves the route-facing stream API.
+  - Runtime extraction now normalizes assistant-ui wrapped tool-result payloads (`output.value`) so ledger ingestion stores actual tool outputs instead of wrapper envelopes.
+- Added filesystem retention/compaction jobs for session runtime data:
+  - `src/lib/pi-retention.ts`
+  - `src/lib/pi-retention.test.ts`
+  - Compacts old `episodes/*.jsonl` into `snapshots/` with preserved tool idempotency keys
+  - Prunes expired files across `episodes/`, `ledger/`, `snapshots/`, and date-prefixed `memory/`
+  - Included in `eval:pi:phase1` gates
+- Added explicit retention trigger API for cron/manual operation:
+  - `src/app/api/pi/retention/route.ts`
+  - `src/app/api/pi/retention/route.test.ts`
+  - Optional bearer auth via `PI_RETENTION_API_TOKEN`
+- Added explicit runtime diagnostics API for manual/e2e verification:
+  - `src/app/api/pi/runtime/route.ts`
+  - `src/app/api/pi/runtime/route.test.ts`
+  - Guarded by `PI_RUNTIME_DIAGNOSTICS_ENABLED=1`
+  - Reports configured module/export and resolved engine source/id (external vs internal fallback)
+- Refined external runtime engine loading in `src/lib/pi-runtime.ts`:
+  - Uses dynamic `import(/* webpackIgnore: true */ ...)` with file-URL normalization for relative/absolute paths
+  - Supports CJS default-export containers and ESM exports when resolving `piRuntimeEngine` candidates
+  - Added regression test for file-URL ESM module loading
+- Added real pi-mono external engine bridge module:
+  - `src/lib/pi-mono-runtime-engine.mjs`
+  - Uses `@mariozechner/pi-ai` for provider/tool-call streaming and AI SDK UI stream helpers for assistant-ui-compatible transport
+  - Includes `PI_MONO_DRY_RUN` mode for deterministic local integration tests
+- Added route integration coverage for external pi-mono runtime wiring:
+  - `src/app/api/chat/pi-mono.route.integration.test.ts`
+  - Verifies `/api/chat` can stream through `PI_RUNTIME_ENGINE_MODULE` with dry-run mode
+
+**Why:** Lock protocol decisions (stream/tool/session/error semantics) before runtime implementation to avoid ambiguous adapter behavior and regressions in Morning Brief.
+
+**Agent impact:**
+- Treat `src/lib/pi-adapter-contract.ts` as the canonical phase-1 adapter boundary.
+- Treat `src/lib/pi-phase1-adapter.ts` as the only backend orchestration seam for chat in phase 1.
+- Use `pnpm run eval:pi:phase1` before merging any `pi` orchestration work.
+- Keep `src/app/api/chat/route.test.ts` passing when modifying stream/cancel/error behavior.
+- Keep `src/lib/pi-runtime.test.ts` passing when modifying runtime orchestration or tool-loop persistence.
+- Keep `src/lib/pi-phase1-adapter.ts` and `src/app/api/chat/route.ts` aligned with async runtime delegation.
+- Use `runPiRetentionJobs(...)` from `src/lib/pi-retention.ts` for runtime filesystem hygiene.
+- `streamWithPiRuntime(...)` now invokes retention scheduling; tune via `PI_RETENTION_INTERVAL_MS`.
+- Preserve frontend tool execution model in phase 1; backend swap should respect existing assistant-ui transport semantics.
+
+**Deprecated:** None
+
+---
+
 ### 2026-02-03 - Template Engine + View-Undo Coverage
 
 **What changed:** (commit 7f57636)

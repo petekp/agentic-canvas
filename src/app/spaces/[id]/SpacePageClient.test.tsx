@@ -9,10 +9,11 @@ const mockLoadSpace = vi.fn();
 
 const state = {
   spaces: [
-    { id: "space_old", name: "Old Space" },
-    { id: "space_new", name: "New Space" },
+    { id: "space_old", name: "Old Space", kind: "ad_hoc" },
+    { id: "space_new", name: "New Space", kind: "ad_hoc" },
   ],
   activeSpaceId: "space_old" as string | null,
+  canvasComponentCount: 1,
   loadSpace: mockLoadSpace,
 };
 
@@ -45,10 +46,11 @@ describe("SpacePageClient", () => {
     mockPush.mockReset();
     mockLoadSpace.mockReset();
     state.spaces = [
-      { id: "space_old", name: "Old Space" },
-      { id: "space_new", name: "New Space" },
+      { id: "space_old", name: "Old Space", kind: "ad_hoc" },
+      { id: "space_new", name: "New Space", kind: "ad_hoc" },
     ];
     state.activeSpaceId = "space_old";
+    state.canvasComponentCount = 1;
   });
 
   it("does not reload the stale route when active space changes during navigation", () => {
@@ -71,5 +73,16 @@ describe("SpacePageClient", () => {
 
     expect(mockLoadSpace).toHaveBeenCalledTimes(1);
     expect(mockLoadSpace).toHaveBeenCalledWith("space_new");
+  });
+
+  it("hydrates morning brief route when already active but canvas is empty", () => {
+    state.spaces = [{ id: "space_morning", name: "Your Morning Brief", kind: "system.morning_brief" }];
+    state.activeSpaceId = "space_morning";
+    state.canvasComponentCount = 0;
+
+    render(<SpacePageClient id="space_morning" />);
+
+    expect(mockLoadSpace).toHaveBeenCalledTimes(1);
+    expect(mockLoadSpace).toHaveBeenCalledWith("space_morning");
   });
 });

@@ -118,6 +118,7 @@ export function SpaceCard({
 
         <SpaceCardMenu
           isPinned={space.pinned}
+          isSystemManaged={space.meta.systemManaged}
           onRename={handleStartRename}
           onDuplicate={onDuplicate}
           onTogglePin={onTogglePin}
