@@ -114,6 +114,10 @@ Mandatory for each slice:
 - [x] Live local phase-2 smoke validation:
   - Ran `eval:pi:phase2:smoke` with `--with-fs-smoke` against running `pnpm dev`
   - Verified runtime diagnostics, retention endpoint, `/api/chat` SSE path, and fs smoke chain
+- [x] `/api/chat` adversarial filesystem-loop validation:
+  - Added deterministic traversal + symlink-escape tests through chat runtime loop
+  - Added these checks to filesystem adversarial eval phase and phase-1 gates
+  - Fixed ledger append ordering race so call/result ordering is deterministic
 
 ## Manual Browser Checklist (Filesystem Tool Flow)
 

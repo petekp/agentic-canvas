@@ -19,6 +19,32 @@ Agentic Canvas is a working v0.1+ system with spaces-first navigation, assistant
 
 ## Timeline
 
+### 2026-02-11 - Chat-Loop Adversarial FS E2E + Ledger Ordering Fix
+
+**What changed:**
+- Added deterministic `/api/chat` adversarial integration coverage:
+  - `src/app/api/chat/pi-filesystem.adversarial.route.integration.test.ts`
+  - Verifies traversal attempts via `write_file` are rejected (`path_outside_root`)
+  - Verifies symlink-escape attempts via `read_file` are rejected (`symlink_escape`)
+  - Asserts ledger call/result integrity for each adversarial run.
+- Wired adversarial chat-loop coverage into eval gates:
+  - `scripts/run-pi-filesystem-evals.sh` (`adversarial` + `all` phases)
+  - `scripts/run-pi-phase1-gates.sh`
+- Fixed runtime ledger append ordering race:
+  - `src/lib/pi-runtime.ts`
+  - Serialized ledger appends through a per-run write queue so call/result ordering is deterministic even when append operations are scheduled asynchronously.
+
+**Why:** Strengthen end-to-end runtime safety validation by proving guardrails hold through the chat loop and ensuring ledger evidence remains order-consistent under asynchronous streaming callbacks.
+
+**Agent impact:**
+- `pnpm run eval:pi:fs:adversarial` now includes both direct tool-level adversarial tests and `/api/chat` adversarial runtime-loop tests.
+- Phase-1 gates now fail if chat-loop adversarial protections regress.
+- Treat `streamWithPiRuntime(...)` ledger append queue behavior as required for tool-loop integrity assumptions.
+
+**Deprecated:** None
+
+---
+
 ### 2026-02-11 - Deterministic Chat-Loop FS E2E + Ledger Integrity
 
 **What changed:**

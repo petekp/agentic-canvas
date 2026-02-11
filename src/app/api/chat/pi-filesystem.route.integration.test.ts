@@ -39,6 +39,28 @@ function finishChunk(reason: "stop" | "tool-calls") {
   };
 }
 
+async function waitForLedgerEvents(input: {
+  runtimeRoot: string;
+  sessionId: string;
+  expectedCount: number;
+  timeoutMs?: number;
+}): Promise<Awaited<ReturnType<typeof readToolLoopEventsFromFilesystem>>> {
+  const timeoutMs = input.timeoutMs ?? 2_000;
+  const deadline = Date.now() + timeoutMs;
+  let events = await readToolLoopEventsFromFilesystem(input.runtimeRoot, input.sessionId);
+
+  while (Date.now() < deadline) {
+    const integrity = validateToolLoopIntegrity(events);
+    if (events.length === input.expectedCount && integrity.ok) {
+      return events;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    events = await readToolLoopEventsFromFilesystem(input.runtimeRoot, input.sessionId);
+  }
+
+  return events;
+}
+
 describe("chat route filesystem tool loop integration", () => {
   beforeEach(() => {
     vi.resetModules();
@@ -170,7 +192,11 @@ describe("chat route filesystem tool loop integration", () => {
     const ledgerFiles = await fs.readdir(layout.ledgerDir);
     expect(ledgerFiles.some((name) => name.endsWith(".jsonl"))).toBe(true);
 
-    const events = await readToolLoopEventsFromFilesystem(runtimeRoot, sessionScope.sessionId);
+    const events = await waitForLedgerEvents({
+      runtimeRoot,
+      sessionId: sessionScope.sessionId,
+      expectedCount: 4,
+    });
     expect(events).toHaveLength(4);
 
     const integrity = validateToolLoopIntegrity(events);
