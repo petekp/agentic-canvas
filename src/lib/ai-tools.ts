@@ -23,7 +23,9 @@
 import { z } from "zod";
 import { getAvailableComponentTypes, describeCanvas, type RecentChange } from "./canvas-context";
 import { getDefaultTemplates } from "@/lib/templates";
+import { getRuleEntry, listRulesByTarget } from "@/lib/rules";
 import type { Canvas, Space, TransformDefinition } from "@/types";
+import type { RulePack } from "@/lib/rules/types";
 
 // ============================================================================
 // System Prompt Context
@@ -35,6 +37,7 @@ export interface SystemPromptContext {
   recentChanges?: RecentChange[];
   spaces?: Space[];
   transforms?: TransformDefinition[];
+  rules?: RulePack;
 }
 
 // Tool parameter schemas (using snake_case per project convention)
@@ -105,6 +108,17 @@ export const generateTemplateSchema = z.object({
   state: stateSchema.optional().meta({ description: "Partial cognitive/perceptual state snapshot" }),
 });
 
+export const generateBriefingSchema = z.object({
+  name: z.string().optional().meta({ description: "Space name (default: 'Morning Briefing')" }),
+});
+
+export const setPreferenceRulesSchema = z.object({
+  patch: z.unknown().meta({
+    description:
+      "Preference patch JSON (object or string). Must include target and rules matching the rules schema.",
+  }),
+});
+
 // Tool definitions for streamText (inputSchema format)
 export function getToolDefinitions() {
   const componentTypes = getAvailableComponentTypes();
@@ -144,6 +158,16 @@ export function getToolDefinitions() {
       description: `Generate a component set from a template. Available templates: ${templateDescriptions}. Use state to guide selection when template_id is omitted.`,
       inputSchema: generateTemplateSchema,
     },
+    generate_briefing: {
+      description:
+        "Set up a guided Morning Briefing space. Use when the user asks for a morning briefing, daily digest, dashboard setup, or asks to be caught up.",
+      inputSchema: generateBriefingSchema,
+    },
+    set_preference_rules: {
+      description:
+        "Store personalization rules for a data target (mentions, PRs, issues, deployments). Use when the user asks to prioritize, filter, or sort recurring data.",
+      inputSchema: setPreferenceRulesSchema,
+    },
   };
 }
 
@@ -155,6 +179,8 @@ export type ResizeComponentParams = z.infer<typeof resizeComponentSchema>;
 export type UpdateComponentParams = z.infer<typeof updateComponentSchema>;
 export type ClearCanvasParams = z.infer<typeof clearCanvasSchema>;
 export type GenerateTemplateParams = z.infer<typeof generateTemplateSchema>;
+export type GenerateBriefingParams = z.infer<typeof generateBriefingSchema>;
+export type SetPreferenceRulesParams = z.infer<typeof setPreferenceRulesSchema>;
 
 // Format recent changes for system prompt
 function formatRecentChangesForPrompt(changes: RecentChange[]): string {
@@ -186,7 +212,8 @@ function formatSpacesForPrompt(spaces: Space[], activeSpaceName?: string | null)
       const pinStatus = space.pinned ? " (pinned)" : "";
       const activeStatus = space.name === activeSpaceName ? " **[ACTIVE]**" : "";
       const createdBy = space.createdBy === "assistant" ? " (AI-created)" : "";
-      return `- ${space.name}${pinStatus}${createdBy}${activeStatus}: ${space.snapshot.components.length} components`;
+      const kind = ` [${space.kind}]`;
+      return `- ${space.name}${kind}${pinStatus}${createdBy}${activeStatus}: ${space.snapshot.components.length} components`;
     })
     .join("\n");
 }
@@ -205,6 +232,24 @@ function formatTransformsForPrompt(transforms: TransformDefinition[]): string {
     .join("\n");
 }
 
+function formatRulesForPrompt(rules?: RulePack): string {
+  const entries = listRulesByTarget(rules);
+  if (entries.size === 0) {
+    return "No preference rules defined yet.";
+  }
+
+  const lines: string[] = [];
+  for (const [target, targetRules] of entries.entries()) {
+    const descriptions = targetRules.map((rule) => {
+      const entry = getRuleEntry(rule.type);
+      return entry?.explain(rule) ?? rule.type;
+    });
+    lines.push(`- ${target}: ${descriptions.join(" | ")}`);
+  }
+
+  return lines.join("\n");
+}
+
 function formatIntegrationsForPrompt(): string {
   const slackBot = Boolean(process.env.SLACK_BOT_TOKEN);
   const slackUser = Boolean(process.env.SLACK_USER_TOKEN);
@@ -218,15 +263,17 @@ function formatIntegrationsForPrompt(): string {
     "## Integrations",
     `- Slack bot token: ${availability(slackBot)}`,
     `- Slack user token: ${availability(slackUser)}`,
-    `- GitHub: ${availability(github)}`,
+    `- GitHub token: ${availability(github)} (required for all github.* components)`,
     `- PostHog: ${availability(posthog)}`,
     `- Vercel: ${availability(vercel)}`,
+    "- GitHub note: If GitHub token is unavailable, do not add GitHub components. Ask the user to connect GitHub.",
+    "- GitHub note: Once GitHub is connected, use add_filtered_component for actor filters (for example: only \"petekp\").",
   ].join("\n");
 }
 
 // System prompt generator
 export function createSystemPrompt(context: SystemPromptContext): string {
-  const { canvas, activeSpaceName, recentChanges, spaces, transforms } = context;
+  const { canvas, activeSpaceName, recentChanges, spaces, transforms, rules } = context;
   const componentTypes = getAvailableComponentTypes();
   const canvasDescription = describeCanvas(canvas);
 
@@ -250,10 +297,12 @@ export function createSystemPrompt(context: SystemPromptContext): string {
       ? `\n## Available Transforms\n${formatTransformsForPrompt(transforms)}\n`
       : "";
 
+  const rulesSection = `\n## Preference Rules\n${formatRulesForPrompt(rules)}\n`;
+
   const integrationsSection = `\n${formatIntegrationsForPrompt()}\n`;
 
   return `You are an AI assistant that helps users manage a canvas workspace with GitHub and PostHog analytics widgets. You can add, remove, move, resize, and update components on the canvas.
-${activeSpaceSection}${spacesSection}${transformsSection}${integrationsSection}
+${activeSpaceSection}${spacesSection}${transformsSection}${rulesSection}${integrationsSection}
 ## Canvas State
 ${canvasDescription}
 
@@ -278,6 +327,7 @@ ${componentTypes.map((t) => `- **${t.typeId}**: ${t.description}`).join("\n")}
 - Use **switch_space** to navigate between spaces by name or ID
 - Use **pin_space** to mark a space as important (won't be auto-cleaned)
 - Use **unpin_space** to unpin a space (will be auto-cleaned after 7 days)
+- Use **generate_briefing** when the user asks for a morning briefing, daily digest, dashboard setup, or to be caught up
 
 ## Proactive Guidelines
 1. When describing the canvas, include metric values and position context (e.g., "in the top-left")
@@ -297,6 +347,10 @@ ${componentTypes.map((t) => `- **${t.typeId}**: ${t.description}`).join("\n")}
 7. Do not claim a component was added until the tool succeeds. Before tool execution, use tentative language like \"I'll try to add...\" and only confirm after success.
 8. Treat tool results with \`success: false\` as failures, even if the tool call completed. Ask for the missing info or propose the next step instead of claiming success.
 9. When a tool returns \`action\` or \`missingFields\`, follow that guidance and ask the user for the specific missing inputs.
+10. If the user explicitly says "this space", do not create or switch spaces. Apply changes in the current space.
+11. If the user gives an explicit component ID for remove/move/resize/update, call the corresponding tool even if you suspect the ID might not exist. Let the tool return the error.
+12. Example: "Remove component id cmp_ABC123" -> call remove_component({ component_id: "cmp_ABC123" }) even if the canvas is empty.
+13. For requests like "create a dashboard/layout for this space", prefer generate_template in the current space over add_component or create_space.
 
 ## Data Transforms
 
@@ -330,6 +384,11 @@ add_component({type_id: "slack.channel-activity", transform_id: "transform_abc12
 Before creating a new transform, check if an existing one in "Available Transforms" already does what's needed. Transforms can be reused across multiple components.
 
 ### Adding Filtered Components
+Use **add_filtered_component** ONLY when the user explicitly asks to add a new component/tile/widget. Do not use it to change how an existing component is prioritized or sorted (use **set_preference_rules** instead).
+\`\`\`
+If the request is about "prioritize/sort/filter my mentions/issues/PRs/deploys", DO NOT add or replace components.
+\`\`\`
+
 Use **add_filtered_component** to create a component with a filter in one step:
 \`\`\`
 add_filtered_component({
@@ -343,6 +402,35 @@ add_filtered_component({
 
 The tool will validate required config and guide you if something is missing.
 
+## Preference Rules (Personalization)
+
+Use **set_preference_rules** when a user asks to prioritize, filter, or sort recurring data (mentions, PRs, issues, deployments). This is the ONLY correct response for personalization requests. Do not add or replace components for these requests.
+
+Patch format:
+\`\`\`
+set_preference_rules({
+  patch: {
+    target: "slack.mentions",
+    summary: "Show my most recent mentions, prioritizing questions.",
+    rules: [
+      { id: "limit", type: "filter.limit", phase: "limit", target: "slack.mentions", params: { count: 5 } },
+      {
+        id: "score",
+        type: "score.llm_classifier",
+        phase: "score",
+        target: "slack.mentions",
+        params: { instruction: "Score items higher when they are direct questions that need a reply." }
+      },
+      { id: "sort", type: "sort.score_then_recent", phase: "sort", target: "slack.mentions" }
+    ]
+  }
+})
+\`\`\`
+
+Rule types: filter.limit, filter.channel.include, filter.keyword.include, filter.keyword.exclude, sort.recent, sort.score_then_recent, score.llm_classifier.
+Targets: slack.mentions, slack.channel_activity, github.prs, github.issues, vercel.deployments.
+All rules must have the same target as the patch.
+
 ## Data Binding
 
 ### GitHub Components
@@ -352,6 +440,7 @@ The tool will validate required config and guide you if something is missing.
 - issue-grid: Shows issues
   - filter: "all" (default), "assigned" (my issues), "mentioned" (issues I'm involved in), "created" (issues I opened)
 - activity-timeline: Shows recent repository activity
+  - Actor filters on activity-timeline (example: actor.login === "petekp") are supported via add_filtered_component
 - my-activity: Shows authenticated user's contributions, requires GITHUB_TOKEN
 - commits: Shows recent commit history with authors and messages
   - config.timeWindow: "7d" (default), "14d", "30d"
@@ -397,10 +486,10 @@ When the user asks for "my PRs", "PRs to review", "my issues", etc., use the app
 
 ### Slack Usage Examples
 - "Show messages from #general" → channel-activity with channelName: "general"
-- "Show my mentions (no user token)" → use add_filtered_component with type_id "slack.channel-activity" and a mentions filter. Omit channel config so the tool UI can prompt the user with a channel OptionList (includes "All available channels").
+- "Add a tile for my mentions (no user token)" → use add_filtered_component with type_id "slack.channel-activity" and a mentions filter. Omit channel config so the tool UI can prompt the user with a channel OptionList (includes "All available channels").
 - If the user hasn't specified a channel, ask them to pick from the available Slack channels surfaced by the tools (via the OptionList UI).
 - "Show my mentions (unknown user)" → do not try to resolve "@me" via lookup_slack_user; ask the user to pick themselves from the Slack user list. Only use lookup_slack_user when the user provides a specific handle/name and you need to disambiguate.
-- "Filter messages" → use add_filtered_component with filter_code
+- "Add a filtered messages tile" → use add_filtered_component with filter_code
 - "Watch this thread: [thread link]" → Extract channel and thread_ts from Slack link
 
 ### Vercel Components (require VERCEL_TOKEN)

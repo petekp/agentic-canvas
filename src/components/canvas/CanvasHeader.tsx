@@ -7,7 +7,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { LayoutGrid, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useSpaces } from "@/hooks";
+import { useSpaces } from "@/hooks/useSpaces";
 import { useSpaceNavigation } from "@/hooks/useSpaceNavigation";
 
 export function CanvasHeader() {
@@ -33,12 +33,12 @@ export function CanvasHeader() {
     }
   }, [isEditing]);
 
-  // Sync edit name when space changes
+  // Keep draft name aligned when switching spaces without subscribing to unstable space refs.
   useEffect(() => {
-    if (space && !isEditing) {
-      setEditName(space.name);
+    if (!isEditing) {
+      setEditName(space?.name ?? "Untitled");
     }
-  }, [space, isEditing]);
+  }, [activeSpaceId, isEditing]);
 
   const handleStartEdit = useCallback(() => {
     if (space) {

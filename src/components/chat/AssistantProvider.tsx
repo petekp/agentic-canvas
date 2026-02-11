@@ -4,19 +4,23 @@
 // Uses AssistantChatTransport to forward system messages and body data to the API
 
 import { AssistantRuntimeProvider, useAssistantState } from "@assistant-ui/react";
-import { useChatRuntime, AssistantChatTransport } from "@assistant-ui/react-ai-sdk";
-import type { UIMessage } from "@ai-sdk/react";
+import { AssistantChatTransport, useAISDKRuntime } from "@assistant-ui/react-ai-sdk";
+import { useChat, type UIMessage } from "@ai-sdk/react";
 import { useStore } from "@/store";
 import { formatRecentChanges } from "@/lib/canvas-context";
 import { createUIMessageFromAppendMessage } from "@/lib/ai-sdk-message";
 import { useEffect, useMemo, useRef } from "react";
 
 type SendRequestBody = {
+  workspaceId: string;
+  threadId: string;
+  activeSpaceId: string | null;
   canvas: unknown;
   recentChanges: unknown;
   activeSpaceName: string | null;
   spaces: unknown;
   transforms: unknown;
+  rules: unknown;
 };
 
 interface AssistantProviderProps {
@@ -35,6 +39,9 @@ export function AssistantProvider({ children }: AssistantProviderProps) {
       body: () => {
         const state = useStore.getState();
         return {
+          workspaceId: state.workspace.id,
+          threadId: state.workspace.threadId,
+          activeSpaceId: state.activeSpaceId,
           canvas: state.canvas,
           recentChanges: formatRecentChanges(
             [...state.undoStack].reverse().slice(0, 10),
@@ -47,16 +54,24 @@ export function AssistantProvider({ children }: AssistantProviderProps) {
           })(),
           spaces: state.workspace.spaces,
           transforms: state.getTransforms(),
+          rules: state.getRulePack(),
         } satisfies SendRequestBody;
       },
     });
   }
 
-  // Create runtime with the stable transport
-  const runtime = useChatRuntime({
+  const chat = useChat({
+    id: "assistant",
     transport: transportRef.current,
+  });
+
+  const runtime = useAISDKRuntime(chat, {
     toCreateMessage: createUIMessageFromAppendMessage,
   });
+
+  if (transportRef.current instanceof AssistantChatTransport) {
+    transportRef.current.setRuntime(runtime);
+  }
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
@@ -69,10 +84,11 @@ export function AssistantProvider({ children }: AssistantProviderProps) {
 function AssistantMessageSync() {
   const messages = useAssistantState((s) => s.thread.messages);
   const setMessages = useStore((s) => s.setMessages);
+  const fallbackEpochRef = useRef(Date.now());
 
   const normalized = useMemo(
     () =>
-      messages.map((message) => {
+      messages.map((message, index) => {
         const parts = Array.isArray(message.content)
           ? message.content
           : [];
@@ -81,11 +97,13 @@ function AssistantMessageSync() {
           .map((part) => part.text)
           .join("");
 
+        const createdAt = message.createdAt?.getTime() ?? fallbackEpochRef.current + index;
+
         return {
-          id: message.id ?? `msg_${message.role}_${message.createdAt?.getTime() ?? Date.now()}`,
+          id: message.id ?? `msg_${message.role}_${createdAt}_${index}`,
           role: message.role as "user" | "assistant",
           content: text,
-          createdAt: message.createdAt?.getTime() ?? Date.now(),
+          createdAt,
         };
       }),
     [messages]

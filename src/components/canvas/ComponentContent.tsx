@@ -4,11 +4,21 @@
 // Positioning is handled by react-grid-layout, this just handles content
 // Uses component-registry.ts for lazy-loaded renderers (code-splitting)
 
-import { useCallback, Suspense } from "react";
-import { useCanvas, useComponentData } from "@/hooks";
+import {
+  Component,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  type ReactNode,
+} from "react";
+import { useCanvas } from "@/hooks/useCanvas";
+import { useComponentData } from "@/hooks/useComponentData";
 import type { ComponentInstance, DataLoadingState } from "@/types";
 import { Button } from "@/components/ui/button";
 import { RefreshCw, X, Loader2 } from "lucide-react";
+import { useStore } from "@/store";
+import { resolveRuleTargetForBinding } from "@/lib/rules";
 
 // Import registry for dynamic renderer lookup
 import { CONTENT_RENDERERS } from "@/lib/component-registry";
@@ -91,6 +101,33 @@ function RendererFallback() {
   );
 }
 
+interface RendererErrorBoundaryProps {
+  children: ReactNode;
+}
+
+interface RendererErrorBoundaryState {
+  hasError: boolean;
+}
+
+class RendererErrorBoundary extends Component<
+  RendererErrorBoundaryProps,
+  RendererErrorBoundaryState
+> {
+  state: RendererErrorBoundaryState = { hasError: false };
+
+  static getDerivedStateFromError(): RendererErrorBoundaryState {
+    return { hasError: true };
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return <ErrorState message="Failed to load component renderer" />;
+    }
+
+    return this.props.children;
+  }
+}
+
 // ============================================================================
 // Data Content Router using Registry
 // ============================================================================
@@ -144,7 +181,9 @@ function DataContent({
 
   return (
     <Suspense fallback={<RendererFallback />}>
-      <Renderer {...props} />
+      <RendererErrorBoundary>
+        <Renderer {...props} />
+      </RendererErrorBoundary>
     </Suspense>
   );
 }
@@ -159,6 +198,21 @@ interface ContentStateProps {
   config: Record<string, unknown>;
   label?: string;
   componentId: string;
+  isRefining: boolean;
+  onRefresh: () => void;
+}
+
+function MorningBriefIdleBootstrap({ onRefresh }: { onRefresh: () => void }) {
+  const requestedRef = useRef(false);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    if (requestedRef.current) return;
+    requestedRef.current = true;
+    void onRefresh();
+  }, [onRefresh]);
+
+  return <LoadingState label="Auto-refreshing Morning Brief..." />;
 }
 
 function ContentState({
@@ -167,15 +221,20 @@ function ContentState({
   config,
   label,
   componentId,
+  isRefining,
+  onRefresh,
 }: ContentStateProps) {
   switch (dataState.status) {
     case "loading":
-      return <LoadingState />;
+      return <LoadingState label={isRefining ? "Refining..." : undefined} />;
 
     case "error":
       return <ErrorState message={dataState.error.message} />;
 
     case "idle":
+      if (typeId === "system.morning-brief") {
+        return <MorningBriefIdleBootstrap onRefresh={onRefresh} />;
+      }
       return <IdleState />;
 
     case "ready":
@@ -205,6 +264,12 @@ export function ComponentContent({
 }: ComponentContentProps) {
   const { removeComponent } = useCanvas();
   const { dataState, refresh } = useComponentData(component.id);
+  const isRefining = useStore((state) => {
+    if (!component.dataBinding) return false;
+    const target = resolveRuleTargetForBinding(component.dataBinding);
+    if (!target) return false;
+    return state.getRulesForTarget(target).some((rule) => rule.type === "score.llm_classifier");
+  });
 
   const handleRemove = useCallback(() => {
     removeComponent(component.id);
@@ -227,6 +292,8 @@ export function ComponentContent({
           config={component.config}
           label={component.meta.label}
           componentId={component.id}
+          isRefining={isRefining}
+          onRefresh={refresh}
         />
       </div>
     </div>

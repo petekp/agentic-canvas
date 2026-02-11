@@ -1,0 +1,98 @@
+{
+  "generated_at": "2026-02-11T04:49:45Z",
+  "eval_file": ".claude/evals/minimum-eval-set.v0.1.json",
+  "app_url": "http://localhost:3003",
+  "space_url": null,
+  "session": "min-eval-1770785359",
+  "telemetry_log_path": ".claude/telemetry/agentic-canvas.log",
+  "summary": {
+    "pass": 0,
+    "fail": 2,
+    "partial": 0,
+    "total": 2
+  },
+  "cases": [
+    {
+      "id": "G1",
+      "prompt": "Add a github activity feed component that only shows activity by petekp.",
+      "expected_outcome": "tool_success",
+      "status": "FAIL",
+      "checks": {
+        "passed": [
+          "must_not_say:GitHub integration is unavailable",
+          "must_not_say:can't add GitHub components",
+          "ui:One activity component is visible."
+        ],
+        "failed": [
+          "tool_calls_any",
+          "outcome:tool_success"
+        ],
+        "unknown_ui": []
+      },
+      "snapshot_excerpt": [
+        "- document:",
+        "  - alert",
+        "  - main:",
+        "    - button \"Back to Spaces\" [ref=e1]",
+        "    - button \"Scratch\" [ref=e2]",
+        "    - 'button \"Undo: Loaded space: Scratch (Cmd+Z)\"'",
+        "    - button \"Nothing to redo\" [ref=e3] [disabled]",
+        "    - button [ref=e4]",
+        "    - button \"Generate\" [ref=e5]",
+        "    - button \"Add Component\" [ref=e6]",
+        "    - paragraph: Canvas is empty",
+        "    - paragraph: Add components to get started",
+        "    - button \"Drag assistant\" [ref=e7]: Drag",
+        "    - text: Assistant",
+        "    - button \"Collapse assistant tray\" [ref=e8]",
+        "    - paragraph: Add a github activity feed component that only shows activity by petekp.",
+        "    - paragraph: It seems we don't have a GitHub token connected, which is required for GitHub components. Could you please connect your GitHub account so I can add the component?",
+        "    - button \"Drag assistant\" [ref=e9] [nth=1]",
+        "    - textbox \"Ask about your canvas...\" [ref=e10]",
+        "    - button [ref=e11] [nth=1] [disabled]",
+        "    - text: ⌘K to focus Ready"
+      ]
+    },
+    {
+      "id": "G2",
+      "prompt": "Add a widget showing my personal GitHub activity from my own account.",
+      "expected_outcome": "graceful_block",
+      "status": "FAIL",
+      "checks": {
+        "passed": [
+          "tool_calls_none:add_component",
+          "tool_calls_none:add_filtered_component",
+          "outcome:graceful_block",
+          "ui:No new component is added."
+        ],
+        "failed": [
+          "must_say_any"
+        ],
+        "unknown_ui": []
+      },
+      "snapshot_excerpt": [
+        "- document:",
+        "  - alert",
+        "  - main:",
+        "    - button \"Back to Spaces\" [ref=e1]",
+        "    - button \"Scratch\" [ref=e2]",
+        "    - 'button \"Undo: Loaded space: Scratch (Cmd+Z)\"'",
+        "    - button \"Nothing to redo\" [ref=e3] [disabled]",
+        "    - button [ref=e4]",
+        "    - button \"Generate\" [ref=e5]",
+        "    - button \"Add Component\" [ref=e6]",
+        "    - paragraph: Canvas is empty",
+        "    - paragraph: Add components to get started",
+        "    - button \"Drag assistant\" [ref=e7]: Drag",
+        "    - text: Assistant",
+        "    - button \"Collapse assistant tray\" [ref=e8]",
+        "    - paragraph: Add a widget showing my personal GitHub activity from my own account.",
+        "    - paragraph: To show your personal GitHub activity, I'll need you to connect your GitHub account first. Please connect it, and then I'll add the widget for you.",
+        "    - button \"Drag assistant\" [ref=e9] [nth=1]",
+        "    - textbox \"Ask about your canvas...\" [ref=e10]",
+        "    - button [ref=e11] [nth=1] [disabled]",
+        "    - text: ⌘K to focus Ready"
+      ]
+    }
+  ]
+}

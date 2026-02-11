@@ -38,7 +38,7 @@ export async function getIntegrationStatus(): Promise<IntegrationStatus> {
 function getRequirement(typeId: string): "slack-bot" | "slack-user" | "posthog" | "vercel" | "github" | null {
   if (typeId.startsWith("posthog.")) return "posthog";
   if (typeId.startsWith("vercel.")) return "vercel";
-  if (typeId === "github.my-activity") return "github";
+  if (typeId.startsWith("github.")) return "github";
   if (typeId === "slack.mentions") return "slack-user";
   if (typeId.startsWith("slack.")) return "slack-bot";
   return null;

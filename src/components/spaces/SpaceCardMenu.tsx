@@ -15,6 +15,7 @@ import { MoreHorizontal, Pencil, Copy, Pin, PinOff, Trash2 } from "lucide-react"
 
 interface SpaceCardMenuProps {
   isPinned: boolean;
+  isSystemManaged?: boolean;
   onRename: () => void;
   onDuplicate: () => void;
   onTogglePin: () => void;
@@ -23,6 +24,7 @@ interface SpaceCardMenuProps {
 
 export function SpaceCardMenu({
   isPinned,
+  isSystemManaged = false,
   onRename,
   onDuplicate,
   onTogglePin,
@@ -42,7 +44,7 @@ export function SpaceCardMenu({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-        <DropdownMenuItem onClick={onRename}>
+        <DropdownMenuItem onClick={onRename} disabled={isSystemManaged}>
           <Pencil className="h-4 w-4 mr-2" />
           Rename
         </DropdownMenuItem>
@@ -50,7 +52,7 @@ export function SpaceCardMenu({
           <Copy className="h-4 w-4 mr-2" />
           Duplicate
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={onTogglePin}>
+        <DropdownMenuItem onClick={onTogglePin} disabled={isSystemManaged}>
           {isPinned ? (
             <>
               <PinOff className="h-4 w-4 mr-2" />
@@ -66,6 +68,7 @@ export function SpaceCardMenu({
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onClick={onDelete}
+          disabled={isSystemManaged}
           className="text-destructive focus:text-destructive"
         >
           <Trash2 className="h-4 w-4 mr-2" />

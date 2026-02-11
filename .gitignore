@@ -38,9 +38,13 @@ coverage/
 # Local files (as per CLAUDE.md convention)
 *.local.md
 .playwright-mcp/
+.claude/telemetry/
 
 # Debug screenshots
 tmp-*.png
 
 # pnpm patch workspaces (keep .patch files tracked)
 patches/*/
+
+# Generated eval artifacts
+.claude/evals/results/

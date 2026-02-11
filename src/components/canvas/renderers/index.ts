@@ -22,6 +22,10 @@ export const renderers = {
   "slack.channel-activity": () => import("./ChannelActivityContent"),
   "slack.mentions": () => import("./MentionsContent"),
   "slack.thread-watch": () => import("./ThreadWatchContent"),
+  "vercel.deployments": () => import("./DeploymentsContent"),
+  "vercel.project-status": () => import("./ProjectStatusContent"),
+  "briefing.recommendations": () => import("./BriefingRecommendationsContent"),
+  "system.morning-brief": () => import("./MorningBriefContent"),
 } as const;
 
 export type RendererTypeId = keyof typeof renderers;

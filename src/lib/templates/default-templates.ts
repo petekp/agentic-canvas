@@ -227,10 +227,160 @@ const issueTriageTableTemplate: TemplateDefinition = {
   },
 };
 
+const morningBriefingTemplate: TemplateDefinition = {
+  id: "briefing/morning-v1",
+  version: "1.0.0",
+  name: "Morning Briefing",
+  description: "A focused daily briefing space for OSS maintainers.",
+  category: "monitor",
+  parameters: [
+    { key: "repos", type: "json", default: [] },
+    { key: "primaryRepo", type: "string", default: "assistant-ui/assistant-ui" },
+    { key: "slackUserId", type: "string" },
+    { key: "slackChannels", type: "json", default: [] },
+    { key: "vercelProjectId", type: "string" },
+    { key: "vercelTeamId", type: "string" },
+  ],
+  constraints: {
+    preferredAspect: "wide",
+    maxCognitiveLoad: 0.8,
+    maxVisualDensity: 0.7,
+  },
+  selection: {
+    baseScore: 0,
+    rules: [],
+  },
+  output: {
+    components: [
+      {
+        typeId: "briefing.recommendations",
+        config: {
+          repos: "$repos",
+          slackUserId: "$slackUserId",
+          slackChannels: "$slackChannels",
+          vercelProjectId: "$vercelProjectId",
+          vercelTeamId: "$vercelTeamId",
+        },
+        dataBinding: {
+          source: "briefing",
+          query: {
+            type: "recommendations",
+            params: {
+              repos: "$repos",
+              slackUserId: "$slackUserId",
+              slackChannels: "$slackChannels",
+              vercelProjectId: "$vercelProjectId",
+              vercelTeamId: "$vercelTeamId",
+            },
+          },
+          refreshInterval: 300000,
+        },
+        size: { cols: 6, rows: 4 },
+        position: { col: 0, row: 0 },
+        meta: { label: "Morning Briefing" },
+      },
+      {
+        typeId: "vercel.deployments",
+        config: {
+          projectId: "$vercelProjectId",
+          teamId: "$vercelTeamId",
+          limit: 10,
+        },
+        dataBinding: {
+          source: "vercel",
+          query: {
+            type: "deployments",
+            params: {
+              projectId: "$vercelProjectId",
+              teamId: "$vercelTeamId",
+              limit: 10,
+            },
+          },
+          refreshInterval: 30000,
+        },
+        size: { cols: 6, rows: 3 },
+        position: { col: 6, row: 0 },
+        meta: { label: "Deployments" },
+      },
+      {
+        typeId: "github.team-activity",
+        config: { repo: "$primaryRepo", timeWindow: "7d" },
+        dataBinding: {
+          source: "mock-github",
+          query: { type: "team_activity", params: { repo: "$primaryRepo", timeWindow: "7d" } },
+          refreshInterval: 120000,
+        },
+        size: { cols: 6, rows: 5 },
+        position: { col: 6, row: 3 },
+        meta: { label: "Team Activity" },
+      },
+      {
+        typeId: "github.pr-list",
+        config: {
+          repo: "$primaryRepo",
+          state: "open",
+          filter: "review_requested",
+          limit: 5,
+        },
+        dataBinding: {
+          source: "mock-github",
+          query: {
+            type: "pull_requests",
+            params: {
+              repo: "$primaryRepo",
+              state: "open",
+              filter: "review_requested",
+              limit: 5,
+            },
+          },
+          refreshInterval: 60000,
+        },
+        size: { cols: 4, rows: 4 },
+        position: { col: 0, row: 4 },
+        meta: { label: "PRs Needing Review" },
+      },
+      {
+        typeId: "github.issue-grid",
+        config: { repo: "$primaryRepo", state: "open", limit: 6 },
+        dataBinding: {
+          source: "mock-github",
+          query: {
+            type: "issues",
+            params: { repo: "$primaryRepo", state: "open", limit: 6 },
+          },
+          refreshInterval: 60000,
+        },
+        size: { cols: 4, rows: 4 },
+        position: { col: 4, row: 4 },
+        meta: { label: "Open Issues" },
+      },
+      {
+        typeId: "slack.mentions",
+        config: { userId: "$slackUserId", limit: 10 },
+        dataBinding: {
+          source: "slack",
+          query: { type: "mentions", params: { userId: "$slackUserId", limit: 10 } },
+          refreshInterval: 60000,
+        },
+        size: { cols: 4, rows: 4 },
+        position: { col: 8, row: 4 },
+        meta: { label: "Mentions" },
+      },
+    ],
+  },
+  root: {
+    id: "root",
+    type: "grid",
+    props: { gap: 16 },
+    children: [],
+  },
+};
+
 export const DEFAULT_TEMPLATES: TemplateDefinition[] = [
   statsDisplayTemplate,
   prReviewTableTemplate,
   issueTriageTableTemplate,
+  morningBriefingTemplate,
 ];
 
 let registered = false;

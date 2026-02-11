@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { cn, Badge, Tooltip, TooltipContent, TooltipTrigger } from "./_adapter";
+import { getDateTimeFormatter, getNumberFormatter } from "@/lib/intl-formatters";
 
 type Tone = "success" | "warning" | "danger" | "info" | "neutral";
 
@@ -122,7 +123,7 @@ export function CurrencyValue({ value, options, locale }: CurrencyValueProps) {
   const currency = options?.currency ?? "USD";
   const decimals = options?.decimals ?? 2;
 
-  const formatted = new Intl.NumberFormat(locale, {
+  const formatted = getNumberFormatter(locale, {
     style: "currency",
     currency,
     minimumFractionDigits: decimals,
@@ -173,20 +174,20 @@ export function DateValue({ value, options, locale }: DateValueProps) {
   if (dateFormat === "relative") {
     formatted = getRelativeTime(date, locale);
   } else if (dateFormat === "long") {
-    formatted = new Intl.DateTimeFormat(locale, {
+    formatted = getDateTimeFormatter(locale, {
       year: "numeric",
       month: "long",
       day: "numeric",
     }).format(date);
   } else {
-    formatted = new Intl.DateTimeFormat(locale, {
+    formatted = getDateTimeFormatter(locale, {
       year: "numeric",
       month: "short",
       day: "numeric",
     }).format(date);
   }
 
-  const title = new Intl.DateTimeFormat(locale, {
+  const title = getDateTimeFormatter(locale, {
     year: "numeric",
     month: "long",
     day: "numeric",
@@ -219,7 +220,7 @@ function getRelativeTime(date: Date, locale?: string): string {
     return `${days} ${days === 1 ? "day" : "days"} ago`;
   }
 
-  return new Intl.DateTimeFormat(locale, {
+  return getDateTimeFormatter(locale, {
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -288,7 +289,7 @@ export function NumberValue({ value, options, locale }: NumberValueProps) {
   const compact = options?.compact ?? false;
   const showSign = options?.showSign ?? false;
 
-  const formatted = new Intl.NumberFormat(locale, {
+  const formatted = getNumberFormatter(locale, {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
     notation: compact ? "compact" : "standard",

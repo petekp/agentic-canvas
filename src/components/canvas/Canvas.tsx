@@ -10,14 +10,12 @@ import { getCompactor } from "react-grid-layout/core";
 // Allow overlap - items can stack freely, no pushing behavior
 // This works well with undo/redo and future agent-driven layouts
 const overlapCompactor = getCompactor(null, true, false);
-import {
-  useCanvas,
-  useUndoSimple,
-  usePolling,
-  useInsightLoop,
-  useStateSignals,
-  useStateDebugSnapshot,
-} from "@/hooks";
+import { useCanvas } from "@/hooks/useCanvas";
+import { useUndoSimple } from "@/hooks/useUndo";
+import { usePolling } from "@/hooks/usePolling";
+import { useInsightLoop } from "@/hooks/useInsightLoop";
+import { useStateSignals } from "@/hooks/useStateSignals";
+import { useStateDebugSnapshot } from "@/hooks/useStateDebug";
 import { useSpaceNavigation } from "@/hooks/useSpaceNavigation";
 import { ComponentContent } from "./ComponentContent";
 import { CanvasHeader } from "./CanvasHeader";
@@ -33,6 +31,7 @@ import { useStore } from "@/store";
 import { createUserSource } from "@/lib/undo/types";
 import { serializeCanvasContext } from "@/lib/canvas-context";
 import { getDefaultBinding } from "@/lib/canvas-defaults";
+import { isEditableEventTarget } from "@/lib/keyboard-shortcuts";
 import {
   compileTemplateToCommands,
   deriveIntent,
@@ -94,7 +93,7 @@ function AddComponentButton() {
               </ToolbarMenu.Label>
               {types.map((type, typeIndex) => (
                 <ToolbarMenu.Item
-                  key={`${category.id}-${typeIndex}`}
+                  key={`${category.id}-${type.typeId}-${typeIndex}`}
                   onClick={() => handleAdd(type)}
                 >
                   <DefaultIcon className="h-4 w-4 mr-2 text-muted-foreground" />
@@ -272,10 +271,13 @@ export function Canvas() {
   // Uses refs for read-only values to prevent effect re-runs (rerender-defer-reads)
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
+      if (isEditableEventTarget(e.target)) return;
+
       const isMod = e.metaKey || e.ctrlKey;
+      const key = e.key.toLowerCase();
 
       // Undo/Redo: Cmd+Z / Cmd+Shift+Z
-      if (isMod && e.key === "z") {
+      if (isMod && key === "z") {
         e.preventDefault();
         if (e.shiftKey && canRedoRef.current) {
           redo();

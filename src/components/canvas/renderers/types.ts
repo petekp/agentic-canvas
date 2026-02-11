@@ -1,6 +1,8 @@
 // Type definitions for content renderers
 // Extracted from ComponentContent.tsx for code-splitting
 
+export type { MorningBriefComponentData } from "@/types";
+
 /** API response shape for stat tiles */
 export interface StatTileData {
   value: number;
@@ -260,3 +262,23 @@ export interface VercelDeploymentEventsData {
     timestamp: number;
   }>;
 }
+
+// Briefing Types
+// ============================================================================
+
+export interface BriefingRecommendationsData {
+  summary: string;
+  sinceLabel: string;
+  sections: Array<{
+    title: string;
+    items: Array<{
+      icon: "pr" | "issue" | "deploy" | "slack" | "alert";
+      text: string;
+      priority: "high" | "medium" | "low";
+      actionUrl?: string;
+    }>;
+  }>;
+  generatedAt: number;
+}
+
+export type MorningBriefRendererData = import("@/types").MorningBriefComponentData;

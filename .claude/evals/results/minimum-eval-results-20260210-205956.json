@@ -1,0 +1,117 @@
+{
+  "generated_at": "2026-02-11T05:00:27Z",
+  "eval_file": ".claude/evals/minimum-eval-set.v0.1.json",
+  "app_url": "http://localhost:3003",
+  "space_url": null,
+  "session": "min-eval-1770785996",
+  "telemetry_log_path": ".claude/telemetry/agentic-canvas.log",
+  "summary": {
+    "pass": 2,
+    "fail": 0,
+    "partial": 0,
+    "total": 2
+  },
+  "cases": [
+    {
+      "id": "G1",
+      "prompt": "Add a github activity feed component that only shows activity by petekp.",
+      "expected_outcome": "tool_success",
+      "status": "PASS",
+      "checks": {
+        "passed": [
+          "tool_calls_any",
+          "must_not_say:GitHub integration is unavailable",
+          "must_not_say:can't add GitHub components",
+          "outcome:tool_success",
+          "ui:One activity component is visible."
+        ],
+        "failed": [],
+        "unknown_ui": []
+      },
+      "snapshot_excerpt": [
+        "- document:",
+        "  - alert",
+        "  - main:",
+        "    - button \"Back to Spaces\" [ref=e1]",
+        "    - button \"Scratch Unsaved changes\" [ref=e2]: Scratch",
+        "    - 'button \"Undo: AI: add_filtered_component (Cmd+Z)\"'",
+        "    - button \"Nothing to redo\" [ref=e3] [disabled]",
+        "    - button [ref=e4]",
+        "    - button \"Generate\" [ref=e5]",
+        "    - button \"Add Component\" [ref=e6]",
+        "    - text: Activity Timeline",
+        "    - button \"Refresh\" [ref=e7]",
+        "    - button \"Remove\" [ref=e8]",
+        "    - list",
+        "    - button \"Drag assistant\" [ref=e9]: Drag",
+        "    - text: Assistant",
+        "    - button \"Collapse assistant tray\" [ref=e10]",
+        "    - paragraph: Add a github activity feed component that only shows activity by petekp.",
+        "    - paragraph",
+        "    - text: \"Add filtered activity timeline: Petekp Activity\"",
+        "    - button \"Drag assistant\" [ref=e11] [nth=1]",
+        "    - textbox \"Ask about your canvas...\" [ref=e12]",
+        "    - button [ref=e13] [nth=1] [disabled]",
+        "    - text: ⌘K to focus Ready"
+      ]
+    },
+    {
+      "id": "G2",
+      "prompt": "Add a widget showing my personal GitHub activity from my own account.",
+      "expected_outcome": "tool_success",
+      "status": "PASS",
+      "checks": {
+        "passed": [
+          "tool_calls_any",
+          "tool_calls_none:add_filtered_component",
+          "outcome:tool_success",
+          "ui:A GitHub my-activity component is visible."
+        ],
+        "failed": [],
+        "unknown_ui": []
+      },
+      "snapshot_excerpt": [
+        "- document:",
+        "  - alert",
+        "  - main:",
+        "    - button \"Back to Spaces\" [ref=e1]",
+        "    - button \"Scratch Unsaved changes\" [ref=e2]: Scratch",
+        "    - 'button \"Undo: AI: add_component (Cmd+Z)\"'",
+        "    - button \"Nothing to redo\" [ref=e3] [disabled]",
+        "    - button [ref=e4]",
+        "    - button \"Generate\" [ref=e5]",
+        "    - button \"Add Component\" [ref=e6]",
+        "    - text: My Activity",
+        "    - button \"Refresh\" [ref=e7]",
+        "    - button \"Remove\" [ref=e8]",
+        "    - article: Commits 0 PRs 8 Reviews 0 Issues 0 Comments 1",
+        "    - text: Activity 6d ago today",
+        "    - list:",
+        "      - listitem:",
+        "        - text: •",
+        "        - paragraph: DeleteEvent",
+        "        - paragraph: assistant-ui/tool-ui · 10m ago",
+        "      - listitem:",
+        "        - text: ⬆",
+        "        - paragraph: Pushed 0 commits to assistant-ui/tool-ui",
+        "        - paragraph: assistant-ui/tool-ui · 10m ago",
+        "      - listitem:",
+        "        - text: 🔀",
+        "        - paragraph: \"merged PR #49: undefined\"",
+        "        - paragraph: assistant-ui/tool-ui · 10m ago",
+        "      - listitem:",
+        "        - text: ⬆",
+        "        - paragraph: Pushed 0 commits to assistant-ui/tool-ui",
+        "        - paragraph: assistant-ui/tool-ui · 19m ago",
+        "      - listitem:",
+        "        - text: •",
+        "        - paragraph: DeleteEvent",
+        "        - paragraph: assistant-ui/tool-ui · 20m ago",
+        "      - listitem:",
+        "        - text: ⬆",
+        "        - paragraph: Pushed 0 commits to assistant-ui/tool-ui",
+        "        - paragraph: assistant-ui/tool-ui · 20m ago"
+      ]
+    }
+  ]
+}

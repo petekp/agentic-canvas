@@ -95,6 +95,9 @@ export function describeCanvasCommand(command: UndoCanvasCommand): string {
     case "space_unpin":
       return `Unpin space: ${command.spaceName}`;
 
+    case "space_update":
+      return `Update space: ${command.spaceName}`;
+
     case "canvas_clear":
       return `Clear canvas (${command.removedCount} components)`;
 
@@ -234,6 +237,7 @@ export function invertCanvasCommand(command: UndoCanvasCommand): UndoCanvasComma
     case "space_delete":
     case "space_switch":
     case "space_load":
+    case "space_update":
     case "canvas_clear":
       // For these, we rely on snapshot restoration
       return command;

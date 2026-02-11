@@ -3,30 +3,36 @@
 // ChatPanel - floating assistant tray + composer
 // Uses assistant-ui for chat interface with native tool execution
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
-import { ThreadPrimitive, useAssistantState, useThreadRuntime } from "@assistant-ui/react";
+import { ThreadPrimitive, useAssistantApi, useAssistantState } from "@assistant-ui/react";
+import { ChevronDown, GripVertical } from "lucide-react";
 import { motion, useDragControls, useMotionValue } from "motion/react";
+import { cn } from "@/lib/utils";
 import { useStore } from "@/store";
 import { AssistantProvider } from "./AssistantProvider";
 import { AssistantComposer, AssistantThreadMessages } from "./AssistantThread";
-import { CanvasTools } from "@/lib/canvas-tools";
-import { ChevronDown, GripVertical } from "lucide-react";
-import { cn } from "@/lib/utils";
 
 const STORAGE_KEY_FLOATING_X = "agentic-canvas:assistant-floating-x";
 const MIN_TRAY_HEIGHT = 220;
 const DEFAULT_TRAY_HEIGHT = 360;
 const MAX_TRAY_HEIGHT_RATIO = 0.6;
 
+const loadCanvasTools = () =>
+  import("@/lib/canvas-tools").then((module) => ({ default: module.CanvasTools }));
+const LazyCanvasTools = lazy(loadCanvasTools);
+
+function warmCanvasTools() {
+  void loadCanvasTools();
+}
+
 // Keyboard shortcut handler for Cmd+K to focus chat
-function KeyboardShortcutHandler() {
+function KeyboardShortcutHandler({ onIntent }: { onIntent: () => void }) {
   useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-        e.preventDefault();
-        // Focus the composer input by querying the DOM
-        // assistant-ui ComposerPrimitive.Input renders a textarea
+    function handleKeyDown(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        onIntent();
         const input = document.querySelector<HTMLTextAreaElement>(
           '[data-aui-composer-input], [placeholder*="Ask about"]'
         );
@@ -36,32 +42,33 @@ function KeyboardShortcutHandler() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [onIntent]);
 
   return null;
 }
 
 // Handler for pending chat messages from notifications
 export function PendingChatMessageHandler() {
-  const threadRuntime = useThreadRuntime({ optional: true });
+  const api = useAssistantApi();
   const pendingMessage = useStore((state) => state.pendingChatMessage);
   const clearPendingChatMessage = useStore((state) => state.clearPendingChatMessage);
 
   useEffect(() => {
-    if (pendingMessage && threadRuntime) {
-      // Send the message via the thread composer
-      const composer = threadRuntime.composer;
-      composer.setText(pendingMessage);
-      composer.send();
+    if (pendingMessage) {
+      api.thread().append({
+        role: "user",
+        content: [{ type: "text", text: pendingMessage }],
+      });
       clearPendingChatMessage();
     }
-  }, [pendingMessage, threadRuntime, clearPendingChatMessage]);
+  }, [pendingMessage, api, clearPendingChatMessage]);
 
   return null;
 }
 
-function FloatingChat() {
+function FloatingChat({ onIntent }: { onIntent: () => void }) {
   const isRunning = useAssistantState((s) => s.thread.isRunning);
+  const messageCount = useAssistantState((s) => s.thread.messages.length);
   const [isOpen, setIsOpen] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [trayHeight, setTrayHeight] = useState(DEFAULT_TRAY_HEIGHT);
@@ -85,8 +92,15 @@ function FloatingChat() {
 
   useEffect(() => {
     if (!isRunning) return;
+    onIntent();
     setIsOpen(true);
-  }, [isRunning]);
+  }, [isRunning, onIntent]);
+
+  useEffect(() => {
+    if (messageCount > 0) {
+      setIsOpen(true);
+    }
+  }, [messageCount]);
 
   useEffect(() => {
     function updateMaxHeight() {
@@ -267,7 +281,10 @@ function FloatingChat() {
               </button>
               <div className="flex-1">
                 <AssistantComposer
-                  onFocus={() => setIsOpen(true)}
+                  onFocus={() => {
+                    onIntent();
+                    setIsOpen(true);
+                  }}
                   placeholder="Ask about your canvas..."
                   className="border-t-0 p-0"
                 />
@@ -288,12 +305,45 @@ function FloatingChat() {
 
 // Main chat panel
 export function ChatPanel() {
+  const hasPendingMessage = useStore((state) => Boolean(state.pendingChatMessage));
+  const [toolsEnabled, setToolsEnabled] = useState(hasPendingMessage);
+
+  const enableTools = useCallback(() => {
+    setToolsEnabled(true);
+    warmCanvasTools();
+  }, []);
+
+  // Defer loading CanvasTools off the critical path.
+  useEffect(() => {
+    if (toolsEnabled) return;
+    if (typeof window === "undefined") return;
+
+    let cancelled = false;
+    const schedule =
+      window.requestIdleCallback ?? ((cb: () => void) => window.setTimeout(cb, 1200));
+    const cancel = window.cancelIdleCallback ?? window.clearTimeout;
+
+    const handle = schedule(() => {
+      if (cancelled) return;
+      enableTools();
+    });
+
+    return () => {
+      cancelled = true;
+      cancel(handle as number);
+    };
+  }, [toolsEnabled, enableTools]);
+
   return (
     <AssistantProvider>
-      <CanvasTools />
-      <KeyboardShortcutHandler />
+      {toolsEnabled ? (
+        <Suspense fallback={null}>
+          <LazyCanvasTools />
+        </Suspense>
+      ) : null}
+      <KeyboardShortcutHandler onIntent={enableTools} />
       <PendingChatMessageHandler />
-      <FloatingChat />
+      <FloatingChat onIntent={enableTools} />
     </AssistantProvider>
   );
 }

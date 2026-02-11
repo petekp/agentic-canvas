@@ -23,6 +23,7 @@
 // See: .claude/plans/primitives-spec-v0.1.md for design rationale
 
 import type { JSONSchema7 } from "json-schema";
+import type { RulePack } from "@/lib/rules/types";
 
 // ============================================================================
 // 1. Identifiers
@@ -75,7 +76,9 @@ export interface Workspace {
   threadId: string;
   spaces: Space[];
   triggers: ProactiveTrigger[];
+  morningBrief: MorningBriefRuntimeState;
   transforms: Map<TransformId, TransformDefinition>;
+  rules: RulePack;
   settings: WorkspaceSettings;
   createdAt: number;
   updatedAt: number;
@@ -87,6 +90,7 @@ export interface WorkspaceSettings {
   defaultRefreshInterval: number;
   grid: GridConfig;
   proactiveMode: "suggest" | "auto" | "off";
+  autoOpenMorningBrief: boolean;
 }
 
 export interface Canvas {
@@ -94,9 +98,27 @@ export interface Canvas {
   components: ComponentInstance[];
 }
 
+export type SpaceKind =
+  | "system.morning_brief"
+  | "mission"
+  | "project"
+  | "ad_hoc";
+
+export interface SpaceMeta {
+  kind: SpaceKind;
+  pinned: boolean;
+  systemManaged: boolean;
+  createdBy: "assistant" | "user";
+  createdAt: number;
+  updatedAt: number;
+  lastVisitedAt?: number;
+}
+
 export interface Space {
   id: SpaceId;
   name: string;
+  kind: SpaceKind;
+  meta: SpaceMeta;
   description?: string;
   snapshot: Canvas;
   triggerIds: TriggerId[];
@@ -105,6 +127,14 @@ export interface Space {
   createdAt: number;
   updatedAt: number;
   lastVisitedAt: number;
+  briefingConfig?: {
+    repos: string[];
+    slackUserId?: string;
+    slackChannels?: Array<{ id: string; name: string }>;
+    vercelProjectId?: string;
+    vercelTeamId?: string;
+    sinceTimestamp?: number;
+  };
 }
 
 // ============================================================================
@@ -550,6 +580,7 @@ export interface WorkspaceContext {
 export interface SpaceSummary {
   id: SpaceId;
   name: string;
+  kind: SpaceKind;
   description?: string;
   componentCount: number;
   pinned: boolean;
@@ -875,9 +906,17 @@ export interface ProactiveTrigger {
   type: TriggerType;
   spaceId?: SpaceId;
   message?: string;
+  minIntervalMinutes?: number;
+  coolDownMinutes?: number;
+  lastFiredAt?: string;
+  criteria?: Record<string, unknown>;
+  critical?: boolean;
 }
 
-export type TriggerType = "session_start" | "time_based";
+export type TriggerType =
+  | "session_start"
+  | "time_based"
+  | MorningBriefTriggerType;
 
 export interface SimulatedTimeTrigger extends ProactiveTrigger {
   type: "time_based";
@@ -885,7 +924,136 @@ export interface SimulatedTimeTrigger extends ProactiveTrigger {
 }
 
 // ============================================================================
-// 16. Errors
+// 16. Morning Brief
+// ============================================================================
+
+export type MorningBriefDataSource =
+  | "github"
+  | "slack"
+  | "posthog"
+  | "vercel"
+  | "custom";
+
+export interface EvidenceItem {
+  id: string;
+  source: MorningBriefDataSource;
+  entity: string;
+  metric: string;
+  valueText: string;
+  valueNumber?: number;
+  observedAt: string;
+  freshnessMinutes: number;
+  link?: string;
+  confidence: "low" | "medium" | "high";
+}
+
+export interface MissionStatement {
+  id: string;
+  title: string;
+  rationale: string;
+  owner: string;
+  horizon: "today" | "this_week";
+  priorityScore: number;
+}
+
+export interface Lever {
+  id: string;
+  label: string;
+  actionType:
+    | "notify"
+    | "create_space"
+    | "update_component"
+    | "open_link"
+    | "manual";
+  actionPayload?: Record<string, unknown>;
+  expectedImpact: string;
+  impactScore: number;
+  confidence: "low" | "medium" | "high";
+}
+
+export interface Assumption {
+  id: string;
+  text: string;
+  reason: "missing_data" | "stale_data" | "conflict" | "insufficient_sample";
+  sourceScope: MorningBriefDataSource[];
+}
+
+export interface MorningBriefVersion {
+  version: number;
+  generatedAt: string;
+  generatedBy: "assistant";
+  mission: MissionStatement;
+  evidence: EvidenceItem[];
+  levers: Lever[];
+  assumptions: Assumption[];
+  confidence: "low" | "medium" | "high";
+  freshnessSummary: string;
+}
+
+export type MorningBriefLifecycleState =
+  | "drafted"
+  | "presented"
+  | "accepted"
+  | "activated"
+  | "monitoring"
+  | "reframed"
+  | "resolved"
+  | "archived";
+
+export type MorningBriefOverrideType =
+  | "accept"
+  | "reframe"
+  | "deprioritize"
+  | "not_my_responsibility"
+  | "replace_objective"
+  | "snooze";
+
+export interface MorningBriefOverride {
+  id: string;
+  type: MorningBriefOverrideType;
+  createdAt: string;
+  actor: "user";
+  note?: string;
+  payload?: Record<string, unknown>;
+}
+
+export interface MorningBriefComponentData {
+  current: MorningBriefVersion;
+  history: Array<
+    Pick<MorningBriefVersion, "version" | "generatedAt" | "mission" | "confidence">
+  >;
+  state: MorningBriefLifecycleState;
+  userOverrides: MorningBriefOverride[];
+}
+
+export type MorningBriefTriggerType =
+  | "schedule.morning"
+  | "event.risk_spike"
+  | "event.blocker"
+  | "event.behavior_drop"
+  | "staleness"
+  | "user.request_refresh";
+
+export interface MorningBriefTrigger {
+  id: string;
+  type: MorningBriefTriggerType;
+  enabled: boolean;
+  minIntervalMinutes: number;
+  coolDownMinutes: number;
+  lastFiredAt?: string;
+  criteria: Record<string, unknown>;
+}
+
+export interface MorningBriefRuntimeState {
+  mode: "active" | "suggest_only";
+  lowConfidenceStreak: number;
+  snoozedUntil?: string;
+  lastRefreshedAt?: string;
+  lastAutoOpenedAt?: string;
+}
+
+// ============================================================================
+// 17. Errors
 // ============================================================================
 
 export interface AgenticCanvasError {

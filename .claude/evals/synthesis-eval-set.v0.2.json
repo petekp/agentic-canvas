@@ -1,0 +1,197 @@
+{
+  "name": "agentic-canvas-synthesis-eval-set",
+  "version": "0.2.0",
+  "captured_at": "2026-02-11",
+  "description": "Cross-platform synthesis quality evals (GitHub + Slack + PostHog) with grounded numbers and uncertainty handling.",
+  "cases": [
+    {
+      "id": "SYN1",
+      "category": "synthesis_conflicting_signals",
+      "setup_prompts": [
+        "Add a widget showing my personal GitHub activity from my own account.",
+        "Add a Slack mentions feed for @petepetrash.",
+        "Add a PostHog site health widget to this space."
+      ],
+      "prompt": "Synthesize a cross-platform status brief from GitHub, Slack, and PostHog. Output sections named Signals, Conflicts, Recommendation. In Signals include one line each as 'GitHub: <number>', 'Slack: <number>', and 'PostHog: <number>'. If there is uncertainty, label it explicitly as an assumption.",
+      "expected": {
+        "outcome": "response_only",
+        "required_sources": ["github", "slack", "posthog"],
+        "must_ground_numbers": [
+          { "label": "github numeric signal", "regex": "GitHub:\\s*[0-9]+" },
+          { "label": "slack numeric signal", "regex": "Slack:\\s*[0-9]+" },
+          { "label": "posthog numeric signal", "regex": "PostHog:\\s*[0-9]+" }
+        ],
+        "must_label_assumptions": true,
+        "must_match_regex": [
+          "Signals",
+          "Conflicts",
+          "Recommendation",
+          "(conflict|tension|mismatch)"
+        ],
+        "scoring": {
+          "hard_fail": ["synthesis_coverage", "numeric_grounding", "uncertainty", "formatting"],
+          "soft_score": {
+            "threshold": 0.8,
+            "weights": {
+              "synthesis_coverage": 0.35,
+              "numeric_grounding": 0.3,
+              "uncertainty": 0.2,
+              "formatting": 0.15
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "SYN2",
+      "category": "synthesis_empty_slack",
+      "setup_prompts": [
+        "Add a widget showing my personal GitHub activity from my own account.",
+        "Add a PostHog site health widget to this space."
+      ],
+      "prompt": "Write a tri-source summary for GitHub, Slack, and PostHog, but treat Slack as unavailable for this analysis. Include lines for GitHub, Slack, and PostHog. Use 'Slack: no recent data' and mark that as an assumption.",
+      "expected": {
+        "outcome": "response_only",
+        "required_sources": ["github", "slack", "posthog"],
+        "must_ground_numbers": [
+          { "label": "github numeric signal", "regex": "GitHub:[^\\n]{0,60}[0-9]+" },
+          { "label": "posthog numeric signal", "regex": "PostHog:[^\\n]{0,60}[0-9]+" }
+        ],
+        "must_label_assumptions": true,
+        "must_match_regex": [
+          "Slack:\\s*(no recent data|unavailable|no data)",
+          "(assumption|assuming)",
+          "GitHub:",
+          "PostHog:"
+        ],
+        "scoring": {
+          "hard_fail": ["synthesis_coverage", "uncertainty", "formatting"],
+          "soft_score": {
+            "threshold": 0.75,
+            "weights": {
+              "synthesis_coverage": 0.4,
+              "numeric_grounding": 0.2,
+              "uncertainty": 0.25,
+              "formatting": 0.15
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "SYN3",
+      "category": "synthesis_stale_vs_fresh",
+      "setup_prompts": [
+        "Add a widget showing my personal GitHub activity from my own account.",
+        "Add a Slack mentions feed for @petepetrash.",
+        "Add a PostHog site health widget to this space."
+      ],
+      "prompt": "Compare freshness across GitHub, Slack, and PostHog. Output sections Freshness and Action. In Freshness include lines 'GitHub: Fresh|Stale', 'Slack: Fresh|Stale', 'PostHog: Fresh|Stale' and include an 'as of' timestamp statement. If freshness is uncertain, label assumptions.",
+      "expected": {
+        "outcome": "response_only",
+        "required_sources": ["github", "slack", "posthog"],
+        "must_ground_numbers": [
+          { "label": "freshness timestamp", "regex": "(as of|timestamp|last updated)[^\\n]{0,60}[0-9]" }
+        ],
+        "must_label_assumptions": true,
+        "must_match_regex": [
+          "Freshness",
+          "Action",
+          "GitHub:\\s*(Fresh|Stale)",
+          "Slack:\\s*(Fresh|Stale)",
+          "PostHog:\\s*(Fresh|Stale)",
+          "(as of|timestamp|last updated)"
+        ],
+        "scoring": {
+          "hard_fail": ["synthesis_coverage", "formatting"],
+          "soft_score": {
+            "threshold": 0.75,
+            "weights": {
+              "synthesis_coverage": 0.35,
+              "numeric_grounding": 0.15,
+              "uncertainty": 0.2,
+              "formatting": 0.3
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "SYN4",
+      "category": "synthesis_strict_format",
+      "setup_prompts": [
+        "Add a widget showing my personal GitHub activity from my own account.",
+        "Add a Slack mentions feed for @petepetrash.",
+        "Add a PostHog site health widget to this space."
+      ],
+      "prompt": "Return exactly this structure with these labels: SOURCES_USED, RISK_SCORE, TOP_SIGNALS, ASSUMPTIONS. Include GitHub, Slack, and PostHog under SOURCES_USED. Set RISK_SCORE to a number from 0-100. Under TOP_SIGNALS provide one bullet each for GitHub, Slack, and PostHog with at least one number per bullet.",
+      "expected": {
+        "outcome": "response_only",
+        "required_sources": ["github", "slack", "posthog"],
+        "must_ground_numbers": [
+          { "label": "risk score", "regex": "RISK_SCORE:\\s*[0-9]{1,3}" },
+          { "label": "github signal number", "regex": "GitHub[^\\n]{0,80}[0-9]+" },
+          { "label": "slack signal number", "regex": "Slack[^\\n]{0,80}[0-9]+" },
+          { "label": "posthog signal number", "regex": "PostHog[^\\n]{0,80}[0-9]+" }
+        ],
+        "must_label_assumptions": true,
+        "must_match_regex": [
+          "SOURCES_USED",
+          "RISK_SCORE",
+          "TOP_SIGNALS",
+          "ASSUMPTIONS"
+        ],
+        "scoring": {
+          "hard_fail": ["formatting", "numeric_grounding", "synthesis_coverage"],
+          "soft_score": {
+            "threshold": 0.8,
+            "weights": {
+              "synthesis_coverage": 0.25,
+              "numeric_grounding": 0.35,
+              "uncertainty": 0.1,
+              "formatting": 0.3
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "SYN5",
+      "category": "synthesis_assumption_labeling",
+      "setup_prompts": [
+        "Add a widget showing my personal GitHub activity from my own account.",
+        "Add a Slack mentions feed for @petepetrash.",
+        "Add a PostHog site health widget to this space."
+      ],
+      "prompt": "Produce a decision summary across GitHub, Slack, and PostHog with lines 'GitHub: <number>', 'Slack: <number>', and 'PostHog: <number>'. Then include exactly two assumption lines prefixed 'ASSUMPTION 1:' and 'ASSUMPTION 2:'. End with 'Confidence: <Low|Medium|High>'.",
+      "expected": {
+        "outcome": "response_only",
+        "required_sources": ["github", "slack", "posthog"],
+        "must_ground_numbers": [
+          { "label": "github numeric signal", "regex": "GitHub:\\s*[0-9]+" },
+          { "label": "slack numeric signal", "regex": "Slack:\\s*[0-9]+" },
+          { "label": "posthog numeric signal", "regex": "PostHog:\\s*[0-9]+" }
+        ],
+        "must_label_assumptions": true,
+        "assumption_markers_any": ["ASSUMPTION 1:", "ASSUMPTION 2:"],
+        "must_match_regex": [
+          "ASSUMPTION 1:",
+          "ASSUMPTION 2:",
+          "Confidence:\\s*(Low|Medium|High)"
+        ],
+        "scoring": {
+          "hard_fail": ["uncertainty", "synthesis_coverage", "formatting"],
+          "soft_score": {
+            "threshold": 0.8,
+            "weights": {
+              "synthesis_coverage": 0.3,
+              "numeric_grounding": 0.2,
+              "uncertainty": 0.35,
+              "formatting": 0.15
+            }
+          }
+        }
+      }
+    }
+  ]
+}

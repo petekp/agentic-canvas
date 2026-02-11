@@ -1,5 +1,5 @@
 diff --git a/dist/core/ResourceFiber.js b/dist/core/ResourceFiber.js
-index d5447a79aa54901771b6ebe39f44d3563e255203..5e825b6361e6019533763bff60334a4f01f90bae 100644
+index 3772d1dff7e6f6f2f5e8d4b4a0a6d1f8d7d9c5f0..b46c1a6d5ffad8e931f1ce4a6e5d8b7d9f25c3aa 100644
 --- a/dist/core/ResourceFiber.js
 +++ b/dist/core/ResourceFiber.js
 @@ -16,8 +16,10 @@ export function createResourceFiber(type, dispatchUpdate, strictMode = getDevStr
@@ -15,7 +15,7 @@ index d5447a79aa54901771b6ebe39f44d3563e255203..5e825b6361e6019533763bff60334a4f
      cleanupAllEffects(fiber);
  }
 diff --git a/src/core/ResourceFiber.ts b/src/core/ResourceFiber.ts
-index 937b2ba2e24071d1a20aafcb481004ef95e6402f..c9129c0cd3b42d8a54438e0b6176a60142664d84 100644
+index 3fbb1a7ed4d6f3a1c7c2d5c5f7b9b2d6e0a1b9d5..62c57c7fdc7e34a8e4c4e4b7bbfc7a06c8f0c27a 100644
 --- a/src/core/ResourceFiber.ts
 +++ b/src/core/ResourceFiber.ts
 @@ -23,8 +23,9 @@ export function createResourceFiber<R, P>(

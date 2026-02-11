@@ -29,10 +29,10 @@ vi.mock("@assistant-ui/react", () => {
     Messages: () => null,
     Suggestion: ({
       children,
-      autoSend,
+      send,
       ...props
-    }: React.ButtonHTMLAttributes<HTMLButtonElement> & { autoSend?: boolean }) => {
-      void autoSend;
+    }: React.ButtonHTMLAttributes<HTMLButtonElement> & { send?: boolean }) => {
+      void send;
       return (
         <button type="button" {...props}>
           {children}
@@ -51,21 +51,58 @@ vi.mock("@assistant-ui/react", () => {
     Root: ({ children, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
       <div {...props}>{children}</div>
     ),
-    Input: (props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) => (
-      <textarea {...props} />
-    ),
-    Send: (props: React.ButtonHTMLAttributes<HTMLButtonElement>) => (
-      <button type="button" {...props} />
-    ),
-    Cancel: (props: React.ButtonHTMLAttributes<HTMLButtonElement>) => (
-      <button type="button" {...props} />
-    ),
+    Input: ({
+      asChild,
+      children,
+      ...props
+    }: React.TextareaHTMLAttributes<HTMLTextAreaElement> & {
+      asChild?: boolean;
+      children?: React.ReactNode;
+    }) => {
+      if (asChild && React.isValidElement(children)) {
+        return React.cloneElement(children, props);
+      }
+      return <textarea {...props} />;
+    },
+    Send: ({
+      asChild,
+      children,
+      ...props
+    }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
+      asChild?: boolean;
+      children?: React.ReactNode;
+    }) => {
+      if (asChild && React.isValidElement(children)) {
+        return React.cloneElement(children, props);
+      }
+      return <button type="button" {...props} />;
+    },
+    Cancel: ({
+      asChild,
+      children,
+      ...props
+    }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
+      asChild?: boolean;
+      children?: React.ReactNode;
+    }) => {
+      if (asChild && React.isValidElement(children)) {
+        return React.cloneElement(children, props);
+      }
+      return <button type="button" {...props} />;
+    },
   };
 
   return {
     ThreadPrimitive,
     MessagePrimitive,
     ComposerPrimitive,
+    AssistantIf: ({
+      condition,
+      children,
+    }: {
+      condition: (state: { thread: { isRunning: boolean } }) => boolean;
+      children: React.ReactNode;
+    }) => (condition({ thread: { isRunning: false } }) ? <>{children}</> : null),
     useAssistantState: (selector: (state: { thread: { isRunning: boolean; messages: [] } }) => boolean | unknown) =>
       selector({ thread: { isRunning: false, messages: [] } }),
     useAssistantApi: () => ({
@@ -74,7 +111,6 @@ vi.mock("@assistant-ui/react", () => {
         cancelRun: vi.fn(),
       }),
     }),
-    useThreadRuntime: () => null,
   };
 });
 

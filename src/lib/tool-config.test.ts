@@ -61,4 +61,14 @@ describe("resolveConfigFromChat", () => {
 
     expect(resolved).toMatchObject({ userId: "U123ABC456" });
   });
+
+  it("infers github activity username from the last user message", () => {
+    const resolved = resolveConfigFromChat(
+      "github.activity-timeline",
+      undefined,
+      "Add a github activity feed component that only shows activity by petekp."
+    );
+
+    expect(resolved).toMatchObject({ username: "petekp" });
+  });
 });

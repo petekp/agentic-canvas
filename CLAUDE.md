@@ -83,6 +83,68 @@ Cognitive load. Fixed grids constrain layout decisions, making both user placeme
 - **Internal types use PascalCase** — `CanvasCommand`, `DataLoadingState`
 - **Spaces are first-class** — use space APIs and routing (`/spaces`, `/spaces/[id]`)
 - **Tools live in canvas-tools** — use `makeAssistantTool` in `src/lib/canvas-tools.tsx`
+- **assistant-ui transport is canonical** — use `AssistantChatTransport` + AI SDK `validateUIMessages(...)` at `/api/chat`; avoid hand-rolled message normalization for the standard path
+- **Don’t duplicate adapter helpers** — keep tool schema projection via `frontendTools(...)`; avoid adding thin wrappers that mirror SDK/util behavior
+- **Runtime seam stays thin** — delegate orchestration/extensions to external pi engine when configured; keep route protocol unchanged
+
+## Telemetry & Headless Debugging
+
+Telemetry is available so agents can debug without a browser.
+
+- Log file (JSONL): `.claude/telemetry/agentic-canvas.log`
+- Tail live: `tail -f .claude/telemetry/agentic-canvas.log`
+- Filter by source: `rg "api\\.chat|tool\\.set_preference_rules" .claude/telemetry/agentic-canvas.log`
+- Query in-memory buffer: `curl "http://localhost:3000/api/telemetry?limit=200"`
+- Override path via `.env.local`: `TELEMETRY_LOG_PATH=/custom/path/agentic-canvas.log`
+- Standard filter helper: `./scripts/query-telemetry.sh --level error --limit 50`
+
+Notes:
+- Secrets are redacted before write.
+- Events include API requests/errors and tool start/result/error payloads.
+
+### Event Schema (JSONL)
+```json
+{
+  "ts": "2026-02-09T16:05:16.515Z",
+  "level": "info",
+  "source": "store.data",
+  "event": "fetch_success",
+  "data": {
+    "componentId": "cmp_abc123",
+    "cacheKey": "github:pull_requests:{\"repo\":\"owner/repo\"}",
+    "durationMs": 284,
+    "ttl": 60000,
+    "itemCount": 5
+  }
+}
+```
+
+### Common Queries
+```bash
+# Recent errors
+tail -n 200 .claude/telemetry/agentic-canvas.log | rg "\"level\":\"error\"" | tail -n 50
+
+# Standardized helper
+./scripts/query-telemetry.sh --level error --limit 50
+
+# Tool calls + results for a specific tool
+rg "\"source\":\"tool\\.add_component\"" .claude/telemetry/agentic-canvas.log | tail -n 20
+
+# Data fetch lifecycle for a component
+rg "cmp_abc123" .claude/telemetry/agentic-canvas.log | rg "store\\.data"
+
+# LLM classifier scoring events
+rg "\"source\":\"store\\.rules\"" .claude/telemetry/agentic-canvas.log | rg "llm_score"
+```
+
+### Event Catalog (prefixes)
+- `api.*` — API route requests/errors (chat, github, slack, vercel, rules, briefing)
+- `tool.*` — assistant tool execution (start/result/error)
+- `store.data.*` — cache hits, fetch start/success/error, invalidations
+- `store.rules.*` — rule set/apply + LLM score requests
+- `store.canvas.*` — component add/update/remove/move/resize/clear
+- `store.undo.*` — undo/redo + batch lifecycle
+- `store.audit.*` — audit log append/load/persist errors
 
 ## Assistant Tool Commands
 
@@ -149,6 +211,19 @@ z.record(z.string(), z.unknown())
 // NOT: z.record(z.unknown())
 ```
 
+### assistant-ui + AI SDK boundary
+- At `/api/chat`, validate incoming UI messages with `validateUIMessages(...)` before `convertToModelMessages(...)`.
+- For historical tool-result ingestion from model messages, unwrap wrapped payloads (`output.value` / `result.value`) before ledger persistence.
+- External pi runtime delegation is configured via:
+  - `PI_RUNTIME_ENGINE_MODULE`
+  - `PI_RUNTIME_ENGINE_EXPORT` (optional)
+- Prefer existing utilities over custom protocol code in external engines:
+  - pi runtime/model orchestration from `@mariozechner/pi-ai`
+  - assistant stream transport from AI SDK `createUIMessageStream(...)` + `createUIMessageStreamResponse(...)`
+- Retention runs on traffic via `streamWithPiRuntime(...)` and can also be triggered explicitly at `POST /api/pi/retention`.
+- If `PI_RETENTION_API_TOKEN` is set, `POST /api/pi/retention` requires `Authorization: Bearer <token>`.
+- Runtime engine diagnostics are available at `GET /api/pi/runtime` when `PI_RUNTIME_DIAGNOSTICS_ENABLED=1`.
+
 ## Patterns to Avoid
 
 - Don't use `ComponentState` — it's now `DataLoadingState`
@@ -170,6 +245,7 @@ src/
 │   ├── api/slack/route.ts          # Slack data source
 │   ├── api/vercel/route.ts         # Vercel data source
 │   ├── api/insights/route.ts       # Server-side insights
+│   ├── api/telemetry/route.ts      # Telemetry ingest + buffer
 │   ├── api/integrations/route.ts   # Integration availability
 │   ├── api/memory/feedback/route.ts# Memory feedback
 │   ├── page.tsx                    # Entry router to spaces
@@ -198,6 +274,8 @@ src/
 │   ├── canvas-defaults.ts   # Default sizes/bindings
 │   ├── component-registry.ts# Component registry
 │   ├── templates/           # Template engine + state signals
+│   ├── telemetry.ts         # Telemetry writer + buffer
+│   ├── telemetry-client.ts  # Client telemetry sender
 │   ├── memory/              # Supermemory integration
 │   ├── notifications/       # Notification helpers
 │   ├── slack-mentions-*.ts  # Slack mention filters/defaults

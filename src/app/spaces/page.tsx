@@ -1,16 +1,16 @@
-"use client";
-
 // Spaces Grid Page - landing page showing all spaces
 // See: .claude/plans/spaces-navigation-v0.2.md
 
-import { ChatPanel } from "@/components/chat/ChatPanel";
-import { SpacesGrid } from "@/components/spaces";
+import { ChatPanelLazy } from "@/components/chat/ChatPanelLazy";
+import { SpacesGrid } from "@/components/spaces/SpacesGrid";
+import { SpaceRouteSyncListener } from "@/components/spaces/SpaceRouteSyncListener";
 
 export default function SpacesPage() {
   return (
     <main className="relative h-screen overflow-hidden">
+      <SpaceRouteSyncListener />
       <SpacesGrid />
-      <ChatPanel />
+      <ChatPanelLazy />
     </main>
   );
 }

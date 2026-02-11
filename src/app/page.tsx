@@ -5,7 +5,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useSpaces } from "@/hooks";
+import { useSpaces } from "@/hooks/useSpaces";
 
 export default function Home() {
   const router = useRouter();

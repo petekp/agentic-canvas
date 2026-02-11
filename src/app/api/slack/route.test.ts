@@ -100,6 +100,35 @@ describe("Slack API route", () => {
     ]);
   });
 
+  it("returns 403 when mentions require a user token", async () => {
+    const { POST } = await import("@/app/api/slack/route");
+    globalThis.fetch = vi.fn(async (url: RequestInfo | URL) => {
+      const urlString = url.toString();
+      if (urlString.includes("auth.test")) {
+        return jsonResponse({ ok: true, user_id: "U123" });
+      }
+      if (urlString.includes("search.messages")) {
+        return jsonResponse({ ok: false, error: "not_allowed_token_type" });
+      }
+      throw new Error(`Unexpected fetch: ${urlString}`);
+    }) as unknown as typeof fetch;
+
+    const req = new Request("http://localhost/api/slack", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "mentions",
+        params: { limit: 5 },
+      }),
+    });
+
+    const res = await POST(req as unknown as NextRequest);
+    const payload = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(payload.error).toMatch(/User OAuth Token/i);
+  });
+
   it("expands user mentions in channel activity text", async () => {
     const { POST } = await import("@/app/api/slack/route");
     globalThis.fetch = vi.fn(async (url: RequestInfo | URL) => {

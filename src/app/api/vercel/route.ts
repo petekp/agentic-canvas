@@ -12,6 +12,7 @@
 // these to avoid redundant requests.
 
 import { NextRequest } from "next/server";
+import { appendTelemetry } from "@/lib/telemetry";
 
 const VERCEL_TOKEN = process.env.VERCEL_TOKEN;
 const VERCEL_API = "https://api.vercel.com";
@@ -21,7 +22,7 @@ const DEFAULT_PROJECT_ID = process.env.VERCEL_PROJECT_ID;
 const DEFAULT_TEAM_ID = process.env.VERCEL_TEAM_ID;
 
 interface VercelRequest {
-  type: "deployments" | "project_info" | "deployment_events";
+  type: "deployments" | "project_info" | "deployment_events" | "project_list";
   params: {
     projectId?: string;
     teamId?: string;
@@ -41,6 +42,22 @@ export async function POST(req: NextRequest) {
 
   try {
     const { type, params }: VercelRequest = await req.json();
+
+    await appendTelemetry({
+      level: "info",
+      source: "api.vercel",
+      event: "request",
+      data: {
+        type,
+        params: {
+          projectId: params.projectId,
+          teamId: params.teamId,
+          deploymentId: params.deploymentId,
+          limit: params.limit,
+          state: params.state,
+        },
+      },
+    });
 
     const headers: HeadersInit = {
       Authorization: `Bearer ${VERCEL_TOKEN}`,
@@ -63,6 +80,10 @@ export async function POST(req: NextRequest) {
         data = await fetchDeploymentEvents(params, headers);
         ttl = 15000; // 15 second cache for events (they change frequently)
         break;
+      case "project_list":
+        data = await fetchProjectList(params, headers);
+        ttl = 300000; // 5 minute cache
+        break;
       default:
         return Response.json({ error: "Unknown query type" }, { status: 400 });
     }
@@ -76,11 +97,65 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     console.error("Vercel API error:", error);
+    if (error instanceof VercelApiError && (error.status === 401 || error.status === 403)) {
+      await appendTelemetry({
+        level: "error",
+        source: "api.vercel",
+        event: "auth_error",
+        data: { error: error.message, status: error.status },
+      });
+      return Response.json({ error: error.message }, { status: error.status });
+    }
+
+    await appendTelemetry({
+      level: "error",
+      source: "api.vercel",
+      event: "error",
+      data: { error: error instanceof Error ? error.message : String(error) },
+    });
     return Response.json(
       { error: error instanceof Error ? error.message : "Vercel API error" },
       { status: 500 }
     );
   }
+}
+
+/**
+ * Fetches project list for picker UI
+ */
+async function fetchProjectList(
+  params: VercelRequest["params"],
+  headers: HeadersInit
+) {
+  const limit = params.limit ?? 20;
+  const teamId = params.teamId ?? DEFAULT_TEAM_ID;
+
+  const searchParams = new URLSearchParams();
+  searchParams.set("limit", String(limit));
+  if (teamId) searchParams.set("teamId", teamId);
+
+  const res = await fetch(
+    `${VERCEL_API}/v9/projects?${searchParams.toString()}`,
+    { headers }
+  );
+
+  await ensureSuccess(res);
+
+  const response = await res.json();
+  const projects = response.projects ?? [];
+
+  return projects.map((project: { id: string; name: string; framework?: string; teamId?: string; accountId?: string }) => {
+    const rawTeamId = project.teamId ?? project.accountId;
+    const teamId = typeof rawTeamId === "string" && rawTeamId.startsWith("team_")
+      ? rawTeamId
+      : undefined;
+    return {
+      id: project.id,
+      name: project.name,
+      framework: project.framework ?? "other",
+      ...(teamId ? { teamId } : {}),
+    };
+  });
 }
 
 /**
@@ -105,10 +180,7 @@ async function fetchDeployments(
     { headers }
   );
 
-  if (!res.ok) {
-    const errorText = await res.text();
-    throw new Error(`Vercel API error: ${res.status} - ${errorText}`);
-  }
+  await ensureSuccess(res);
 
   const response = await res.json();
   const deployments = response.deployments ?? [];
@@ -177,10 +249,7 @@ async function fetchProjectInfo(
     { headers }
   );
 
-  if (!res.ok) {
-    const errorText = await res.text();
-    throw new Error(`Vercel API error: ${res.status} - ${errorText}`);
-  }
+  await ensureSuccess(res);
 
   const project = await res.json();
 
@@ -248,10 +317,7 @@ async function fetchDeploymentEvents(
     { headers }
   );
 
-  if (!deploymentRes.ok) {
-    const errorText = await deploymentRes.text();
-    throw new Error(`Vercel API error: ${deploymentRes.status} - ${errorText}`);
-  }
+  await ensureSuccess(deploymentRes);
 
   const deployment = await deploymentRes.json();
 
@@ -298,4 +364,32 @@ async function fetchDeploymentEvents(
     errorMessage: deployment.errorMessage,
     events: events.slice(-50), // Last 50 events
   };
+}
+
+class VercelApiError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+    this.name = "VercelApiError";
+  }
+}
+
+async function ensureSuccess(res: Response) {
+  if (res.ok) {
+    return;
+  }
+
+  const text = await res.text();
+  let message = text;
+  try {
+    const parsed = JSON.parse(text);
+    if (parsed?.error?.message) {
+      message = parsed.error.message;
+    } else if (parsed?.message) {
+      message = parsed.message;
+    }
+  } catch {
+    // ignore
+  }
+
+  throw new VercelApiError(res.status, `Vercel API error: ${res.status} - ${message}`);
 }

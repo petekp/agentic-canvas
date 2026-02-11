@@ -16,6 +16,7 @@ export const ACTIVITY_TYPE_ICONS: Record<string, string> = {
   issue: "📋",
   comment: "💬",
   create: "✨",
+  delete: "🗑",
   release: "🏷",
   other: "•",
 };
@@ -66,10 +67,13 @@ export function createGitHubItemUrl(
 // Loading States
 // ============================================================================
 
-export function LoadingState() {
+export function LoadingState({ label }: { label?: string }) {
   return (
-    <div className="flex items-center justify-center h-full">
+    <div className="flex flex-col items-center justify-center h-full gap-2">
       <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      {label ? (
+        <span className="text-[11px] text-muted-foreground">{label}</span>
+      ) : null}
     </div>
   );
 }

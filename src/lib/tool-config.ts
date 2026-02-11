@@ -6,6 +6,18 @@ import {
 
 type Config = Record<string, unknown> | undefined;
 
+const GITHUB_USERNAME_REGEX =
+  /\b(?:activity|events?|feed)[^.!?\n]{0,60}\b(?:by|from|for)\s+@?([a-z\d](?:[a-z\d-]{0,37}))/i;
+
+function inferGitHubUsernameFromText(text: string | null | undefined): string | null {
+  if (!text) return null;
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  const match = trimmed.match(GITHUB_USERNAME_REGEX);
+  const username = match?.[1]?.trim();
+  return username ? username : null;
+}
+
 export function resolveConfigFromChat(
   typeId: string,
   config: Config,
@@ -29,6 +41,16 @@ export function resolveConfigFromChat(
       const inferred = inferSlackUserFromText(lastUserMessage);
       if (inferred?.userId || inferred?.userQuery) {
         return { ...(normalized ?? {}), ...inferred };
+      }
+    }
+  }
+
+  if (typeId === "github.activity-timeline") {
+    const hasUsername = normalized?.username !== undefined;
+    if (!hasUsername && lastUserMessage) {
+      const inferredUsername = inferGitHubUsernameFromText(lastUserMessage);
+      if (inferredUsername) {
+        return { ...(normalized ?? {}), username: inferredUsername };
       }
     }
   }

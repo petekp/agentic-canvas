@@ -41,6 +41,7 @@ import type {
 } from "@/types";
 import { createUserSource } from "@/lib/undo/types";
 import type { UndoCanvasCommand } from "@/lib/undo/types";
+import { trackClientTelemetry } from "@/lib/telemetry-client";
 
 // Initial state
 const initialGrid: GridConfig = {
@@ -87,6 +88,12 @@ export const createCanvasSlice: StateCreator<
 
   addComponent: (payload) => {
     const { typeId, config, dataBinding, position, size, meta } = payload;
+
+    void trackClientTelemetry({
+      source: "store.canvas",
+      event: "component_add_start",
+      data: { typeId, position, size, hasBinding: Boolean(dataBinding) },
+    });
 
     // Capture BEFORE snapshot
     const beforeSnapshot = createSnapshot(get().canvas.components);
@@ -139,6 +146,12 @@ export const createCanvasSlice: StateCreator<
       afterSnapshot,
     });
 
+    void trackClientTelemetry({
+      source: "store.canvas",
+      event: "component_add_success",
+      data: { componentId, typeId, position: finalPosition, size: finalSize },
+    });
+
     // Trigger data fetch if binding exists
     if (dataBinding) {
       get().fetchData(componentId, dataBinding);
@@ -157,6 +170,12 @@ export const createCanvasSlice: StateCreator<
 
     const component = get().canvas.components.find((c) => c.id === componentId);
     if (!component) {
+      void trackClientTelemetry({
+        source: "store.canvas",
+        event: "component_update_error",
+        level: "error",
+        data: { componentId, error: "COMPONENT_NOT_FOUND" },
+      });
       return {
         success: false,
         undoId: "",
@@ -165,6 +184,18 @@ export const createCanvasSlice: StateCreator<
         error: { code: "COMPONENT_NOT_FOUND", message: "Component not found", componentId },
       };
     }
+
+    void trackClientTelemetry({
+      source: "store.canvas",
+      event: "component_update_start",
+      data: {
+        componentId,
+        typeId: component.typeId,
+        configKeys: config ? Object.keys(config) : [],
+        bindingProvided: dataBinding !== undefined,
+        metaKeys: meta ? Object.keys(meta) : [],
+      },
+    });
 
     // Capture BEFORE snapshot
     const beforeSnapshot = createSnapshot(get().canvas.components);
@@ -212,6 +243,18 @@ export const createCanvasSlice: StateCreator<
       afterSnapshot,
     });
 
+    void trackClientTelemetry({
+      source: "store.canvas",
+      event: "component_update_success",
+      data: {
+        componentId,
+        typeId: component.typeId,
+        bindingChanged,
+        configKeys: config ? Object.keys(config) : [],
+        metaKeys: meta ? Object.keys(meta) : [],
+      },
+    });
+
     // Re-fetch data if binding changed
     if (dataBinding && dataBinding !== beforeBinding) {
       get().fetchData(componentId, dataBinding);
@@ -230,6 +273,12 @@ export const createCanvasSlice: StateCreator<
   removeComponent: (componentId) => {
     const component = get().canvas.components.find((c) => c.id === componentId);
     if (!component) {
+      void trackClientTelemetry({
+        source: "store.canvas",
+        event: "component_remove_error",
+        level: "error",
+        data: { componentId, error: "COMPONENT_NOT_FOUND" },
+      });
       return {
         success: false,
         undoId: "",
@@ -238,6 +287,12 @@ export const createCanvasSlice: StateCreator<
         error: { code: "COMPONENT_NOT_FOUND", message: "Component not found", componentId },
       };
     }
+
+    void trackClientTelemetry({
+      source: "store.canvas",
+      event: "component_remove_start",
+      data: { componentId, typeId: component.typeId },
+    });
 
     // Capture BEFORE snapshot
     const beforeSnapshot = createSnapshot(get().canvas.components);
@@ -270,6 +325,12 @@ export const createCanvasSlice: StateCreator<
       afterSnapshot,
     });
 
+    void trackClientTelemetry({
+      source: "store.canvas",
+      event: "component_remove_success",
+      data: { componentId, typeId: component.typeId },
+    });
+
     return {
       success: true,
       undoId: componentId,
@@ -281,6 +342,12 @@ export const createCanvasSlice: StateCreator<
   moveComponent: (componentId, position) => {
     const component = get().canvas.components.find((c) => c.id === componentId);
     if (!component) {
+      void trackClientTelemetry({
+        source: "store.canvas",
+        event: "component_move_error",
+        level: "error",
+        data: { componentId, error: "COMPONENT_NOT_FOUND" },
+      });
       return {
         success: false,
         undoId: "",
@@ -297,6 +364,12 @@ export const createCanvasSlice: StateCreator<
       position.col + component.size.cols > grid.columns ||
       position.row + component.size.rows > grid.rows
     ) {
+      void trackClientTelemetry({
+        source: "store.canvas",
+        event: "component_move_error",
+        level: "warn",
+        data: { componentId, error: "INVALID_POSITION", position },
+      });
       return {
         success: false,
         undoId: "",
@@ -305,6 +378,12 @@ export const createCanvasSlice: StateCreator<
         error: { code: "INVALID_POSITION", message: "Position out of bounds", componentId },
       };
     }
+
+    void trackClientTelemetry({
+      source: "store.canvas",
+      event: "component_move_start",
+      data: { componentId, from: component.position, to: position },
+    });
 
     // Capture BEFORE snapshot
     const beforeSnapshot = createSnapshot(get().canvas.components);
@@ -336,6 +415,12 @@ export const createCanvasSlice: StateCreator<
       afterSnapshot,
     });
 
+    void trackClientTelemetry({
+      source: "store.canvas",
+      event: "component_move_success",
+      data: { componentId, from: fromPosition, to: position },
+    });
+
     return {
       success: true,
       undoId: componentId,
@@ -347,6 +432,12 @@ export const createCanvasSlice: StateCreator<
   resizeComponent: (componentId, size) => {
     const component = get().canvas.components.find((c) => c.id === componentId);
     if (!component) {
+      void trackClientTelemetry({
+        source: "store.canvas",
+        event: "component_resize_error",
+        level: "error",
+        data: { componentId, error: "COMPONENT_NOT_FOUND" },
+      });
       return {
         success: false,
         undoId: "",
@@ -361,6 +452,12 @@ export const createCanvasSlice: StateCreator<
       component.position.col + size.cols > grid.columns ||
       component.position.row + size.rows > grid.rows
     ) {
+      void trackClientTelemetry({
+        source: "store.canvas",
+        event: "component_resize_error",
+        level: "warn",
+        data: { componentId, error: "INVALID_SIZE", size },
+      });
       return {
         success: false,
         undoId: "",
@@ -369,6 +466,12 @@ export const createCanvasSlice: StateCreator<
         error: { code: "INVALID_SIZE", message: "Size extends beyond grid", componentId },
       };
     }
+
+    void trackClientTelemetry({
+      source: "store.canvas",
+      event: "component_resize_start",
+      data: { componentId, from: component.size, to: size },
+    });
 
     // Capture BEFORE snapshot
     const beforeSnapshot = createSnapshot(get().canvas.components);
@@ -400,6 +503,12 @@ export const createCanvasSlice: StateCreator<
       afterSnapshot,
     });
 
+    void trackClientTelemetry({
+      source: "store.canvas",
+      event: "component_resize_success",
+      data: { componentId, from: fromSize, to: size },
+    });
+
     return {
       success: true,
       undoId: componentId,
@@ -415,6 +524,11 @@ export const createCanvasSlice: StateCreator<
       : components;
 
     if (toRemove.length === 0) {
+      void trackClientTelemetry({
+        source: "store.canvas",
+        event: "canvas_clear_noop",
+        data: { preservePinned },
+      });
       return {
         success: true,
         undoId: "",
@@ -422,6 +536,12 @@ export const createCanvasSlice: StateCreator<
         affectedComponentIds: [],
       };
     }
+
+    void trackClientTelemetry({
+      source: "store.canvas",
+      event: "canvas_clear_start",
+      data: { preservePinned, removeCount: toRemove.length },
+    });
 
     // Capture BEFORE snapshot
     const beforeSnapshot = createSnapshot(get().canvas.components);
@@ -449,6 +569,12 @@ export const createCanvasSlice: StateCreator<
       command,
       beforeSnapshot,
       afterSnapshot,
+    });
+
+    void trackClientTelemetry({
+      source: "store.canvas",
+      event: "canvas_clear_success",
+      data: { preservePinned, removeCount: toRemove.length },
     });
 
     return {
