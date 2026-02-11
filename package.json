@@ -10,6 +10,7 @@
     "lint": "next lint",
     "test": "vitest run",
     "eval:pi:phase1": "./scripts/run-pi-phase1-gates.sh",
+    "eval:pi:phase2:smoke": "./scripts/run-pi-phase2-smoke.sh",
     "eval:min": "./scripts/run-min-evals.sh",
     "eval:min:list": "./scripts/run-min-evals.sh --list"
   },
