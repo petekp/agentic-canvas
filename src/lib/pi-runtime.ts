@@ -12,6 +12,7 @@ import {
   type PiStreamEvent,
   type ToolLoopEvent,
 } from "./pi-adapter-contract";
+import { getPiFilesystemToolDiagnosticsFromEnv } from "./pi-filesystem-tools";
 import { runPiRetentionJobs } from "./pi-retention";
 
 export interface PiRuntimeSessionScope {
@@ -65,6 +66,7 @@ interface PiRuntimeEngineResolution {
 export interface PiRuntimeDiagnostics {
   runtimeRoot: string;
   persistToFilesystem: boolean;
+  filesystem: ReturnType<typeof getPiFilesystemToolDiagnosticsFromEnv>;
   engine: {
     id: string | null;
     source: PiRuntimeEngineSource | "unresolved";
@@ -751,6 +753,7 @@ export async function getPiRuntimeDiagnostics(input?: {
   return {
     runtimeRoot: resolveRuntimeRoot(),
     persistToFilesystem: isPiFilesystemPersistenceEnabled(),
+    filesystem: getPiFilesystemToolDiagnosticsFromEnv(),
     engine: {
       id: resolution?.engine.id ?? null,
       source: resolution?.source ?? "unresolved",

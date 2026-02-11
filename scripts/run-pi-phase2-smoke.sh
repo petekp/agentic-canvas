@@ -17,6 +17,7 @@ Options:
   --chat-prompt <text>        Prompt used for /api/chat smoke request
   --expect-chat-text <text>   Optional text expected in chat SSE output
   --chat-timeout-sec <sec>    Curl max-time for chat request (default: 45)
+  --with-fs-smoke             Run local filesystem tool smoke after endpoint checks
   -h, --help                  Show help
 
 Environment:
@@ -27,6 +28,7 @@ Environment:
   PI_SMOKE_CHAT_PROMPT
   PI_SMOKE_EXPECT_CHAT_TEXT
   PI_SMOKE_CHAT_TIMEOUT_SEC
+  PI_SMOKE_WITH_FS_SMOKE
   PI_RETENTION_API_TOKEN      Optional bearer token for /api/pi/retention
 USAGE
 }
@@ -46,6 +48,7 @@ ALLOW_RUNTIME_404="${PI_SMOKE_ALLOW_RUNTIME_404:-0}"
 CHAT_PROMPT="${PI_SMOKE_CHAT_PROMPT:-Reply with exactly two words.}"
 EXPECT_CHAT_TEXT="${PI_SMOKE_EXPECT_CHAT_TEXT:-}"
 CHAT_TIMEOUT_SEC="${PI_SMOKE_CHAT_TIMEOUT_SEC:-45}"
+WITH_FS_SMOKE="${PI_SMOKE_WITH_FS_SMOKE:-0}"
 RETENTION_TOKEN="${PI_RETENTION_API_TOKEN:-}"
 
 while [[ $# -gt 0 ]]; do
@@ -77,6 +80,10 @@ while [[ $# -gt 0 ]]; do
     --chat-timeout-sec)
       CHAT_TIMEOUT_SEC="$2"
       shift 2
+      ;;
+    --with-fs-smoke)
+      WITH_FS_SMOKE="1"
+      shift
       ;;
     -h|--help)
       usage
@@ -272,5 +279,10 @@ if (expectText && !raw.includes(expectText)) {
 }
 NODE
 echo "PASS chat: SSE stream validated"
+
+if [[ "$WITH_FS_SMOKE" == "1" ]]; then
+  echo "Running optional local filesystem smoke checks..."
+  ./scripts/run-pi-filesystem-smoke.sh
+fi
 
 echo "PASS all: pi phase-2 smoke checks completed successfully"

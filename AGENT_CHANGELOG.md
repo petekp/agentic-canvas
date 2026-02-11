@@ -19,6 +19,46 @@ Agentic Canvas is a working v0.1+ system with spaces-first navigation, assistant
 
 ## Timeline
 
+### 2026-02-11 - Local Prototype Filesystem Tooling + Eval Hardening
+
+**What changed:**
+- Added guarded local filesystem tool surface and env-based diagnostics:
+  - `src/lib/pi-filesystem-tools.ts`
+  - Tool surface: `list_dir`, `read_file`, `write_file`, `edit_file`
+  - Optional `delete_file` behind `PI_FS_DELETE_ENABLED`
+  - Env diagnostics accessor: `getPiFilesystemToolDiagnosticsFromEnv()`
+- Wired filesystem tools into the existing phase-1 adapter tool path:
+  - `src/lib/pi-phase1-adapter.ts`
+  - Frontend toolset now merges with server-side filesystem tools (when enabled).
+- Expanded runtime diagnostics to include filesystem tool config:
+  - `src/lib/pi-runtime.ts`
+  - `src/app/api/pi/runtime/route.ts`
+  - `src/app/api/pi/runtime/route.test.ts`
+- Added filesystem tool telemetry for start/result/error at source `tool.fs.<toolName>`.
+- Added phased filesystem eval coverage:
+  - `src/lib/pi-filesystem-tools.contract.test.ts`
+  - `src/lib/pi-filesystem-tools.readonly.test.ts`
+  - `src/lib/pi-filesystem-tools.mutation.test.ts`
+  - `src/lib/pi-filesystem-tools.adversarial.test.ts`
+  - `src/lib/pi-filesystem-tools.smoke.test.ts`
+  - `scripts/run-pi-filesystem-evals.sh`
+  - `scripts/run-pi-filesystem-smoke.sh`
+  - `package.json` scripts: `eval:pi:fs:*`
+- Extended phase-2 smoke script with optional local filesystem smoke execution:
+  - `scripts/run-pi-phase2-smoke.sh --with-fs-smoke`
+
+**Why:** Close the local-prototype safety/eval loop before broader runtime work: strict path guardrails, explicit diagnostics, and repeatable contract/read-only/mutation/adversarial/smoke checks.
+
+**Agent impact:**
+- Prefer `createPiFilesystemToolSet(...)` and env accessors in `src/lib/pi-filesystem-tools.ts` over bespoke file access logic.
+- Use `pnpm run eval:pi:fs:all` for filesystem policy regression checks.
+- Use `pnpm run eval:pi:fs:smoke` for local smoke flow (list/read/write/edit + traversal guard).
+- Use `GET /api/pi/runtime` diagnostics to verify live filesystem tool settings (`toolsEnabled`, limits, root, delete gate).
+
+**Deprecated:** None
+
+---
+
 ### 2026-02-11 - Phase-1 Pi Runtime Seam + Morning Brief Integration
 
 **What changed:** (commits `50ecd64`, `a0ffa1f`)

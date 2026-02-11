@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { tool, zodSchema, type ToolSet } from "ai";
 import { z } from "zod";
+import { appendTelemetry } from "@/lib/telemetry";
 
 const DEFAULT_MAX_READ_BYTES = 256 * 1024;
 const DEFAULT_MAX_WRITE_BYTES = 256 * 1024;
@@ -50,6 +51,17 @@ export interface PiFilesystemToolConfig {
   allowDelete: boolean;
 }
 
+export interface PiFilesystemToolDiagnostics {
+  toolsEnabled: boolean;
+  allowedRoot: string;
+  maxReadBytes: number;
+  maxWriteBytes: number;
+  maxListEntries: number;
+  maxEditOperations: number;
+  deleteEnabled: boolean;
+  exposedToolNames: string[];
+}
+
 type PiFilesystemToolErrorCode =
   | "invalid_input"
   | "path_outside_root"
@@ -86,6 +98,49 @@ function parseIntegerEnv(value: string | undefined, defaultValue: number): numbe
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) return defaultValue;
   return Math.floor(parsed);
+}
+
+function isControlCharacterPresent(input: string): boolean {
+  return /[\x00-\x1F\x7F]/.test(input);
+}
+
+function isUrlLikePath(input: string): boolean {
+  return /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(input);
+}
+
+function assertPathInputIsSafe(rawPath: string): void {
+  if (rawPath.length === 0) {
+    throw new PiFilesystemToolError("invalid_input", "Path must be a non-empty string.");
+  }
+
+  if (isControlCharacterPresent(rawPath)) {
+    throw new PiFilesystemToolError(
+      "invalid_input",
+      "Path contains control characters and was rejected."
+    );
+  }
+
+  if (isUrlLikePath(rawPath)) {
+    throw new PiFilesystemToolError(
+      "invalid_input",
+      "URL-like path values are not supported."
+    );
+  }
+
+  if (rawPath.includes("%")) {
+    throw new PiFilesystemToolError(
+      "invalid_input",
+      "Percent-encoded path values are not supported."
+    );
+  }
+
+  const segments = rawPath.split(/[\\/]+/).filter((segment) => segment.length > 0);
+  if (segments.includes("..")) {
+    throw new PiFilesystemToolError(
+      "path_outside_root",
+      "Path traversal outside the configured root is not allowed."
+    );
+  }
 }
 
 function normalizeConfig(input: Partial<PiFilesystemToolConfig>): PiFilesystemToolConfig {
@@ -199,9 +254,7 @@ function createPathResolver(config: PiFilesystemToolConfig): {
 
   const resolveCandidatePath = (inputPath: string): string => {
     const trimmed = inputPath.trim();
-    if (trimmed.length === 0) {
-      throw new PiFilesystemToolError("invalid_input", "Path must be a non-empty string.");
-    }
+    assertPathInputIsSafe(trimmed);
     const candidate = path.isAbsolute(trimmed)
       ? path.resolve(trimmed)
       : path.resolve(config.allowedRoot, trimmed);
@@ -325,6 +378,120 @@ function applyTextEdits(
   return { updatedContent: updated, appliedEdits };
 }
 
+function summarizeToolInput(input: unknown): Record<string, unknown> {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return {};
+  }
+  const record = input as Record<string, unknown>;
+  return {
+    path: typeof record.path === "string" ? record.path : undefined,
+    mode: typeof record.mode === "string" ? record.mode : undefined,
+    createParents: typeof record.createParents === "boolean" ? record.createParents : undefined,
+    confirm: typeof record.confirm === "boolean" ? record.confirm : undefined,
+    editCount: Array.isArray(record.edits) ? record.edits.length : undefined,
+    contentBytes:
+      typeof record.content === "string" ? Buffer.byteLength(record.content, "utf8") : undefined,
+  };
+}
+
+function summarizeToolResult(result: unknown): Record<string, unknown> {
+  if (!result || typeof result !== "object" || Array.isArray(result)) {
+    return {};
+  }
+  const record = result as Record<string, unknown>;
+  return {
+    success: record.success,
+    code: record.code,
+    path: typeof record.path === "string" ? record.path : undefined,
+    bytesRead: typeof record.bytesRead === "number" ? record.bytesRead : undefined,
+    bytesWritten:
+      typeof record.bytesWritten === "number" ? record.bytesWritten : undefined,
+    fileSizeBytes:
+      typeof record.fileSizeBytes === "number" ? record.fileSizeBytes : undefined,
+    appliedEdits:
+      typeof record.appliedEdits === "number" ? record.appliedEdits : undefined,
+  };
+}
+
+function withFilesystemToolTelemetry(
+  toolName: string,
+  execute: (input: unknown) => Promise<Record<string, unknown>>
+): (input: unknown) => Promise<Record<string, unknown>> {
+  return async (input) => {
+    const startedAt = Date.now();
+    const inputSummary = summarizeToolInput(input);
+    void appendTelemetry({
+      level: "info",
+      source: `tool.fs.${toolName}`,
+      event: "start",
+      data: inputSummary,
+    }).catch(() => undefined);
+
+    try {
+      const result = await execute(input);
+      const success = result.success === true;
+      void appendTelemetry({
+        level: success ? "info" : "warn",
+        source: `tool.fs.${toolName}`,
+        event: "result",
+        data: {
+          ...summarizeToolResult(result),
+          durationMs: Date.now() - startedAt,
+        },
+      }).catch(() => undefined);
+      return result;
+    } catch (error) {
+      const result = toFailure(error);
+      void appendTelemetry({
+        level: "error",
+        source: `tool.fs.${toolName}`,
+        event: "error",
+        data: {
+          ...inputSummary,
+          code: result.code,
+          message: result.error,
+          durationMs: Date.now() - startedAt,
+        },
+      }).catch(() => undefined);
+      return result;
+    }
+  };
+}
+
+function resolveFilesystemEnvConfig(): {
+  toolsEnabled: boolean;
+  config: PiFilesystemToolConfig;
+} {
+  const toolsEnabled = parseBooleanEnv(process.env.PI_FILESYSTEM_TOOLS_ENABLED, true);
+  const config = normalizeConfig({
+    allowedRoot: process.env.PI_FS_ALLOWED_ROOT ?? process.cwd(),
+    maxReadBytes: parseIntegerEnv(process.env.PI_FS_MAX_READ_BYTES, DEFAULT_MAX_READ_BYTES),
+    maxWriteBytes: parseIntegerEnv(process.env.PI_FS_MAX_WRITE_BYTES, DEFAULT_MAX_WRITE_BYTES),
+    maxListEntries: parseIntegerEnv(
+      process.env.PI_FS_MAX_LIST_ENTRIES,
+      DEFAULT_MAX_LIST_ENTRIES
+    ),
+    maxEditOperations: parseIntegerEnv(
+      process.env.PI_FS_MAX_EDIT_OPERATIONS,
+      DEFAULT_MAX_EDIT_OPERATIONS
+    ),
+    allowDelete: parseBooleanEnv(process.env.PI_FS_DELETE_ENABLED, false),
+  });
+  return { toolsEnabled, config };
+}
+
+function getExposedToolNames(input: {
+  toolsEnabled: boolean;
+  allowDelete: boolean;
+}): string[] {
+  if (!input.toolsEnabled) return [];
+  const names = ["list_dir", "read_file", "write_file", "edit_file"];
+  if (input.allowDelete) {
+    names.push("delete_file");
+  }
+  return names;
+}
+
 export function createPiFilesystemToolSet(
   options: Partial<PiFilesystemToolConfig> = {}
 ): ToolSet {
@@ -336,7 +503,7 @@ export function createPiFilesystemToolSet(
       description:
         "List files and directories under the allowed workspace root. Never use absolute paths outside the workspace.",
       inputSchema: zodSchema(listDirInputSchema),
-      execute: async (rawInput) => {
+      execute: withFilesystemToolTelemetry("list_dir", async (rawInput) => {
         try {
           const input = listDirInputSchema.parse(rawInput);
           const resolved = await resolver.resolveExistingPath(input.path);
@@ -369,14 +536,14 @@ export function createPiFilesystemToolSet(
         } catch (error) {
           return toFailure(error);
         }
-      },
+      }),
     }),
 
     read_file: tool({
       description:
         "Read a UTF-8 text file under the allowed workspace root. Fails for files larger than configured limits.",
       inputSchema: zodSchema(readFileInputSchema),
-      execute: async (rawInput) => {
+      execute: withFilesystemToolTelemetry("read_file", async (rawInput) => {
         try {
           const input = readFileInputSchema.parse(rawInput);
           const resolved = await resolver.resolveExistingPath(input.path);
@@ -400,14 +567,14 @@ export function createPiFilesystemToolSet(
         } catch (error) {
           return toFailure(error);
         }
-      },
+      }),
     }),
 
     write_file: tool({
       description:
         "Write UTF-8 text files under the allowed workspace root. Supports overwrite and append modes with size checks.",
       inputSchema: zodSchema(writeFileInputSchema),
-      execute: async (rawInput) => {
+      execute: withFilesystemToolTelemetry("write_file", async (rawInput) => {
         try {
           const input = writeFileInputSchema.parse(rawInput);
           const bytesToWrite = Buffer.byteLength(input.content, "utf8");
@@ -442,14 +609,14 @@ export function createPiFilesystemToolSet(
         } catch (error) {
           return toFailure(error);
         }
-      },
+      }),
     }),
 
     edit_file: tool({
       description:
         "Apply bounded text replacement edits to a file under the allowed workspace root. Edits are sequential.",
       inputSchema: zodSchema(editFileInputSchema),
-      execute: async (rawInput) => {
+      execute: withFilesystemToolTelemetry("edit_file", async (rawInput) => {
         try {
           const input = editFileInputSchema.parse(rawInput);
           assertMaxOperations(input.edits.length, config.maxEditOperations);
@@ -482,7 +649,7 @@ export function createPiFilesystemToolSet(
         } catch (error) {
           return toFailure(error);
         }
-      },
+      }),
     }),
   };
 
@@ -491,7 +658,7 @@ export function createPiFilesystemToolSet(
       description:
         "Delete a file under the allowed workspace root. Requires confirm=true for destructive safety.",
       inputSchema: zodSchema(deleteFileInputSchema),
-      execute: async (rawInput) => {
+      execute: withFilesystemToolTelemetry("delete_file", async (rawInput) => {
         try {
           const input = deleteFileInputSchema.parse(rawInput);
           if (!input.confirm) {
@@ -517,7 +684,7 @@ export function createPiFilesystemToolSet(
         } catch (error) {
           return toFailure(error);
         }
-      },
+      }),
     });
   }
 
@@ -525,25 +692,29 @@ export function createPiFilesystemToolSet(
 }
 
 export function resolvePiFilesystemToolSetFromEnv(): ToolSet | undefined {
-  const enabled = parseBooleanEnv(process.env.PI_FILESYSTEM_TOOLS_ENABLED, true);
-  if (!enabled) {
+  const { toolsEnabled, config } = resolveFilesystemEnvConfig();
+  if (!toolsEnabled) {
     return undefined;
   }
 
-  return createPiFilesystemToolSet({
-    allowedRoot: process.env.PI_FS_ALLOWED_ROOT ?? process.cwd(),
-    maxReadBytes: parseIntegerEnv(process.env.PI_FS_MAX_READ_BYTES, DEFAULT_MAX_READ_BYTES),
-    maxWriteBytes: parseIntegerEnv(process.env.PI_FS_MAX_WRITE_BYTES, DEFAULT_MAX_WRITE_BYTES),
-    maxListEntries: parseIntegerEnv(
-      process.env.PI_FS_MAX_LIST_ENTRIES,
-      DEFAULT_MAX_LIST_ENTRIES
-    ),
-    maxEditOperations: parseIntegerEnv(
-      process.env.PI_FS_MAX_EDIT_OPERATIONS,
-      DEFAULT_MAX_EDIT_OPERATIONS
-    ),
-    allowDelete: parseBooleanEnv(process.env.PI_FS_DELETE_ENABLED, false),
-  });
+  return createPiFilesystemToolSet(config);
+}
+
+export function getPiFilesystemToolDiagnosticsFromEnv(): PiFilesystemToolDiagnostics {
+  const { toolsEnabled, config } = resolveFilesystemEnvConfig();
+  return {
+    toolsEnabled,
+    allowedRoot: config.allowedRoot,
+    maxReadBytes: config.maxReadBytes,
+    maxWriteBytes: config.maxWriteBytes,
+    maxListEntries: config.maxListEntries,
+    maxEditOperations: config.maxEditOperations,
+    deleteEnabled: config.allowDelete,
+    exposedToolNames: getExposedToolNames({
+      toolsEnabled,
+      allowDelete: config.allowDelete,
+    }),
+  };
 }
 
 export function mergePiToolSets(primary?: ToolSet, secondary?: ToolSet): ToolSet | undefined {

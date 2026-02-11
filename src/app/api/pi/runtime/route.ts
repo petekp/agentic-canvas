@@ -23,6 +23,9 @@ export async function GET() {
         configuredModule: diagnostics.engine.configuredModule,
         loadedModule: diagnostics.engine.loadedModule,
         loadedExport: diagnostics.engine.loadedExport,
+        fsToolsEnabled: diagnostics.filesystem.toolsEnabled,
+        fsAllowedRoot: diagnostics.filesystem.allowedRoot,
+        fsExposedTools: diagnostics.filesystem.exposedToolNames,
       },
     });
     return Response.json({ ok: true, diagnostics });

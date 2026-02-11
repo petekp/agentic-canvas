@@ -11,7 +11,7 @@ usage() {
 run-pi-filesystem-evals.sh - Run phased PI filesystem evals.
 
 Usage:
-  ./scripts/run-pi-filesystem-evals.sh [--phase contract|readonly|mutation|all]
+  ./scripts/run-pi-filesystem-evals.sh [--phase contract|readonly|mutation|adversarial|all]
 USAGE
 }
 
@@ -46,15 +46,20 @@ case "$PHASE" in
     echo "Running PI filesystem mutation evals..."
     pnpm test src/lib/pi-filesystem-tools.mutation.test.ts
     ;;
+  adversarial)
+    echo "Running PI filesystem adversarial evals..."
+    pnpm test src/lib/pi-filesystem-tools.adversarial.test.ts
+    ;;
   all)
     echo "Running all PI filesystem eval phases..."
     pnpm test \
       src/lib/pi-filesystem-tools.contract.test.ts \
       src/lib/pi-filesystem-tools.readonly.test.ts \
-      src/lib/pi-filesystem-tools.mutation.test.ts
+      src/lib/pi-filesystem-tools.mutation.test.ts \
+      src/lib/pi-filesystem-tools.adversarial.test.ts
     ;;
   *)
-    echo "Invalid phase: $PHASE (expected contract|readonly|mutation|all)" >&2
+    echo "Invalid phase: $PHASE (expected contract|readonly|mutation|adversarial|all)" >&2
     exit 1
     ;;
 esac

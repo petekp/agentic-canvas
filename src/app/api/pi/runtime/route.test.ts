@@ -55,6 +55,14 @@ describe("PI runtime diagnostics API route", () => {
       loadedExport: null,
       loadError: null,
     });
+    expect(payload.diagnostics.filesystem).toMatchObject({
+      toolsEnabled: true,
+      deleteEnabled: false,
+      maxReadBytes: 262144,
+      maxWriteBytes: 262144,
+      maxListEntries: 200,
+      maxEditOperations: 20,
+    });
   });
 
   it("returns external runtime diagnostics when module is configured", async () => {
@@ -120,5 +128,33 @@ describe("PI runtime diagnostics API route", () => {
     expect(payload.diagnostics.engine.configuredModule).toBe("/tmp/does-not-exist-pi-engine.mjs");
     expect(payload.diagnostics.engine.loadedModule).toBe("/tmp/does-not-exist-pi-engine.mjs");
     expect(payload.diagnostics.engine.loadError).toContain("does-not-exist-pi-engine.mjs");
+  });
+
+  it("reports filesystem diagnostics settings from env", async () => {
+    vi.stubEnv("PI_RUNTIME_DIAGNOSTICS_ENABLED", "1");
+    vi.stubEnv("PI_EPISODE_LOG_DISABLED", "1");
+    vi.stubEnv("PI_FILESYSTEM_TOOLS_ENABLED", "1");
+    vi.stubEnv("PI_FS_ALLOWED_ROOT", "/tmp/pi-fs-root");
+    vi.stubEnv("PI_FS_MAX_READ_BYTES", "4096");
+    vi.stubEnv("PI_FS_MAX_WRITE_BYTES", "8192");
+    vi.stubEnv("PI_FS_MAX_LIST_ENTRIES", "50");
+    vi.stubEnv("PI_FS_MAX_EDIT_OPERATIONS", "7");
+    vi.stubEnv("PI_FS_DELETE_ENABLED", "1");
+
+    const { GET } = await import("@/app/api/pi/runtime/route");
+    const req = new Request("http://localhost/api/pi/runtime", { method: "GET" });
+    const res = await GET(req as unknown as NextRequest);
+    const payload = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(payload.diagnostics.filesystem).toMatchObject({
+      toolsEnabled: true,
+      allowedRoot: "/tmp/pi-fs-root",
+      maxReadBytes: 4096,
+      maxWriteBytes: 8192,
+      maxListEntries: 50,
+      maxEditOperations: 7,
+      deleteEnabled: true,
+    });
   });
 });

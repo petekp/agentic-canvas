@@ -91,6 +91,23 @@ Mandatory for each slice:
 3. Local eval suite passes.
 4. No database/auth/production infra is required to run or demo.
 
+## Implementation Status (2026-02-11)
+
+- [x] Minimal filesystem tool surface implemented:
+  - `list_dir`, `read_file`, `write_file`, `edit_file`
+  - Optional `delete_file` behind env gate
+- [x] Safety guardrails implemented:
+  - Allowed-root restriction
+  - Traversal and symlink escape prevention
+  - Read/write/list/edit operation limits
+  - Destructive confirmation requirement for delete
+- [x] Eval phases wired and passing:
+  - Contract/path-safety evals
+  - Read-only evals
+  - Mutation evals
+  - Adversarial evals
+  - Local filesystem smoke run
+
 ## Change Control
 
 Any proposal that adds production-only infrastructure (DB/auth/queue/hosted ops) must:
