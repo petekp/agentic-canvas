@@ -1,6 +1,7 @@
 import { frontendTools } from "@assistant-ui/react-ai-sdk";
 import { type LanguageModel, type ModelMessage, type ToolSet } from "ai";
 import { buildAgentSessionId } from "@/lib/pi-adapter-contract";
+import { mergePiToolSets, resolvePiFilesystemToolSetFromEnv } from "@/lib/pi-filesystem-tools";
 import { appendPiEventToFilesystem, streamWithPiRuntime } from "@/lib/pi-runtime";
 
 const DEFAULT_WORKSPACE_ID = "workspace_default";
@@ -32,10 +33,15 @@ export function resolveChatSessionScope(input: {
 }
 
 export function toFrontendToolSet(tools: unknown): ToolSet | undefined {
-  if (!tools || typeof tools !== "object" || Array.isArray(tools)) return undefined;
-  return frontendTools(
-    tools as Record<string, { description?: string; parameters: object }>
-  ) as unknown as ToolSet;
+  const frontendToolSet =
+    tools && typeof tools === "object" && !Array.isArray(tools)
+      ? (frontendTools(
+          tools as Record<string, { description?: string; parameters: object }>
+        ) as unknown as ToolSet)
+      : undefined;
+
+  const filesystemToolSet = resolvePiFilesystemToolSetFromEnv();
+  return mergePiToolSets(frontendToolSet, filesystemToolSet);
 }
 
 export interface StreamWithPiPhase1AdapterOptions {

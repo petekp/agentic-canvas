@@ -1,13 +1,22 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   appendPiEventToFilesystem,
   resolveChatSessionScope,
+  toFrontendToolSet,
 } from "./pi-phase1-adapter";
 
 describe("pi phase-1 adapter", () => {
+  beforeEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("resolves session scope from request ids", () => {
     const scope = resolveChatSessionScope({
       workspaceId: "ws_123",
@@ -48,5 +57,25 @@ describe("pi phase-1 adapter", () => {
 
     expect(content).toContain("\"type\":\"response.created\"");
     expect(content).toContain("\"runId\":\"run_1\"");
+  });
+
+  it("exposes filesystem tools by default for local prototype runtime", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "pi-phase1-tools-default-"));
+    vi.stubEnv("PI_FS_ALLOWED_ROOT", root);
+
+    const toolSet = toFrontendToolSet(undefined);
+    expect(toolSet).toBeDefined();
+    expect(toolSet).toHaveProperty("list_dir");
+    expect(toolSet).toHaveProperty("read_file");
+    expect(toolSet).toHaveProperty("write_file");
+    expect(toolSet).toHaveProperty("edit_file");
+    expect(toolSet).not.toHaveProperty("delete_file");
+  });
+
+  it("supports disabling filesystem tool exposure via env", () => {
+    vi.stubEnv("PI_FILESYSTEM_TOOLS_ENABLED", "0");
+
+    const toolSet = toFrontendToolSet(undefined);
+    expect(toolSet).toBeUndefined();
   });
 });
