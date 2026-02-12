@@ -43,6 +43,6 @@ Scope: morning-brief v2 rewrite + bridge integration path in PR #3.
 
 ## Implications for current PR and next slices
 
-- Continue rewrite-first isolation in `agentic-canvas-v2` repo.
-- Keep old repo as bridge only via feature flag + adapter.
+- Keep rewrite work isolated from this repository.
+- Do not use this repository as a bridge for rewrite implementation.
 - Require principles adherence notes for behavior-changing PRs under the new process gates.

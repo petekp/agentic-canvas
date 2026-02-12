@@ -33,7 +33,6 @@ import type {
   DataBinding,
   DataError,
   MorningBriefComponentData,
-  MorningBriefOverride,
 } from "@/types";
 import type { Rule, RuleContext } from "@/lib/rules";
 import {
@@ -546,35 +545,11 @@ async function fetchBriefingData(
     outputType: binding.query.type === "morning_brief" ? "morning_brief" : "recommendations",
   };
 
-  const useMorningBriefV2 = requestBody.outputType === "morning_brief";
-
-  const v2RequestBody = {
-    schedule:
-      params.schedule && typeof params.schedule === "object"
-        ? (params.schedule as Record<string, unknown>)
-        : undefined,
-    mission_hint:
-      typeof params.mission_hint === "string"
-        ? params.mission_hint
-        : Array.isArray(requestBody.repos) && requestBody.repos.length > 0
-          ? `Morning brief for ${requestBody.repos.join(", ")}`
-          : "Morning brief for the current workspace",
-    evidence: Array.isArray(params.evidence)
-      ? (params.evidence as Array<Record<string, unknown>>)
-      : undefined,
-    reaction:
-      params.reaction && typeof params.reaction === "object"
-        ? (params.reaction as Record<string, unknown>)
-        : undefined,
-    llm_candidate: params.llm_candidate,
-    repair_candidate: params.repair_candidate,
-  };
-
   try {
-    const response = await fetch(useMorningBriefV2 ? "/api/briefing/v2" : "/api/briefing", {
+    const response = await fetch("/api/briefing", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(useMorningBriefV2 ? v2RequestBody : requestBody),
+      body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {
@@ -582,12 +557,7 @@ async function fetchBriefingData(
       throw new Error(error.error ?? `API error: ${response.status}`);
     }
 
-    const payload = (await response.json()) as { data: unknown; ttl: number };
-    if (requestBody.outputType === "morning_brief") {
-      return adaptMorningBriefV2Payload(payload, now);
-    }
-
-    return payload;
+    return response.json();
   } catch {
     const repos = Array.isArray(requestBody.repos) ? requestBody.repos : [];
     const repoLabel = repos.length > 0 ? repos.join(", ") : "your repos";
@@ -660,186 +630,6 @@ async function fetchBriefingData(
 
     return fallback;
   }
-}
-
-function computeFreshnessSummary(
-  evidence: MorningBriefComponentData["current"]["evidence"]
-): string {
-  if (evidence.length === 0) {
-    return "No live evidence captured.";
-  }
-
-  const freshness = evidence.map((item) => item.freshnessMinutes);
-  const min = Math.min(...freshness);
-  const max = Math.max(...freshness);
-  const stale = freshness.filter((value) => value > 180).length;
-  return `Freshness range ${min}-${max} minutes; stale items ${stale}.`;
-}
-
-function deriveMissionConfidence(
-  priorities: Array<{ confidence?: "low" | "medium" | "high" }>
-): "low" | "medium" | "high" {
-  if (priorities.some((priority) => priority.confidence === "low")) return "low";
-  if (priorities.some((priority) => priority.confidence === "medium")) return "medium";
-  return "high";
-}
-
-function buildOverrideFromV2Writeback(
-  writeback: unknown,
-  nowIso: string
-): MorningBriefOverride[] {
-  if (!writeback || typeof writeback !== "object") return [];
-  const reaction = (writeback as { reaction?: unknown }).reaction;
-  if (!reaction || typeof reaction !== "object") return [];
-  const kind = (reaction as { kind?: unknown }).kind;
-  const allowed: MorningBriefOverride["type"][] = [
-    "accept",
-    "reframe",
-    "deprioritize",
-    "not_my_responsibility",
-    "replace_objective",
-    "snooze",
-  ];
-  if (!allowed.includes(kind as MorningBriefOverride["type"])) {
-    return [];
-  }
-
-  const noteValue = (reaction as { note?: unknown }).note;
-  const recordedAt = (writeback as { recorded_at?: unknown }).recorded_at;
-  const createdAt =
-    typeof recordedAt === "string" && recordedAt.length > 0 ? recordedAt : nowIso;
-
-  return [
-    {
-      id: `mbo_v2_${Date.parse(createdAt) || Date.now()}`,
-      type: kind as MorningBriefOverride["type"],
-      createdAt,
-      actor: "user",
-      note: typeof noteValue === "string" ? noteValue : undefined,
-      payload: undefined,
-    },
-  ];
-}
-
-function adaptMorningBriefV2Payload(
-  payload: { data: unknown; ttl: number },
-  now: number
-): { data: unknown; ttl: number } {
-  const nowIso = new Date(now).toISOString();
-  const root = payload.data as {
-    precomputed?: {
-      brief?: {
-        generated_at?: string;
-        mission?: {
-          title?: string;
-          rationale?: string;
-          horizon?: "today" | "this_week";
-        };
-        priorities?: Array<{
-          id?: string;
-          rank?: number;
-          headline?: string;
-          summary?: string;
-          confidence?: "low" | "medium" | "high";
-        }>;
-        evidence?: Array<{
-          id?: string;
-          source?: "github" | "slack" | "posthog" | "vercel" | "custom";
-          entity?: string;
-          metric?: string;
-          value_text?: string;
-          observed_at?: string;
-          freshness_minutes?: number;
-          link?: string;
-        }>;
-        assumptions?: Array<{
-          id?: string;
-          text?: string;
-          reason?: "missing_data" | "stale_data" | "conflict" | "insufficient_sample";
-          source_scope?: Array<"github" | "slack" | "posthog" | "vercel" | "custom">;
-        }>;
-      };
-    };
-    writeback?: unknown;
-  };
-
-  const brief = root.precomputed?.brief;
-  if (!brief) return payload;
-
-  const priorities = Array.isArray(brief.priorities) ? brief.priorities : [];
-  const evidence = (Array.isArray(brief.evidence) ? brief.evidence : []).map((item, index) => ({
-    id: item.id ?? `e_${index + 1}`,
-    source: item.source ?? "custom",
-    entity: item.entity ?? "workspace",
-    metric: item.metric ?? "signal",
-    valueText: item.value_text ?? "No value provided",
-    valueNumber: undefined,
-    observedAt: item.observed_at ?? nowIso,
-    freshnessMinutes:
-      typeof item.freshness_minutes === "number" && item.freshness_minutes >= 0
-        ? item.freshness_minutes
-        : 0,
-    link: item.link,
-    confidence:
-      typeof item.freshness_minutes === "number" && item.freshness_minutes > 180
-        ? "low"
-        : "medium",
-  }));
-
-  const levers = priorities
-    .slice()
-    .sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99))
-    .map((priority, index) => ({
-      id: `lever_${priority.id ?? index + 1}`,
-      label: priority.headline ?? `Priority ${priority.rank ?? index + 1}`,
-      actionType: "manual" as const,
-      actionPayload: undefined,
-      expectedImpact: priority.summary ?? "Follow mission guidance.",
-      impactScore: Math.max(30, 100 - index * 20),
-      confidence: priority.confidence ?? "medium",
-    }));
-
-  const assumptions = (Array.isArray(brief.assumptions) ? brief.assumptions : []).map(
-    (assumption, index) => ({
-      id: assumption.id ?? `assumption_${index + 1}`,
-      text: assumption.text ?? "No assumption text provided.",
-      reason: assumption.reason ?? "missing_data",
-      sourceScope:
-        Array.isArray(assumption.source_scope) && assumption.source_scope.length > 0
-          ? assumption.source_scope
-          : ["custom"],
-    })
-  );
-
-  const confidence = deriveMissionConfidence(priorities);
-  const result: MorningBriefComponentData = {
-    current: {
-      version: 1,
-      generatedAt: brief.generated_at ?? nowIso,
-      generatedBy: "assistant",
-      mission: {
-        id: `mission_${Date.parse(brief.generated_at ?? nowIso) || now}`,
-        title: brief.mission?.title ?? "Morning mission",
-        rationale: brief.mission?.rationale ?? "No rationale provided.",
-        owner: "You",
-        horizon: brief.mission?.horizon ?? "today",
-        priorityScore: Math.min(100, Math.max(20, levers[0]?.impactScore ?? 40)),
-      },
-      evidence,
-      levers,
-      assumptions,
-      confidence,
-      freshnessSummary: computeFreshnessSummary(evidence),
-    },
-    history: [],
-    state: "presented",
-    userOverrides: buildOverrideFromV2Writeback(root.writeback, nowIso),
-  };
-
-  return {
-    data: result,
-    ttl: payload.ttl,
-  };
 }
 
 // Fetch data from GitHub API route

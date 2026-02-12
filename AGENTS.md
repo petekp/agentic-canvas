@@ -39,6 +39,15 @@ These gates are required for all code changes.
   - concrete implications for this change.
 - Include the review note path in the PR.
 
+### 1.6) Repository isolation gate (required)
+
+- This repository must not contain v2 rewrite implementation artifacts.
+- Forbidden paths:
+  - `packages/agentic-canvas-v2/*`
+  - `src/app/api/briefing/v2/*`
+  - `src/lib/agentic-canvas-v2.ts`
+- Keep this repo decoupled from rewrite implementation code to avoid context contamination.
+
 ### 2) Development gate (required while coding)
 
 - Never write production behavior code before a failing test exists for that behavior.

@@ -73,6 +73,14 @@ For behavior-changing work, run a `deepwiki` research pass against both `pi-mono
 - Include alignment implications and decisions for the current change.
 - Reference the review note in the PR.
 
+## Mandatory Repo Isolation
+
+This repository is decoupled from rewrite implementation code.
+
+- Do not add `packages/agentic-canvas-v2/*`.
+- Do not add `src/app/api/briefing/v2/*`.
+- Do not add `src/lib/agentic-canvas-v2.ts`.
+
 ## Key Architecture Decisions
 
 ### Why Zustand over Redux?

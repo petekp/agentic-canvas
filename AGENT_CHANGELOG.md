@@ -19,6 +19,33 @@ Agentic Canvas is a working v0.1+ system with spaces-first navigation, assistant
 
 ## Timeline
 
+### 2026-02-12 - Hard Decoupling: Remove v2 Artifacts From Legacy Repo
+
+**What changed:**
+- Removed morning-brief v2 implementation artifacts from this repository:
+  - `packages/agentic-canvas-v2/*`
+  - `src/app/api/briefing/v2/*`
+  - `src/lib/agentic-canvas-v2.ts`
+  - v2-specific rewrite docs under `.claude/docs/*`
+- Reverted legacy repo morning-brief data fetch path to legacy API route only:
+  - `src/store/data-slice.ts` now routes `morning_brief` to `/api/briefing`.
+- Updated data-slice tests for decoupled behavior:
+  - `src/store/data-slice.test.ts`
+- Added explicit decoupling guard script:
+  - `scripts/verify-no-v2-coupling.sh`
+  - Wired into PR CI gate.
+
+**Why:** Enforce zero coupling between `agentic-canvas` (legacy/prototype track) and `agentic-canvas-v2` (rewrite track), and eliminate context contamination for new coding agents.
+
+**Agent impact:**
+- Do not add v2 package/route artifacts in this repo.
+- Keep this repo independent; morning-brief behavior here uses legacy `/api/briefing`.
+
+**Deprecated:**
+- Any v2 implementation path within this repository.
+
+---
+
 ### 2026-02-12 - Remove Morning Brief v2 Feature Flag Bridge Branching
 
 **What changed:**

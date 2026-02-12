@@ -5,9 +5,8 @@
 **Last Updated:** 2026-02-11
 
 > **Implementation guidance update (2026-02-12):**
-> For active rewrite work, treat `agentic-canvas-v2` artifacts and `.claude/docs/rewrite-onboarding-v1.md`
-> as canonical execution guidance. This lifecycle document remains useful for product intent and state model,
-> but it is no longer the primary implementation playbook for the v2 vertical loop.
+> This repository is legacy/prototype track. Treat this lifecycle document as product intent/state-model context only.
+> Do not treat this repo as the implementation playbook for rewrite work.
 
 ## 1) Product intent
 

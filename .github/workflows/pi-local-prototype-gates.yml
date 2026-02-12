@@ -25,6 +25,12 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: ./scripts/verify-principles-review.sh
 
+      - name: Enforce no-v2-coupling gate
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: ./scripts/verify-no-v2-coupling.sh
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:

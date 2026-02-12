@@ -82,46 +82,6 @@
           }
         }
       }
-    },
-    {
-      "id": "MB3_V2_LOOP_PAYLOAD",
-      "category": "morning_brief_v2_loop",
-      "setup_prompts": [
-        "Switch to the space named Your Morning Brief."
-      ],
-      "prompt": "Return only JSON representing the morning brief v2 loop payload with these top-level keys: schedule, precomputed, view, writeback. Include precomputed.telemetry with reasoning_mode, attempt, validation_fail, repair_used, duration_ms. Include exactly 4 required view sections: mission, priorities, evidence, quick_reaction.",
-      "expected": {
-        "outcome": "response_only",
-        "must_match_regex": [
-          "\"schedule\"",
-          "\"precomputed\"",
-          "\"view\"",
-          "\"writeback\"",
-          "\"reasoning_mode\"",
-          "\"attempt\"",
-          "\"validation_fail\"",
-          "\"repair_used\"",
-          "\"duration_ms\"",
-          "\"mission\"",
-          "\"priorities\"",
-          "\"evidence\"",
-          "\"quick_reaction\""
-        ],
-        "must_not_match_regex": [
-          "```",
-          "I can't",
-          "I cannot"
-        ],
-        "scoring": {
-          "hard_fail": ["formatting"],
-          "soft_score": {
-            "threshold": 0.8,
-            "weights": {
-              "formatting": 1.0
-            }
-          }
-        }
-      }
     }
   ]
 }

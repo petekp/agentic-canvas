@@ -24,6 +24,11 @@ Describe what changed and why.
 - [ ] The review note includes: `deepwiki` queries, `pi-mono` findings, `openclaw` findings, and implications for this PR.
 - [ ] I linked the review note path in this PR description.
 
+## Repo Isolation Gate (Required)
+
+- [ ] This PR does not add or modify v2 rewrite implementation artifacts in this repo.
+- [ ] Forbidden paths were respected: `packages/agentic-canvas-v2/*`, `src/app/api/briefing/v2/*`, `src/lib/agentic-canvas-v2.ts`.
+
 ## Testing Gate (Required)
 
 List exact commands and outcomes:
