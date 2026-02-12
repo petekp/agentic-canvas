@@ -7,11 +7,12 @@ Audience: new coding agents entering the rewrite
 
 1. Read `AGENT_CHANGELOG.md` for current runtime direction.
 2. Read `.claude/docs/agentic-alignment-openclaw-pi-mono-v0.1.md`.
-3. Read `.claude/docs/chunk-walkthrough-checklist-v1.md`.
-4. Open the v2 package:
+3. Read `.claude/docs/founder-interview-morning-brief-v1-2026-02-12.md`.
+4. Read `.claude/docs/chunk-walkthrough-checklist-v1.md`.
+5. Open the v2 package:
    - `packages/agentic-canvas-v2/src/contracts/*`
    - `packages/agentic-canvas-v2/src/core/*`
-5. Open the route slice:
+6. Open the route slice:
    - `src/app/api/briefing/v2/route.ts`
    - `src/app/api/briefing/v2/route.test.ts`
 

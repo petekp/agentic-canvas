@@ -19,6 +19,25 @@ Agentic Canvas is a working v0.1+ system with spaces-first navigation, assistant
 
 ## Timeline
 
+### 2026-02-12 - Founder Interview Decisions Captured For Rewrite Guidance
+
+**What changed:**
+- Added consolidated interview decision reference for morning brief rewrite direction:
+  - `.claude/docs/founder-interview-morning-brief-v1-2026-02-12.md`
+- Linked this reference into active knowledge routing:
+  - `.claude/docs/knowledge-map-morning-brief-v2.md`
+  - `.claude/docs/rewrite-onboarding-v1.md`
+
+**Why:** Prevent re-opening settled product/architecture questions and reduce context loss across agent sessions.
+
+**Agent impact:**
+- Treat founder interview capture doc as canonical for thesis, User 0 context, locked v1 constraints, and open questions.
+- Use it alongside alignment + walkthrough docs before proposing shape/implementation changes.
+
+**Deprecated:** None
+
+---
+
 ### 2026-02-12 - Morning Brief v2 Feature-Flag Integration Hook
 
 **What changed:**

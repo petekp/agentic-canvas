@@ -24,6 +24,7 @@
 ## Guidance doc map
 
 - Alignment: `.claude/docs/agentic-alignment-openclaw-pi-mono-v0.1.md`
+- Founder interview decisions: `.claude/docs/founder-interview-morning-brief-v1-2026-02-12.md`
 - Walkthrough process: `.claude/docs/chunk-walkthrough-checklist-v1.md`
 - Onboarding: `.claude/docs/rewrite-onboarding-v1.md`
 - Chunk evidence log: `.claude/docs/chunk-notes-morning-brief-v2-2026-02-12.md`
