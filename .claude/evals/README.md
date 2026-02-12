@@ -9,7 +9,7 @@ This directory defines eval suites for validating assistant behavior in the live
 - `synthesis-eval-set.v0.2.json`
   - Cross-source synthesis quality checks (GitHub + Slack + PostHog) with source coverage, numeric grounding, uncertainty labeling, and formatting constraints.
 - `synthesis-eval-set.v0.3.json`
-  - Morning Brief contract checks for lever count, claim/evidence alignment, freshness bounds, and override control visibility.
+  - Morning Brief contract checks for lever count, claim/evidence alignment, freshness bounds, override control visibility, and v2 loop payload formatting.
 - `results/*`
   - Timestamped JSON + Markdown outputs from runner executions.
 

@@ -1,7 +1,7 @@
 # Agent Changelog
 
 > This file helps coding agents understand project evolution, key decisions,
-> and deprecated patterns. Updated: 2026-02-11
+> and deprecated patterns. Updated: 2026-02-12
 
 ## Current State Summary
 
@@ -18,6 +18,31 @@ Agentic Canvas is a working v0.1+ system with spaces-first navigation, assistant
 | `.claude/plans/undo-redo-system-v2.md` | Uses legacy “view context” framing | Product/runtime vocabulary is now “space” across store/routes/UI | 2026-02-11 |
 
 ## Timeline
+
+### 2026-02-12 - Morning Brief v2 Feature-Flag Integration Hook
+
+**What changed:**
+- Added feature-flagged morning-brief fetch routing in store data layer:
+  - `src/store/data-slice.ts`
+  - When `NEXT_PUBLIC_MORNING_BRIEF_V2_ENABLED=1` and query type is `morning_brief`,
+    fetches route to `/api/briefing/v2` instead of `/api/briefing`.
+- Added adaptation bridge from v2 payload shape back to existing `MorningBriefComponentData`
+  contract for renderer compatibility (mission/evidence/levers/assumptions/state/userOverrides).
+- Added coverage:
+  - `src/store/data-slice.test.ts` now verifies v2 route selection and payload adaptation.
+- Added eval case for v2 loop payload formatting:
+  - `.claude/evals/synthesis-eval-set.v0.3.json` (`MB3_V2_LOOP_PAYLOAD`)
+  - `.claude/evals/README.md` updated accordingly.
+
+**Why:** Provide a safe rollout path from existing morning-brief entrypoints to v2 without breaking the current renderer/data contract.
+
+**Agent impact:**
+- Use `NEXT_PUBLIC_MORNING_BRIEF_V2_ENABLED=1` for client-side trial of v2 loop via existing morning-brief components.
+- Keep renderer contract stable while iterating on `/api/briefing/v2`.
+
+**Deprecated:** None
+
+---
 
 ### 2026-02-12 - Morning Brief v2 Rewrite Vertical Slice
 
