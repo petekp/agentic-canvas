@@ -54,6 +54,25 @@ When working on this project, read specs in this order:
 7. **assistant-ui tools:** `.claude/plans/assistant-ui-native-tools.md`
    - `makeAssistantTool` patterns + UI rendering
 
+## Mandatory TDD Policy
+
+All development work must follow `tdd` skill workflow.
+
+- Activate and follow `tdd` for every behavior-changing task.
+- Use strict `RED → GREEN → REFACTOR` vertical slices.
+- Bug fixes require a failing regression test first.
+- Do not merge code changes without associated test coverage updates.
+- PRs must include test commands and pass/fail evidence.
+
+## Mandatory Principles Adherence Review
+
+For behavior-changing work, run a `deepwiki` research pass against both `pi-mono` and `openclaw`.
+
+- Use `deepwiki` to collect principle-relevant evidence from both codebases.
+- Record findings in `.claude/docs/principles-adherence-<date>.md`.
+- Include alignment implications and decisions for the current change.
+- Reference the review note in the PR.
+
 ## Key Architecture Decisions
 
 ### Why Zustand over Redux?

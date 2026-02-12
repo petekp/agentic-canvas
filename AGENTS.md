@@ -10,6 +10,48 @@ This file is for coding agents working in the Agentic Canvas repo. It captures t
 4. `.claude/plans/store-architecture-v0.1.md` — how Zustand slices compose.
 5. `.claude/plans/template-primitives-v0.1.md` — template generation system.
 
+## Mandatory Process Gates (Planning → Development → Testing)
+
+These gates are required for all code changes.
+
+### 0) Skill activation gate (required)
+
+- Use the `tdd` skill for every development task that changes behavior.
+- Start by writing a failing test (RED) before writing implementation code.
+- Use vertical slices only: one behavior at a time (`RED → GREEN → REFACTOR`).
+- Exception: docs-only or pure non-behavior config changes. State the exception explicitly in the PR.
+
+### 1) Planning gate (required before code)
+
+- Define the public interface/behavior change first.
+- List behaviors to validate and map each behavior to a test.
+- Choose the first tracer-bullet behavior and test.
+- For non-trivial work, record the plan in `.claude/plans/` before implementation.
+
+### 1.5) Principles adherence review gate (required)
+
+- Use the `deepwiki` skill to research both `pi-mono` and `openclaw` before implementation for behavior-changing work.
+- Capture findings in a review note at `.claude/docs/principles-adherence-<date>.md`.
+- The review note must include:
+  - `deepwiki` queries used.
+  - principle alignment findings for `pi-mono`.
+  - principle alignment findings for `openclaw`.
+  - concrete implications for this change.
+- Include the review note path in the PR.
+
+### 2) Development gate (required while coding)
+
+- Never write production behavior code before a failing test exists for that behavior.
+- For bug fixes, add a failing regression test that reproduces the bug first.
+- Keep implementation minimal per cycle; refactor only after returning to green.
+
+### 3) Testing gate (required before merge)
+
+- Run all touched-area tests and relevant integration tests.
+- If source files under `src/` or `packages/` changed, a corresponding test change is required.
+- Document exact test commands and outcomes in the PR.
+- If unrelated existing failures remain, isolate and track them in a follow-up PR.
+
 ## New Workflows (2026-02)
 
 ### 1) Space-first workflow (task isolation)

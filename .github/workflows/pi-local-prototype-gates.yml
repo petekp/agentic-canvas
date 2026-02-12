@@ -10,6 +10,20 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Enforce TDD policy gate
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: ./scripts/verify-tdd-policy.sh
+
+      - name: Enforce principles adherence review gate
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: ./scripts/verify-principles-review.sh
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
