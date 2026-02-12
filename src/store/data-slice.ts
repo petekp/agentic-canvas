@@ -546,9 +546,7 @@ async function fetchBriefingData(
     outputType: binding.query.type === "morning_brief" ? "morning_brief" : "recommendations",
   };
 
-  const useMorningBriefV2 =
-    requestBody.outputType === "morning_brief" &&
-    process.env.NEXT_PUBLIC_MORNING_BRIEF_V2_ENABLED === "1";
+  const useMorningBriefV2 = requestBody.outputType === "morning_brief";
 
   const v2RequestBody = {
     schedule:
@@ -585,7 +583,7 @@ async function fetchBriefingData(
     }
 
     const payload = (await response.json()) as { data: unknown; ttl: number };
-    if (useMorningBriefV2 && requestBody.outputType === "morning_brief") {
+    if (requestBody.outputType === "morning_brief") {
       return adaptMorningBriefV2Payload(payload, now);
     }
 

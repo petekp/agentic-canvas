@@ -285,7 +285,7 @@ describe("data-slice fetchData", () => {
     }
   });
 
-  it("requests morning brief output and stores lifecycle payload", async () => {
+  it("routes morning brief to /api/briefing/v2 and stores adapted lifecycle payload", async () => {
     const store = createTestStore();
     const addResult = store.getState().addComponent({
       typeId: "system.morning-brief",
@@ -293,34 +293,49 @@ describe("data-slice fetchData", () => {
     });
     const componentId = addResult.affectedComponentIds[0];
 
-    const fetchMock = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+    const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(url)).toBe("/api/briefing/v2");
       const body = JSON.parse(String(init?.body ?? "{}"));
-      expect(body.outputType).toBe("morning_brief");
+      expect(typeof body.mission_hint).toBe("string");
       return {
         ok: true,
         json: async () => ({
           data: {
-            state: "presented",
-            current: {
-              version: 1,
-              generatedAt: new Date().toISOString(),
-              generatedBy: "assistant",
-              mission: {
-                id: "m1",
-                title: "Stabilize release readiness",
-                rationale: "Deployments are failing.",
-                owner: "You",
-                horizon: "today",
-                priorityScore: 80,
+            precomputed: {
+              brief: {
+                schema_version: "v0.2",
+                generated_at: new Date().toISOString(),
+                mission: {
+                  title: "Stabilize release readiness",
+                  rationale: "Deployments are failing.",
+                  horizon: "today",
+                },
+                priorities: [
+                  {
+                    id: "p1",
+                    rank: 1,
+                    headline: "Clear blockers",
+                    summary: "Resolve top blocker thread.",
+                    confidence: "medium",
+                    evidence_refs: ["e1"],
+                  },
+                ],
+                evidence: [
+                  {
+                    id: "e1",
+                    source: "github",
+                    entity: "owner/repo",
+                    metric: "blocked_prs",
+                    value_text: "2 blocked PRs",
+                    observed_at: new Date().toISOString(),
+                    freshness_minutes: 20,
+                  },
+                ],
+                assumptions: [],
+                quick_reaction_prompt: "accept, reframe, or snooze",
               },
-              evidence: [],
-              levers: [],
-              assumptions: [],
-              confidence: "medium",
-              freshnessSummary: "Freshness range 1-1 minutes; stale items 0.",
             },
-            history: [],
-            userOverrides: [],
+            view: { sections: [] },
           },
           ttl: 1000,
         }),
@@ -344,97 +359,80 @@ describe("data-slice fetchData", () => {
     }
   });
 
-  it("routes morning brief to /api/briefing/v2 behind feature flag and adapts payload", async () => {
-    const previousFlag = process.env.NEXT_PUBLIC_MORNING_BRIEF_V2_ENABLED;
-    process.env.NEXT_PUBLIC_MORNING_BRIEF_V2_ENABLED = "1";
+  it("adapts v2 quick reaction writeback to morning brief overrides", async () => {
+    const store = createTestStore();
+    const addResult = store.getState().addComponent({
+      typeId: "system.morning-brief",
+      config: {},
+    });
+    const componentId = addResult.affectedComponentIds[0];
 
-    try {
-      const store = createTestStore();
-      const addResult = store.getState().addComponent({
-        typeId: "system.morning-brief",
-        config: {},
-      });
-      const componentId = addResult.affectedComponentIds[0];
-
-      const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
-        expect(String(url)).toBe("/api/briefing/v2");
-        const body = JSON.parse(String(init?.body ?? "{}"));
-        expect(typeof body.mission_hint).toBe("string");
-
-        return {
-          ok: true,
-          json: async () => ({
-            data: {
-              precomputed: {
-                brief: {
-                  schema_version: "v0.2",
-                  generated_at: new Date().toISOString(),
-                  mission: {
-                    title: "Stabilize release readiness",
-                    rationale: "Deployments are failing.",
-                    horizon: "today",
-                  },
-                  priorities: [
-                    {
-                      id: "p1",
-                      rank: 1,
-                      headline: "Clear blockers",
-                      summary: "Resolve top blocker thread.",
-                      confidence: "medium",
-                      evidence_refs: ["e1"],
-                    },
-                  ],
-                  evidence: [
-                    {
-                      id: "e1",
-                      source: "github",
-                      entity: "owner/repo",
-                      metric: "blocked_prs",
-                      value_text: "2 blocked PRs",
-                      observed_at: new Date().toISOString(),
-                      freshness_minutes: 20,
-                    },
-                  ],
-                  assumptions: [],
-                  quick_reaction_prompt: "accept, reframe, or snooze",
+    const fetchMock = vi.fn(async (_url: RequestInfo | URL) => ({
+      ok: true,
+      json: async () => ({
+        data: {
+          precomputed: {
+            brief: {
+              schema_version: "v0.2",
+              generated_at: new Date().toISOString(),
+              mission: {
+                title: "Stabilize release readiness",
+                rationale: "Deployments are failing.",
+                horizon: "today",
+              },
+              priorities: [
+                {
+                  id: "p1",
+                  rank: 1,
+                  headline: "Clear blockers",
+                  summary: "Resolve top blocker thread.",
+                  confidence: "medium",
+                  evidence_refs: ["e1"],
                 },
-              },
-              view: { sections: [] },
-              writeback: {
-                recorded_at: new Date().toISOString(),
-                reaction: { kind: "accept", note: "looks good" },
-              },
+              ],
+              evidence: [
+                {
+                  id: "e1",
+                  source: "github",
+                  entity: "owner/repo",
+                  metric: "blocked_prs",
+                  value_text: "2 blocked PRs",
+                  observed_at: new Date().toISOString(),
+                  freshness_minutes: 20,
+                },
+              ],
+              assumptions: [],
+              quick_reaction_prompt: "accept, reframe, or snooze",
             },
-            ttl: 1000,
-          }),
-        };
-      });
-      globalThis.fetch = fetchMock as unknown as typeof fetch;
+          },
+          view: { sections: [] },
+          writeback: {
+            recorded_at: new Date().toISOString(),
+            reaction: { kind: "accept", note: "looks good" },
+          },
+        },
+        ttl: 1000,
+      }),
+    }));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
 
-      await store.getState().fetchData(componentId, {
-        source: "briefing",
-        query: { type: "morning_brief", params: { repos: ["owner/repo"] } },
-        refreshInterval: null,
-      });
+    await store.getState().fetchData(componentId, {
+      source: "briefing",
+      query: { type: "morning_brief", params: { repos: ["owner/repo"] } },
+      refreshInterval: null,
+    });
 
-      const ready = store.getState().canvas.components.find((c) => c.id === componentId);
-      expect(ready?.dataState.status).toBe("ready");
-      if (ready?.dataState.status === "ready") {
-        const data = ready.dataState.data as {
-          state?: string;
-          current?: { mission?: { title?: string } };
-          userOverrides?: Array<{ type?: string }>;
-        };
-        expect(data.state).toBe("presented");
-        expect(data.current?.mission?.title).toContain("Stabilize");
-        expect(data.userOverrides?.[0]?.type).toBe("accept");
-      }
-    } finally {
-      if (previousFlag === undefined) {
-        delete process.env.NEXT_PUBLIC_MORNING_BRIEF_V2_ENABLED;
-      } else {
-        process.env.NEXT_PUBLIC_MORNING_BRIEF_V2_ENABLED = previousFlag;
-      }
+    const ready = store.getState().canvas.components.find((c) => c.id === componentId);
+    expect(ready?.dataState.status).toBe("ready");
+    if (ready?.dataState.status === "ready") {
+      const data = ready.dataState.data as {
+        state?: string;
+        current?: { mission?: { title?: string } };
+        userOverrides?: Array<{ type?: string }>;
+      };
+      expect(data.state).toBe("presented");
+      expect(data.current?.mission?.title).toContain("Stabilize");
+      expect(data.userOverrides?.[0]?.type).toBe("accept");
     }
   });
 

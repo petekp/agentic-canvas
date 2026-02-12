@@ -19,6 +19,29 @@ Agentic Canvas is a working v0.1+ system with spaces-first navigation, assistant
 
 ## Timeline
 
+### 2026-02-12 - Remove Morning Brief v2 Feature Flag Bridge Branching
+
+**What changed:**
+- Removed feature-flag branching from morning-brief fetch path in store data layer:
+  - `src/store/data-slice.ts`
+  - `morning_brief` now routes to `/api/briefing/v2` unconditionally.
+- Kept v2-to-renderer compatibility adapter in place while old renderer exists:
+  - `adaptMorningBriefV2Payload(...)` remains the compatibility seam.
+- Updated tests to reflect unflagged behavior:
+  - `src/store/data-slice.test.ts`
+  - asserts `morning_brief` requests hit `/api/briefing/v2` without env flag setup.
+
+**Why:** Align implementation with greenfield rewrite direction and remove migration-era feature-flag complexity.
+
+**Agent impact:**
+- Do not use `NEXT_PUBLIC_MORNING_BRIEF_V2_ENABLED` for morning-brief routing.
+- Treat `/api/briefing/v2` as canonical morning-brief backend path in this repo.
+
+**Deprecated:**
+- `NEXT_PUBLIC_MORNING_BRIEF_V2_ENABLED` as a routing control for morning brief.
+
+---
+
 ### 2026-02-12 - Founder Interview Decisions Captured For Rewrite Guidance
 
 **What changed:**
