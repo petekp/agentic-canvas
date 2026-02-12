@@ -4,6 +4,11 @@
 **Version:** 0.1
 **Last Updated:** 2026-02-11
 
+> **Implementation guidance update (2026-02-12):**
+> For active rewrite work, treat `agentic-canvas-v2` artifacts and `.claude/docs/rewrite-onboarding-v1.md`
+> as canonical execution guidance. This lifecycle document remains useful for product intent and state model,
+> but it is no longer the primary implementation playbook for the v2 vertical loop.
+
 ## 1) Product intent
 
 `Your Morning Brief` is a system-managed, pinned space that orients the user to the highest-leverage mission for the day, grounded in cross-source evidence (GitHub, Slack, PostHog, plus any enabled source).
@@ -351,4 +356,3 @@ Minimum pass conditions for Morning Brief cases:
 - Multi-user/shared brief ownership.
 - Background autonomous execution of high-risk actions.
 - Cross-device synchronized notification center.
-

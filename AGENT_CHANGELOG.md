@@ -19,6 +19,41 @@ Agentic Canvas is a working v0.1+ system with spaces-first navigation, assistant
 
 ## Timeline
 
+### 2026-02-12 - Morning Brief v2 Rewrite Vertical Slice
+
+**What changed:**
+- Added isolated rewrite package:
+  - `packages/agentic-canvas-v2/src/contracts/brief-v0.2.ts`
+  - `packages/agentic-canvas-v2/src/contracts/view-v1.ts`
+  - `packages/agentic-canvas-v2/src/core/validate.ts`
+  - `packages/agentic-canvas-v2/src/core/project-v1-sections.ts`
+  - `packages/agentic-canvas-v2/src/core/reasoner.ts`
+  - `packages/agentic-canvas-v2/src/core/telemetry.ts`
+  - `packages/agentic-canvas-v2/tests/core/*.test.ts`
+- Added API vertical loop route and tests:
+  - `src/app/api/briefing/v2/route.ts`
+  - `src/app/api/briefing/v2/route.test.ts`
+- Added rewrite guidance/docs:
+  - `.claude/docs/agentic-alignment-openclaw-pi-mono-v0.1.md`
+  - `.claude/docs/chunk-walkthrough-checklist-v1.md`
+  - `.claude/docs/rewrite-onboarding-v1.md`
+  - `.claude/docs/chunk-notes-morning-brief-v2-2026-02-12.md`
+  - `.claude/docs/knowledge-audit-2026-02-12.md`
+  - `.claude/docs/knowledge-map-morning-brief-v2.md`
+- Added lifecycle-plan note to reduce v0 guidance contamination for active rewrite work:
+  - `.claude/plans/morning-brief-lifecycle-v0.1.md`
+
+**Why:** Implement a rewrite-first, depth-first morning briefing loop with explicit contract rails and observability while keeping route logic thin.
+
+**Agent impact:**
+- For morning-brief rewrite work, treat `agentic-canvas-v2` package + rewrite docs as canonical implementation path.
+- Enforce v2 validation rails (`<=3` priorities, unique rank, evidence refs, verification prompt for low confidence).
+- Preserve bounded repair + fail-closed fallback + telemetry fields (`reasoning_mode`, `schema_version`, `attempt`, `validation_fail`, `repair_used`, `fallback_reason`, `duration_ms`).
+
+**Deprecated:** None
+
+---
+
 ### 2026-02-11 - Chat-Loop Adversarial FS E2E + Ledger Ordering Fix
 
 **What changed:**
