@@ -1,0 +1,4 @@
+{"runId":"run_1778018515740_es7oukqw","timestamp":1778018515741,"sequence":0,"type":"response.created","model":"gpt-4o"}
+{"runId":"run_1778018515740_es7oukqw","timestamp":1778018519682,"sequence":1,"type":"response.tool_call","toolCallId":"call_5VAIWPwZvjJWCyuw6DE4MDiA","toolName":"create_space","args":{"name":"My PR Info","components":[{"type_id":"github.pr-list","label":"My PRs","size":{"cols":4,"rows":3}},{"type_id":"github.stat-tile","label":"Open PRs Count","size":{"cols":2,"rows":2}}],"switch_to":true}}
+{"runId":"run_1778018515740_es7oukqw","timestamp":1778018519801,"sequence":2,"type":"response.output_text.done"}
+{"runId":"run_1778018515740_es7oukqw","timestamp":1778018519801,"sequence":3,"type":"response.completed"}

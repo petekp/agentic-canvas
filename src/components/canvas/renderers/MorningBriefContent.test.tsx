@@ -119,4 +119,93 @@ describe("MorningBriefContent", () => {
 
     expect(screen.getAllByText("Confirm integrations are connected.")).toHaveLength(1);
   });
+
+  it("renders v0.2-first sections when priorities are present", () => {
+    const brief = createBriefData();
+    brief.current.version = 2;
+    brief.current.mission.whyNow =
+      "Deploy instability intersects with active traffic this morning.";
+    brief.current.priorities = [
+      {
+        id: "priority_1",
+        rank: 1,
+        title: "Stabilize deployment path",
+        recommendation: "Resolve the failing deployment first.",
+        approach: "Inspect logs, isolate the regression, and patch safely.",
+        whyHighestImpact: "Production reliability is the immediate bottleneck.",
+        horizon: "today",
+        scores: {
+          impact: 90,
+          urgency: 85,
+          ownershipFit: 78,
+          confidence: 72,
+          composite: 84,
+        },
+        certainty: "medium",
+        ownershipHypothesis: {
+          likelyOwner: "me",
+          rationale: "Direct release ownership.",
+          needsVerification: false,
+        },
+        relatedEvidenceIds: ["ev_1"],
+        primaryActions: [
+          {
+            id: "act_1",
+            label: "Open deployment logs",
+            app: "vercel",
+            type: "open_link",
+            payload: { url: "https://vercel.com/deployments/dep_1" },
+            expectedOutcome: "Identify root cause.",
+          },
+        ],
+      },
+    ];
+    brief.current.verification = [
+      {
+        id: "verify_1",
+        prompt: "Confirm the owner for the release rollback.",
+        reason: "ownership_uncertain",
+      },
+    ];
+    brief.current.sourceReadiness = [
+      {
+        source: "github",
+        available: true,
+        freshnessMinutes: 5,
+      },
+      {
+        source: "posthog",
+        available: false,
+        error: "missing API key",
+      },
+    ];
+    brief.current.weeklyCheckin = {
+      ready: true,
+      bullets: ["Resolved the release blocker and restored reliability."],
+      gaps: [],
+    };
+    brief.current.correlations = [
+      {
+        id: "corr_1",
+        headline: "Deploy risk and traffic overlap",
+        claim: "Traffic remained active while deployment failed.",
+        sources: ["vercel", "posthog"],
+        relatedEvidenceIds: ["ev_1"],
+        confidenceScore: 70,
+        certainty: "medium",
+      },
+    ];
+
+    const { container } = render(<MorningBriefContent data={brief} componentId="cmp_morning" />);
+    const scope = within(container);
+
+    expect(scope.getAllByRole("heading", { name: "Top Priorities" }).length).toBeGreaterThan(0);
+    expect(scope.getByText("Stabilize deployment path")).toBeTruthy();
+    expect(scope.getAllByRole("heading", { name: "Verification" }).length).toBeGreaterThan(0);
+    expect(scope.getByText("Confirm the owner for the release rollback.")).toBeTruthy();
+    expect(scope.getAllByRole("heading", { name: "Source Readiness" }).length).toBeGreaterThan(0);
+    expect(scope.getAllByRole("heading", { name: "Weekly Check-In Prep" }).length).toBeGreaterThan(
+      0
+    );
+  });
 });

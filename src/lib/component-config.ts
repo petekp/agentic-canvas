@@ -7,6 +7,12 @@ export interface ComponentConfigContext {
 const SLACK_CHANNEL_LINK_REGEX = /<#([CG][A-Z0-9]{8,})\|([^>]+)>/;
 const SLACK_CHANNEL_ID_REGEX = /\b[CG][A-Z0-9]{8,}\b/;
 const SLACK_CHANNEL_NAME_REGEX = /#([a-z0-9][a-z0-9_-]{0,78})/gi;
+const SLACK_CHANNEL_KEY_VALUE_REGEX =
+  /["']?(?:channelName|channel_name)["']?\s*(?::|=)\s*["']#?([a-z0-9][a-z0-9_-]{0,78})["']?/i;
+const SLACK_CHANNEL_KEY_QUOTED_VALUE_REGEX =
+  /["']?(?:channelName|channel_name)["']?\s+["']#?([a-z0-9][a-z0-9_-]{0,78})["']/i;
+const SLACK_CHANNEL_WORD_QUOTED_VALUE_REGEX =
+  /\bchannel\b\s+["']#?([a-z0-9][a-z0-9_-]{0,78})["']/i;
 const SLACK_CHANNEL_NAME_ONLY_REGEX = /^#?([a-z0-9][a-z0-9_-]{0,78})$/i;
 const SLACK_USER_LINK_REGEX = /<@([UW][A-Z0-9]{8,})(?:\|[^>]+)?>/;
 const SLACK_USER_ID_REGEX = /\b[UW][A-Z0-9]{8,}\b/;
@@ -43,6 +49,21 @@ export function inferSlackChannelFromText(
   const nameMatches = [...trimmed.matchAll(SLACK_CHANNEL_NAME_REGEX)];
   if (nameMatches.length > 0) {
     return { channelName: sanitizeChannelName(nameMatches[0][1]) };
+  }
+
+  const keyedValueMatch = trimmed.match(SLACK_CHANNEL_KEY_VALUE_REGEX);
+  if (keyedValueMatch) {
+    return { channelName: sanitizeChannelName(keyedValueMatch[1]) };
+  }
+
+  const keyedQuotedValueMatch = trimmed.match(SLACK_CHANNEL_KEY_QUOTED_VALUE_REGEX);
+  if (keyedQuotedValueMatch) {
+    return { channelName: sanitizeChannelName(keyedQuotedValueMatch[1]) };
+  }
+
+  const channelWordQuotedValueMatch = trimmed.match(SLACK_CHANNEL_WORD_QUOTED_VALUE_REGEX);
+  if (channelWordQuotedValueMatch) {
+    return { channelName: sanitizeChannelName(channelWordQuotedValueMatch[1]) };
   }
 
   const idMatch = trimmed.match(SLACK_CHANNEL_ID_REGEX);

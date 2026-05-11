@@ -55,6 +55,12 @@ export function MorningBriefContent({ data, componentId }: MorningBriefContentPr
   }
 
   const brief = parsed.data;
+  const priorities = brief.current.priorities ?? [];
+  const correlations = brief.current.correlations ?? [];
+  const verificationPrompts = brief.current.verification ?? [];
+  const sourceReadiness = brief.current.sourceReadiness ?? [];
+  const weeklyCheckin = brief.current.weeklyCheckin;
+  const whyNow = brief.current.mission.whyNow ?? brief.current.mission.rationale;
   const topLevers = brief.current.levers.slice(0, 3);
   const staleEvidence = brief.current.evidence.filter(
     (item) => item.freshnessMinutes > STALE_EVIDENCE_THRESHOLD_MINUTES
@@ -99,17 +105,56 @@ export function MorningBriefContent({ data, componentId }: MorningBriefContentPr
         </h4>
         <p className="mt-1 font-medium">{brief.current.mission.title}</p>
       </section>
-
       <section className="rounded-md bg-muted/30 px-3 py-2">
         <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Why It Matters Now
         </h4>
-        <p className="mt-1 text-sm">{brief.current.mission.rationale}</p>
+        <p className="mt-1 text-sm">{whyNow}</p>
       </section>
-
       <section className="rounded-md bg-muted/30 px-3 py-2">
         <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Top Levers
+          Top Priorities
+        </h4>
+        {priorities.length === 0 ? (
+          <p className="mt-1 text-xs text-muted-foreground">
+            No v0.2 priorities generated yet. Showing legacy levers below.
+          </p>
+        ) : (
+          <ol className="mt-1 list-decimal space-y-2 pl-4">
+            {priorities.slice(0, 3).map((priority) => {
+              const primaryAction = priority.primaryActions[0];
+              const primaryActionUrl =
+                primaryAction?.type === "open_link" &&
+                typeof primaryAction.payload?.url === "string"
+                  ? primaryAction.payload.url
+                  : undefined;
+              return (
+                <li key={priority.id} className="text-xs">
+                  <div className="font-medium">{priority.title}</div>
+                  <div className="text-muted-foreground">{priority.recommendation}</div>
+                  <div className="text-[11px] text-muted-foreground">
+                    {priority.approach}
+                  </div>
+                  {primaryActionUrl && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        openInNewTab(primaryActionUrl);
+                      }}
+                      className="mt-1 rounded-md border border-border px-2 py-0.5 text-[11px] font-medium transition-colors hover:bg-muted/50"
+                    >
+                      Open action
+                    </button>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        )}
+      </section>
+      <section className="rounded-md bg-muted/30 px-3 py-2">
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          {priorities.length > 0 ? "Supporting Levers" : "Top Levers"}
         </h4>
         <ul className="mt-1 list-disc space-y-2 pl-4">
           {topLevers.length === 0 && (
@@ -148,6 +193,72 @@ export function MorningBriefContent({ data, componentId }: MorningBriefContentPr
         </ul>
       </section>
 
+      {correlations.length > 0 && (
+        <section className="rounded-md bg-muted/30 px-3 py-2">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Correlations
+          </h4>
+          <ul className="mt-1 list-disc space-y-1 pl-4">
+            {correlations.slice(0, 3).map((story) => (
+              <li key={story.id} className="text-xs">
+                <span className="font-medium">{story.headline}:</span>{" "}
+                <span className="text-muted-foreground">{story.claim}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {verificationPrompts.length > 0 && (
+        <section className="rounded-md bg-muted/30 px-3 py-2">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Verification
+          </h4>
+          <ul className="mt-1 list-disc space-y-1 pl-4">
+            {verificationPrompts.slice(0, 4).map((prompt) => (
+              <li key={prompt.id} className="text-xs text-muted-foreground">
+                {prompt.prompt}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {sourceReadiness.length > 0 && (
+        <section className="rounded-md bg-muted/30 px-3 py-2">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Source Readiness
+          </h4>
+          <div className="mt-1 flex flex-wrap gap-2">
+            {sourceReadiness.map((entry) => (
+              <span
+                key={entry.source}
+                className="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground"
+              >
+                {entry.source}: {entry.available ? "ready" : "missing"}
+                {typeof entry.freshnessMinutes === "number"
+                  ? ` (${entry.freshnessMinutes}m)`
+                  : ""}
+              </span>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {weeklyCheckin && weeklyCheckin.bullets.length > 0 && (
+        <section className="rounded-md bg-muted/30 px-3 py-2">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Weekly Check-In Prep
+          </h4>
+          <ul className="mt-1 list-disc space-y-1 pl-4">
+            {weeklyCheckin.bullets.slice(0, 4).map((bullet, index) => (
+              <li key={`${index}-${bullet}`} className="text-xs text-muted-foreground">
+                {bullet}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       <section className="rounded-md bg-muted/30 px-3 py-2">
         <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Evidence

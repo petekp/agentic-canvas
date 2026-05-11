@@ -5,7 +5,7 @@
 
 ## Current State Summary
 
-Agentic Canvas is a working v0.1+ system with spaces-first navigation, assistant-ui native tool execution, and multi-source canvas components. Backend chat orchestration now has a filesystem-first phase-1 `pi` runtime seam (`pi-phase1-adapter` -> `pi-runtime`) with optional external engine delegation, while preserving the existing assistant-ui client/runtime contract. Morning Brief lifecycle integration has landed as system-managed space/component scaffolding with coverage, and runtime maintenance/diagnostics endpoints now exist for retention and engine verification.
+Agentic Canvas is a working v0.1+ system with spaces-first navigation, assistant-ui native tool execution, and multi-source canvas components. Backend chat orchestration now has a filesystem-first phase-1 `pi` runtime seam (`pi-phase1-adapter` -> `pi-runtime`) with optional external engine delegation, while preserving the existing assistant-ui client/runtime contract. Morning Brief lifecycle integration has landed as system-managed space/component scaffolding with coverage, and runtime maintenance/diagnostics endpoints now exist for retention and engine verification. Local prototype `pi` reliability now includes route deferral during assistant tool execution, client tool-result ledger appends with real `toolCallId`, cross-session ledger lookup for post-`create_space` session drift, and improved Slack arg normalization (channel + limit inference) with component label rendering parity.
 
 ## Stale Information Detected
 
@@ -18,6 +18,120 @@ Agentic Canvas is a working v0.1+ system with spaces-first navigation, assistant
 | `.claude/plans/undo-redo-system-v2.md` | Uses legacy “view context” framing | Product/runtime vocabulary is now “space” across store/routes/UI | 2026-02-11 |
 
 ## Timeline
+
+### 2026-02-12 - OpenClaw-Inspired Morning Brief Principles Codified
+
+**What changed:**
+- Added a dedicated principles/guardrails document for Morning Brief migration:
+  - `.claude/plans/morning-brief-openclaw-principles-v0.1.md`
+  - Captures route-thinning, LLM-first reasoning boundaries, strict schema validation + bounded repair, minimal deterministic fallback, evidence integrity, telemetry requirements, and anti-patterns.
+- Added the new principles doc to startup reading order:
+  - `AGENTS.md` (`Start Here`)
+  - `CLAUDE.md` (`Quick Start for Agents`)
+
+**Why:** Preserve OpenClaw-style reliability lessons as explicit implementation constraints while migrating Morning Brief synthesis from heuristics to schema-constrained LLM inference.
+
+**Agent impact:**
+- Treat the principles doc as a mandatory guardrail during Morning Brief slices.
+- Keep deterministic fallback narrow and avoid reintroducing heuristic ranking logic.
+- Ensure rollout telemetry includes validation, repair, and fallback dimensions.
+
+**Deprecated:** None
+
+---
+
+### 2026-02-12 - Morning Brief v0.2 Output Contract (User 0)
+
+**What changed:**
+- Added a dedicated Morning Brief output schema contract:
+  - `.claude/plans/morning-brief-output-schema-v0.2.md`
+  - Defines output structure for mission, top-3 priorities, scoring, certainty/confidence, correlations, action directory, verification prompts, weekly check-in prep, and source readiness.
+- Added a User 0 personalization profile:
+  - `.claude/plans/user0-morning-brief-profile-v0.1.md`
+  - Captures ranking policy (`highest impact first`), horizons (`today`, `this week`), top-3 priority cap, hypothesis-first behavior, and failure modes to avoid.
+- Linked schema/profile into core planning docs:
+  - `.claude/plans/morning-brief-lifecycle-v0.1.md`
+  - `.claude/plans/dogfood-use-cases-v0.1.md`
+  - `AGENTS.md` and `CLAUDE.md` startup reading order.
+
+**Why:** Move from generic Morning Brief behavior to a concrete, implementation-ready contract tuned for User 0 dogfooding.
+
+**Agent impact:**
+- Morning Brief implementation slices should target `morning-brief-output-schema-v0.2.md` as the output contract.
+- Recommendation generation should be hypothesis-first with explicit verification prompts when ownership/confidence is uncertain.
+
+**Deprecated:** Ad-hoc Morning Brief payload shaping without a stable output contract.
+
+---
+
+### 2026-02-11 - Dogfood Use-Case Workflow + Vision Alignment Gate
+
+**What changed:**
+- Added a personal dogfood use-case backlog to guide slice selection:
+  - `.claude/plans/dogfood-use-cases-v0.1.md`
+  - Defines `UC-1` to `UC-5` (morning brief, blocker triage, standup prep, midday replan, intent-to-execution space)
+  - Includes prompt-driven validation expectations and a run capture template.
+- Added a required non-metric vision alignment checklist:
+  - `.claude/plans/vision-alignment-checklist-v0.1.md`
+  - Enforces use-case fit, morning-orientation fit, mercurial interface fit, reliability/ledger/telemetry evidence, and prototype-scope discipline.
+- Wired both docs into agent startup reading order:
+  - `AGENTS.md` (`Start Here`)
+  - `CLAUDE.md` (`Quick Start for Agents`)
+- Linked execution anchors in:
+  - `.claude/plans/product-vision-v0.1.md`
+
+**Why:** Move from abstract vision to repeatable, daily dogfooding loops that prioritize personal user value first and keep each slice tied to a concrete outcome.
+
+**Agent impact:**
+- Every non-trivial slice should cite a target use case (`UC-*`) and pass the checklist before merge.
+- Use-case validation is now prompt-first with telemetry + ledger evidence, even when formal metrics are deferred.
+
+**Deprecated:** Metrics-first slice selection during this stage.
+
+---
+
+### 2026-02-11 - PI Tool-Loop Reliability Hardening (Route Deferral + Ledger Integrity + Slack Arg Recovery)
+
+**What changed:**
+- Added assistant-run/tool busy queue for route-sync deferral:
+  - `src/lib/space-route-sync-queue.ts`
+  - `src/lib/space-route-sync-queue.test.ts`
+  - `src/app/spaces/[id]/SpacePageClient.tsx`
+  - `src/app/spaces/[id]/SpacePageClient.test.tsx`
+  - `src/lib/canvas-tools.tsx` (`withToolTelemetry` integration via `beginAssistantToolExecution()`)
+- Added explicit client tool-result append path into runtime ledger:
+  - `src/lib/pi-runtime.ts` (`appendClientToolResultToLedger`)
+  - `src/app/api/pi/runtime/tool-result/route.ts`
+  - `src/app/api/pi/runtime/tool-result/route.test.ts`
+  - `src/lib/canvas-tools.tsx` now posts tool results using actual `toolCallId`
+- Fixed session drift when `create_space` changes active scope before result append:
+  - `src/lib/pi-runtime.ts` now falls back to searching all session ledgers by `toolCallId` before appending.
+- Hardened Slack API route failures for expected user-facing cases:
+  - `src/app/api/slack/route.ts`
+  - `src/app/api/slack/route.test.ts`
+  - Added clear 400/403/404 handling for missing channel config, bot-not-in-channel, unknown channel, and mentions token-type mismatch.
+- Added tool-planning guidance for chained tool calls in the same run:
+  - `src/lib/ai-tools.ts`
+  - `src/lib/ai-tools.test.ts`
+- Added config recovery for omitted Slack args and UI label parity:
+  - `src/lib/component-config.ts` + `src/lib/component-config.test.ts`
+  - `src/lib/tool-config.ts` + `src/lib/tool-config.test.ts`
+  - `src/components/canvas/ComponentContent.tsx`
+  - `src/components/canvas/ComponentContent.label.test.tsx`
+
+**Why:** Resolve repeated local-prototype failures where runs created/switched spaces but follow-up component actions were interrupted, lost, or missing required args. Keep tool-loop behavior deterministic and diagnosable through telemetry + ledger parity, while reducing model-arg brittleness in common Slack flows.
+
+**Agent impact:**
+- Treat `api.pi.runtime.tool_result` append events and ledger `call/result` parity as the source of truth for tool-loop completion, not only `assistant.run.completed`.
+- When debugging post-`create_space` flows, assume session scope can drift; runtime may append against the originating ledger after `toolCallId` lookup fallback.
+- For `slack.channel-activity`, `resolveConfigFromChat(...)` may now recover `channelName` and `limit` from keyed user text even if model args omit config.
+- Component headers now reflect `component.meta.label` when provided; do not assume type-based header text is authoritative.
+
+**Deprecated:**
+- Using `assistant.run.completed` as a sole completion signal for multi-tool client execution.
+- Assuming model-provided tool args are complete without normalization/validation.
+
+---
 
 ### 2026-02-11 - Chat-Loop Adversarial FS E2E + Ledger Ordering Fix
 
@@ -446,6 +560,8 @@ Agentic Canvas is a working v0.1+ system with spaces-first navigation, assistant
 | Use `tool-uis.tsx` | Tool UIs are in canvas-tools.tsx render | 2026-02-01 |
 | Subscribe to messages for tool execution | Use `makeAssistantTool` auto-execute | 2026-02-01 |
 | Introduce new `view`/`*_view` APIs | Use `space`/`*_space` naming and tooling | 2026-02-08 |
+| Treat `assistant.run.completed` as end-to-end tool completion | Validate `api.pi.runtime.tool_result` + ledger call/result parity | 2026-02-11 |
+| Assume Slack tool args are always complete from model output | Normalize/recover via `resolveConfigFromChat(...)` + tool validation | 2026-02-11 |
 
 ## Data Sources
 
@@ -488,3 +604,4 @@ Current trajectory based on recent commits:
 4. **In progress:** Morning Brief lifecycle hardening and mission/action flow integration.
 5. **Next likely:** Promote dry-run pi-mono bridge to live provider defaults in target environments.
 6. **Next likely:** Add scheduled retention execution (cron/endpoint orchestration) beyond in-traffic runs.
+7. **Next likely:** Replace regex-only arg recovery with a model-guided "missing-field repair" retry path for tool calls.

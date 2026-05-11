@@ -8,6 +8,9 @@
 
 `Your Morning Brief` is a system-managed, pinned space that orients the user to the highest-leverage mission for the day, grounded in cross-source evidence (GitHub, Slack, PostHog, plus any enabled source).
 
+Companion output contract:
+- `.claude/plans/morning-brief-output-schema-v0.2.md`
+
 Design principle:
 
 - Orientation first, execution second.
@@ -351,4 +354,3 @@ Minimum pass conditions for Morning Brief cases:
 - Multi-user/shared brief ownership.
 - Background autonomous execution of high-risk actions.
 - Cross-device synchronized notification center.
-

@@ -295,6 +295,134 @@ export async function ingestHistoricalToolResultsFromMessages(input: {
   return { appended, duplicates, missingCalls };
 }
 
+export type AppendClientToolResultInput = {
+  runtimeRoot: string;
+  sessionId: string;
+  toolCallId: string;
+  toolName: string;
+  result: unknown;
+  isError: boolean;
+};
+
+export type AppendClientToolResultOutput =
+  | {
+      status: "appended" | "duplicate";
+      runId: string;
+      toolName: string;
+      idempotencyKey: string;
+    }
+  | {
+      status: "missing_call";
+    };
+
+type ToolCallLookup = {
+  sessionId: string;
+  events: ToolLoopEvent[];
+  call: ToolLoopEvent & { kind: "call" };
+};
+
+async function listSessionIds(runtimeRoot: string): Promise<string[]> {
+  const sessionsRoot = path.join(runtimeRoot, "sessions");
+  try {
+    const entries = await fs.readdir(sessionsRoot, { withFileTypes: true });
+    return entries
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => {
+        try {
+          return decodeURIComponent(entry.name);
+        } catch {
+          return entry.name;
+        }
+      });
+  } catch (error) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      (error as { code?: string }).code === "ENOENT"
+    ) {
+      return [];
+    }
+    throw error;
+  }
+}
+
+async function findToolCallInLedgers(input: {
+  runtimeRoot: string;
+  sessionId: string;
+  toolCallId: string;
+}): Promise<ToolCallLookup | null> {
+  const checkedSessionIds = new Set<string>();
+  const orderedSessionIds: string[] = [input.sessionId];
+  const knownSessionIds = await listSessionIds(input.runtimeRoot);
+  for (const sessionId of knownSessionIds) {
+    if (sessionId !== input.sessionId) {
+      orderedSessionIds.push(sessionId);
+    }
+  }
+
+  for (const sessionId of orderedSessionIds) {
+    if (checkedSessionIds.has(sessionId)) continue;
+    checkedSessionIds.add(sessionId);
+    const events = await readToolLoopEventsFromFilesystem(input.runtimeRoot, sessionId);
+    const call = [...events]
+      .reverse()
+      .find(
+        (event): event is ToolLoopEvent & { kind: "call" } =>
+          event.kind === "call" && event.toolCallId === input.toolCallId
+      );
+    if (call) {
+      return { sessionId, events, call };
+    }
+  }
+
+  return null;
+}
+
+export async function appendClientToolResultToLedger(
+  input: AppendClientToolResultInput
+): Promise<AppendClientToolResultOutput> {
+  const lookup = await findToolCallInLedgers({
+    runtimeRoot: input.runtimeRoot,
+    sessionId: input.sessionId,
+    toolCallId: input.toolCallId,
+  });
+  if (!lookup) {
+    return { status: "missing_call" };
+  }
+  const { sessionId, events, call } = lookup;
+
+  const hasResult = events.some(
+    (event) => event.kind === "result" && event.idempotencyKey === call.idempotencyKey
+  );
+  if (hasResult) {
+    return {
+      status: "duplicate",
+      runId: call.runId,
+      toolName: call.toolName,
+      idempotencyKey: call.idempotencyKey,
+    };
+  }
+
+  const resultEvent = toolLoopEventSchema.parse({
+    kind: "result",
+    runId: call.runId,
+    toolCallId: call.toolCallId,
+    toolName: call.toolName,
+    result: input.result,
+    isError: input.isError,
+    idempotencyKey: call.idempotencyKey,
+  });
+
+  await appendToolLoopEventToFilesystem(input.runtimeRoot, sessionId, resultEvent);
+  return {
+    status: "appended",
+    runId: call.runId,
+    toolName: call.toolName,
+    idempotencyKey: call.idempotencyKey,
+  };
+}
+
 function emitPiEvent(context: PiRuntimeEmitContext, payload: PiEmitPayload): void {
   const sequence = context.sequenceRef.value;
   context.sequenceRef.value += 1;

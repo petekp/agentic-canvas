@@ -28,6 +28,16 @@ describe("createSystemPrompt", () => {
     expect(prompt).toContain("All available channels");
   });
 
+  it("instructs the model to chain follow-up tool calls after create_space", () => {
+    const prompt = createSystemPrompt({ canvas: makeCanvas() });
+    expect(prompt).toContain(
+      "If a request includes creating/switching space plus follow-up edits"
+    );
+    expect(prompt).toContain(
+      "emit all required tool calls in the same run"
+    );
+  });
+
   it("includes integration availability hints so the assistant can pick fallbacks", () => {
     const prevSlackBot = process.env.SLACK_BOT_TOKEN;
     const prevSlackUser = process.env.SLACK_USER_TOKEN;

@@ -5,6 +5,7 @@ import {
   canTransitionMorningBriefState,
   transitionMorningBriefState,
   validateMorningBriefComponentData,
+  validateMorningBriefReasonerOutput,
 } from "@/lib/morning-brief";
 
 function createMorningBriefData(
@@ -99,6 +100,111 @@ describe("morning brief validation", () => {
       expect(result.errors.join(" ")).toContain("state");
     }
   });
+
+  it("preserves v0.2 fields on validated payloads", () => {
+    const payload = createMorningBriefData() as unknown as Record<string, unknown>;
+    const current = payload.current as Record<string, unknown>;
+
+    current.priorities = [
+      {
+        id: "priority_1",
+        rank: 1,
+        title: "Protect signup conversion while deployment health recovers",
+        recommendation: "Roll back and triage the failing release.",
+        approach: "Coordinate with on-call and isolate the recent risky diff.",
+        whyHighestImpact: "Conversion is dropping during active traffic.",
+        horizon: "today",
+        scores: {
+          impact: 92,
+          urgency: 86,
+          ownershipFit: 80,
+          confidence: 70,
+          composite: 84,
+        },
+        certainty: "medium",
+        ownershipHypothesis: {
+          likelyOwner: "shared",
+          rationale: "Requires engineering + product coordination.",
+          needsVerification: true,
+        },
+        relatedEvidenceIds: ["ev_1"],
+        primaryActions: [
+          {
+            id: "act_1",
+            label: "Open deployment error",
+            app: "vercel",
+            type: "open_link",
+            expectedOutcome: "Identify root cause and mitigation path.",
+          },
+        ],
+      },
+    ];
+    current.sourceReadiness = [
+      { source: "github", available: true, freshnessMinutes: 5 },
+      { source: "posthog", available: true, freshnessMinutes: 8 },
+    ];
+    current.verification = [
+      {
+        id: "verify_1",
+        prompt: "Confirm who owns signup drop mitigation this morning.",
+        reason: "ownership_uncertain",
+      },
+    ];
+
+    const result = validateMorningBriefComponentData(payload);
+
+    expect(result.valid).toBe(true);
+    if (!result.valid) return;
+
+    const validatedCurrent = result.data.current as unknown as {
+      priorities?: Array<{ id: string; rank: number }>;
+      sourceReadiness?: Array<{ source: string; available: boolean }>;
+      verification?: Array<{ id: string; reason: string }>;
+    };
+    expect(validatedCurrent.priorities?.[0]?.id).toBe("priority_1");
+    expect(validatedCurrent.priorities?.[0]?.rank).toBe(1);
+    expect(validatedCurrent.sourceReadiness?.some((entry) => entry.source === "posthog")).toBe(
+      true
+    );
+    expect(validatedCurrent.verification?.[0]?.reason).toBe("ownership_uncertain");
+  });
+
+  it("rejects invalid v0.2 priority ranks when priorities are present", () => {
+    const payload = createMorningBriefData() as unknown as Record<string, unknown>;
+    const current = payload.current as Record<string, unknown>;
+
+    current.priorities = [
+      {
+        id: "priority_bad",
+        rank: 4,
+        title: "Invalid rank priority",
+        recommendation: "Do a thing",
+        approach: "Do it carefully",
+        whyHighestImpact: "Because",
+        horizon: "today",
+        scores: {
+          impact: 80,
+          urgency: 70,
+          ownershipFit: 60,
+          confidence: 50,
+          composite: 71,
+        },
+        certainty: "low",
+        ownershipHypothesis: {
+          likelyOwner: "unknown",
+          rationale: "Not enough context",
+          needsVerification: true,
+        },
+        relatedEvidenceIds: ["ev_1"],
+        primaryActions: [],
+      },
+    ];
+
+    const result = validateMorningBriefComponentData(payload);
+    expect(result.valid).toBe(false);
+    if (result.valid) return;
+    expect(result.errors.join(" ")).toContain("priorities");
+  });
 });
 
 describe("morning brief lifecycle transitions", () => {
@@ -126,6 +232,127 @@ describe("morning brief lifecycle transitions", () => {
     expect(() => transitionMorningBriefState(payload, "monitoring")).toThrow(
       "Invalid Morning Brief lifecycle transition"
     );
+  });
+});
+
+describe("morning brief reasoner validation", () => {
+  it("accepts a valid reasoner payload", () => {
+    const result = validateMorningBriefReasonerOutput({
+      mission: {
+        title: "Stabilize release path",
+        whyNow: "Deployment failures coincide with active traffic.",
+        confidenceScore: 74,
+        certainty: "medium",
+      },
+      confidence: "medium",
+      priorities: [
+        {
+          id: "priority_1",
+          rank: 1,
+          title: "Resolve failing deployment",
+          recommendation: "Fix release blocker before new merges.",
+          approach: "Open deployment logs, identify regression, and patch.",
+          whyHighestImpact: "Production errors affect all active sessions.",
+          horizon: "today",
+          scores: {
+            impact: 90,
+            urgency: 88,
+            ownershipFit: 80,
+            confidence: 75,
+            composite: 85,
+          },
+          certainty: "medium",
+          ownershipHypothesis: {
+            likelyOwner: "me",
+            rationale: "Direct ownership of deploy pipeline.",
+            needsVerification: false,
+          },
+          relatedEvidenceIds: ["ev_1"],
+          primaryActions: [
+            {
+              id: "action_1",
+              label: "Open failing deployment",
+              app: "vercel",
+              type: "open_link",
+              expectedOutcome: "Identify root cause quickly.",
+            },
+          ],
+        },
+      ],
+      correlations: [],
+      assumptions: [
+        {
+          id: "assumption_1",
+          text: "Slack signal may be incomplete due to token scope.",
+          reason: "missing_data",
+          sourceScope: ["slack"],
+          relatedSource: "slack",
+          impact: "medium",
+        },
+      ],
+      verification: [
+        {
+          id: "verify_1",
+          prompt: "Is this still the top KPI for this week?",
+          reason: "ownership_uncertain",
+        },
+      ],
+      weeklyCheckin: {
+        ready: true,
+        bullets: ["Mitigated release risk on the highest traffic path."],
+        gaps: [],
+      },
+    });
+
+    expect(result.valid).toBe(true);
+  });
+
+  it("rejects reasoner payloads with more than three priorities", () => {
+    const priority = {
+      id: "priority",
+      rank: 1,
+      title: "Item",
+      recommendation: "Do it",
+      approach: "How",
+      whyHighestImpact: "Why",
+      horizon: "today",
+      scores: {
+        impact: 80,
+        urgency: 70,
+        ownershipFit: 60,
+        confidence: 50,
+        composite: 67,
+      },
+      certainty: "low",
+      ownershipHypothesis: {
+        likelyOwner: "unknown",
+        rationale: "unknown",
+        needsVerification: true,
+      },
+      relatedEvidenceIds: ["ev_1"],
+      primaryActions: [],
+    } as const;
+
+    const result = validateMorningBriefReasonerOutput({
+      mission: {
+        title: "Too many priorities",
+        whyNow: "Testing cap",
+        confidenceScore: 40,
+        certainty: "low",
+      },
+      confidence: "low",
+      priorities: [priority, { ...priority, id: "p2", rank: 2 }, { ...priority, id: "p3", rank: 3 }, { ...priority, id: "p4", rank: 3 }],
+      correlations: [],
+      assumptions: [],
+      verification: [],
+      weeklyCheckin: {
+        ready: false,
+        bullets: [],
+        gaps: [],
+      },
+    });
+
+    expect(result.valid).toBe(false);
   });
 });
 

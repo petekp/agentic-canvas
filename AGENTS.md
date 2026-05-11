@@ -5,10 +5,16 @@ This file is for coding agents working in the Agentic Canvas repo. It captures t
 ## Start Here (Order Matters)
 
 1. `AGENT_CHANGELOG.md` — recent decisions, deprecations, and new features.
-2. `.claude/plans/primitives-spec-v0.1.md` — canonical types and command shapes.
-3. `.claude/plans/component-schemas-v0.1.md` — component config and data schemas.
-4. `.claude/plans/store-architecture-v0.1.md` — how Zustand slices compose.
-5. `.claude/plans/template-primitives-v0.1.md` — template generation system.
+2. `.claude/plans/product-vision-v0.1.md` — product north star and experience goals.
+3. `.claude/plans/dogfood-use-cases-v0.1.md` — personal use-case backlog for slice selection.
+4. `.claude/plans/vision-alignment-checklist-v0.1.md` — required pre-merge fit checks.
+5. `.claude/plans/user0-morning-brief-profile-v0.1.md` — User 0 needs and operating constraints.
+6. `.claude/plans/morning-brief-output-schema-v0.2.md` — target Morning Brief output contract.
+7. `.claude/plans/morning-brief-openclaw-principles-v0.1.md` — OpenClaw-inspired reliability and LLM-first guardrails for briefing migration.
+8. `.claude/plans/primitives-spec-v0.1.md` — canonical types and command shapes.
+9. `.claude/plans/component-schemas-v0.1.md` — component config and data schemas.
+10. `.claude/plans/store-architecture-v0.1.md` — how Zustand slices compose.
+11. `.claude/plans/template-primitives-v0.1.md` — template generation system.
 
 ## New Workflows (2026-02)
 

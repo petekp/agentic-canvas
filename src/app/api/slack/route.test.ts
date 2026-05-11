@@ -49,9 +49,39 @@ describe("Slack API route", () => {
     const res = await POST(req as unknown as NextRequest);
     const payload = await res.json();
 
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(403);
     expect(payload.error).toMatch(/not in|not a member/i);
     expect(payload.error).toMatch(/invite|add/i);
+  });
+
+  it("returns 404 when a channel name does not exist", async () => {
+    const { POST } = await import("@/app/api/slack/route");
+    globalThis.fetch = vi.fn(async (url: RequestInfo | URL) => {
+      const urlString = url.toString();
+      if (urlString.includes("conversations.list")) {
+        return jsonResponse({
+          ok: true,
+          channels: [{ id: "C123", name: "general" }],
+        });
+      }
+      throw new Error(`Unexpected fetch: ${urlString}`);
+    }) as unknown as typeof fetch;
+
+    const req = new Request("http://localhost/api/slack", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "channel_activity",
+        params: { channelName: "tes", limit: 5 },
+      }),
+    });
+
+    const res = await POST(req as unknown as NextRequest);
+    const payload = await res.json();
+
+    expect(res.status).toBe(404);
+    expect(payload.error).toMatch(/channel not found/i);
+    expect(payload.error).toMatch(/tes/i);
   });
 
   it("returns available channels for channel_list", async () => {

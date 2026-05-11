@@ -1,7 +1,12 @@
 // @vitest-environment jsdom
-import { render } from "@testing-library/react";
+import { act, render, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SpacePageClient } from "@/app/spaces/[id]/SpacePageClient";
+import {
+  beginAssistantToolExecution,
+  resetSpaceRouteSyncQueueForTests,
+  setAssistantRunActive,
+} from "@/lib/space-route-sync-queue";
 
 const mockReplace = vi.fn();
 const mockPush = vi.fn();
@@ -45,6 +50,7 @@ describe("SpacePageClient", () => {
     mockReplace.mockReset();
     mockPush.mockReset();
     mockLoadSpace.mockReset();
+    resetSpaceRouteSyncQueueForTests();
     state.spaces = [
       { id: "space_old", name: "Old Space", kind: "ad_hoc" },
       { id: "space_new", name: "New Space", kind: "ad_hoc" },
@@ -66,6 +72,50 @@ describe("SpacePageClient", () => {
     // Old route component should not force-load its own id back.
     expect(mockLoadSpace).not.toHaveBeenCalled();
     expect(mockReplace).toHaveBeenCalledWith("/spaces/space_new");
+  });
+
+  it("keeps chat mounted, defers stale-route replace, then replaces after run ends", async () => {
+    setAssistantRunActive(true);
+    const { rerender, getByTestId } = render(<SpacePageClient id="space_old" />);
+
+    expect(getByTestId("chat")).toBeTruthy();
+    expect(mockReplace).not.toHaveBeenCalled();
+
+    state.activeSpaceId = "space_new";
+    rerender(<SpacePageClient id="space_old" />);
+
+    expect(getByTestId("chat")).toBeTruthy();
+    expect(mockLoadSpace).not.toHaveBeenCalled();
+    expect(mockReplace).not.toHaveBeenCalled();
+
+    act(() => {
+      setAssistantRunActive(false);
+    });
+
+    await waitFor(() => {
+      expect(mockReplace).toHaveBeenCalledWith("/spaces/space_new");
+    });
+    expect(mockLoadSpace).not.toHaveBeenCalled();
+  });
+
+  it("defers stale-route replace while a tool is still executing after run flag clears", () => {
+    setAssistantRunActive(true);
+    const endToolExecution = beginAssistantToolExecution();
+    const { rerender, getByTestId } = render(<SpacePageClient id="space_old" />);
+
+    setAssistantRunActive(false);
+    state.activeSpaceId = "space_new";
+    rerender(<SpacePageClient id="space_old" />);
+
+    expect(getByTestId("chat")).toBeTruthy();
+    expect(mockReplace).not.toHaveBeenCalled();
+    expect(mockLoadSpace).not.toHaveBeenCalled();
+
+    endToolExecution();
+    rerender(<SpacePageClient id="space_old" />);
+
+    expect(mockReplace).toHaveBeenCalledWith("/spaces/space_new");
+    expect(mockLoadSpace).not.toHaveBeenCalled();
   });
 
   it("loads route space when opening a different space directly", () => {

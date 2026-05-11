@@ -29,29 +29,47 @@ Open http://localhost:3000 and try: "Add a stat tile showing open PRs"
 
 When working on this project, read specs in this order:
 
-1. **Types first:** `.claude/plans/primitives-spec-v0.1.md`
+1. **Vision first:** `.claude/plans/product-vision-v0.1.md`
+   - North star, product promise, and experience goals
+
+2. **Dogfood use cases:** `.claude/plans/dogfood-use-cases-v0.1.md`
+   - Personal workflows to improve slice-by-slice
+
+3. **Vision checklist:** `.claude/plans/vision-alignment-checklist-v0.1.md`
+   - Required fit checks before merge
+
+4. **User 0 profile:** `.claude/plans/user0-morning-brief-profile-v0.1.md`
+   - Personal operating needs and priority behavior for Morning Brief
+
+5. **Morning Brief output contract:** `.claude/plans/morning-brief-output-schema-v0.2.md`
+   - Exact output schema, ranking logic, and verification flow
+
+6. **OpenClaw principles:** `.claude/plans/morning-brief-openclaw-principles-v0.1.md`
+   - LLM-first reasoner guardrails, deterministic fallback limits, and rollout telemetry requirements
+
+7. **Types first:** `.claude/plans/primitives-spec-v0.1.md`
    - All TypeScript interfaces live here
    - Commands, events, and protocols defined
 
-2. **Components second:** `.claude/plans/component-schemas-v0.1.md`
+8. **Components second:** `.claude/plans/component-schemas-v0.1.md`
    - Config and data shapes for each component
    - Actions the assistant can take
 
-3. **Store third:** `.claude/plans/store-architecture-v0.1.md`
+9. **Store third:** `.claude/plans/store-architecture-v0.1.md`
    - Zustand slices and how they compose
    - Command → action → undo/redo flow
 
-4. **Spaces navigation:** `.claude/plans/spaces-navigation-v0.2.md`
+10. **Spaces navigation:** `.claude/plans/spaces-navigation-v0.2.md`
    - Spaces grid + space routing
    - Space lifecycle (pin/unpin/cleanup)
 
-5. **Templates:** `.claude/plans/template-primitives-v0.1.md`
+11. **Templates:** `.claude/plans/template-primitives-v0.1.md`
    - State-aware template generation
 
-6. **Undo/Redo:** `.claude/plans/undo-redo-system-v2.md`
+12. **Undo/Redo:** `.claude/plans/undo-redo-system-v2.md`
    - Snapshot-based undo with policies + audit log
 
-7. **assistant-ui tools:** `.claude/plans/assistant-ui-native-tools.md`
+13. **assistant-ui tools:** `.claude/plans/assistant-ui-native-tools.md`
    - `makeAssistantTool` patterns + UI rendering
 
 ## Key Architecture Decisions

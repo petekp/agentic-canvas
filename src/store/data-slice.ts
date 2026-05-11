@@ -522,10 +522,55 @@ async function fetchBriefingData(
 
   const normalizeParam = (value: unknown) =>
     typeof value === "string" && value.startsWith("$") ? undefined : value;
+  const normalizeStringArrayParam = (value: unknown) => {
+    if (!Array.isArray(value)) return undefined;
+    const normalized = value
+      .filter((item): item is string => typeof item === "string")
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0 && !item.startsWith("$"));
+    return normalized.length > 0 ? normalized : undefined;
+  };
+  const normalizeNumberParam = (value: unknown) => {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string") {
+      if (value.startsWith("$")) return undefined;
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+    return undefined;
+  };
+  const normalizePosthogTimeWindow = (value: unknown) => {
+    const normalized = normalizeParam(value);
+    if (normalized === "7d" || normalized === "14d" || normalized === "30d") {
+      return normalized;
+    }
+    return undefined;
+  };
+  const normalizeReasoningMode = (value: unknown) => {
+    const normalized = normalizeParam(value);
+    if (normalized === "llm" || normalized === "fallback") {
+      return normalized;
+    }
+    return undefined;
+  };
+  const normalizeRepos = (value: unknown): string[] => normalizeStringArrayParam(value) ?? [];
+
+  let resolvedRepos =
+    normalizeRepos(params.repos).length > 0
+      ? normalizeRepos(params.repos)
+      : normalizeRepos(activeSpace?.briefingConfig?.repos);
+
+  if (resolvedRepos.length === 0) {
+    resolvedRepos = inferBriefingReposFromWorkspace(state);
+  }
+
+  if (resolvedRepos.length === 0 && binding.query.type === "morning_brief") {
+    resolvedRepos = await fetchDefaultBriefingRepos();
+  }
 
   const requestBody = {
     since,
-    repos: params.repos ?? activeSpace?.briefingConfig?.repos ?? [],
+    repos: resolvedRepos,
     slackUserId:
       normalizeParam(params.slackUserId) ??
       activeSpace?.briefingConfig?.slackUserId,
@@ -536,6 +581,18 @@ async function fetchBriefingData(
     vercelTeamId:
       normalizeParam(params.vercelTeamId) ??
       activeSpace?.briefingConfig?.vercelTeamId,
+    posthogProperties:
+      normalizeStringArrayParam(params.posthogProperties) ??
+      activeSpace?.briefingConfig?.posthogProperties,
+    posthogTimeWindow:
+      normalizePosthogTimeWindow(params.posthogTimeWindow) ??
+      activeSpace?.briefingConfig?.posthogTimeWindow,
+    posthogTopPagesLimit:
+      normalizeNumberParam(params.posthogTopPagesLimit) ??
+      activeSpace?.briefingConfig?.posthogTopPagesLimit,
+    reasoningMode:
+      normalizeReasoningMode(params.reasoningMode) ??
+      activeSpace?.briefingConfig?.reasoningMode,
     generateNarrative: params.generateNarrative ?? true,
     outputType: binding.query.type === "morning_brief" ? "morning_brief" : "recommendations",
   };
@@ -624,6 +681,71 @@ async function fetchBriefingData(
     }
 
     return fallback;
+  }
+}
+
+function inferBriefingReposFromWorkspace(state: AgenticCanvasStore): string[] {
+  const repos = new Set<string>();
+  const addRepo = (value: unknown) => {
+    if (typeof value !== "string") return;
+    const trimmed = value.trim();
+    if (!trimmed || trimmed.startsWith("$")) return;
+    repos.add(trimmed);
+  };
+
+  for (const space of state.workspace.spaces) {
+    for (const repo of space.briefingConfig?.repos ?? []) {
+      addRepo(repo);
+    }
+    for (const component of space.snapshot.components) {
+      if (!component.dataBinding || component.dataBinding.source !== "mock-github") continue;
+      addRepo(component.dataBinding.query.params?.repo);
+      const bindingRepos = component.dataBinding.query.params?.repos;
+      if (Array.isArray(bindingRepos)) {
+        for (const repo of bindingRepos) addRepo(repo);
+      }
+      addRepo(component.config?.repo);
+    }
+  }
+
+  for (const component of state.canvas.components) {
+    if (!component.dataBinding || component.dataBinding.source !== "mock-github") continue;
+    addRepo(component.dataBinding.query.params?.repo);
+    const bindingRepos = component.dataBinding.query.params?.repos;
+    if (Array.isArray(bindingRepos)) {
+      for (const repo of bindingRepos) addRepo(repo);
+    }
+    addRepo(component.config?.repo);
+  }
+
+  return Array.from(repos).slice(0, 5);
+}
+
+async function fetchDefaultBriefingRepos(): Promise<string[]> {
+  try {
+    const response = await fetch("/api/github", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "user_repos",
+        params: {},
+      }),
+    });
+
+    if (!response.ok) {
+      return [];
+    }
+
+    const payload = (await response.json()) as {
+      data?: Array<{ fullName?: string }>;
+    };
+    const repos = (payload.data ?? [])
+      .map((repo) => (typeof repo.fullName === "string" ? repo.fullName.trim() : ""))
+      .filter((repo) => repo.length > 0)
+      .slice(0, 5);
+    return repos;
+  } catch {
+    return [];
   }
 }
 

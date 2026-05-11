@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ModelMessage } from "ai";
 import { buildToolIdempotencyKey } from "./pi-adapter-contract";
 import {
+  appendClientToolResultToLedger,
   appendToolLoopEventToFilesystem,
   extractToolResultCandidatesFromMessages,
   ingestHistoricalToolResultsFromMessages,
@@ -173,6 +174,118 @@ describe("pi runtime", () => {
       toolCallId: "tc_known",
       toolName: "add_component",
       idempotencyKey: buildToolIdempotencyKey(sessionId, "tc_known"),
+      isError: false,
+    });
+  });
+
+  it("appends client tool results when a matching call exists and de-dupes retries", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "pi-runtime-client-result-"));
+    const sessionId = "ws_3:space_3:thread_3";
+
+    await appendToolLoopEventToFilesystem(root, sessionId, {
+      kind: "call",
+      runId: "run_3",
+      toolCallId: "tc_client_1",
+      toolName: "add_component",
+      args: { type_id: "slack.channel-activity" },
+      idempotencyKey: buildToolIdempotencyKey(sessionId, "tc_client_1"),
+    });
+
+    const first = await appendClientToolResultToLedger({
+      runtimeRoot: root,
+      sessionId,
+      toolCallId: "tc_client_1",
+      toolName: "add_component",
+      result: { success: false, missingFields: ["channelId"] },
+      isError: false,
+    });
+
+    expect(first).toEqual({
+      status: "appended",
+      runId: "run_3",
+      toolName: "add_component",
+      idempotencyKey: buildToolIdempotencyKey(sessionId, "tc_client_1"),
+    });
+
+    const duplicate = await appendClientToolResultToLedger({
+      runtimeRoot: root,
+      sessionId,
+      toolCallId: "tc_client_1",
+      toolName: "add_component",
+      result: { success: false, missingFields: ["channelId"] },
+      isError: false,
+    });
+    expect(duplicate).toEqual({
+      status: "duplicate",
+      runId: "run_3",
+      toolName: "add_component",
+      idempotencyKey: buildToolIdempotencyKey(sessionId, "tc_client_1"),
+    });
+
+    const missing = await appendClientToolResultToLedger({
+      runtimeRoot: root,
+      sessionId,
+      toolCallId: "tc_client_missing",
+      toolName: "add_component",
+      result: { success: true },
+      isError: false,
+    });
+    expect(missing).toEqual({
+      status: "missing_call",
+    });
+
+    const events = await readToolLoopEventsFromFilesystem(root, sessionId);
+    expect(events).toHaveLength(2);
+    expect(events[1]).toMatchObject({
+      kind: "result",
+      runId: "run_3",
+      toolCallId: "tc_client_1",
+      toolName: "add_component",
+      result: { success: false, missingFields: ["channelId"] },
+      idempotencyKey: buildToolIdempotencyKey(sessionId, "tc_client_1"),
+      isError: false,
+    });
+  });
+
+  it("resolves tool-call session drift by locating call events in another session", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "pi-runtime-session-drift-"));
+    const callSessionId = "ws_4:space_old:thread_4";
+    const currentSessionId = "ws_4:space_new:thread_4";
+
+    await appendToolLoopEventToFilesystem(root, callSessionId, {
+      kind: "call",
+      runId: "run_4",
+      toolCallId: "tc_drift_1",
+      toolName: "create_space",
+      args: { name: "Debug Space", switch_to: true },
+      idempotencyKey: buildToolIdempotencyKey(callSessionId, "tc_drift_1"),
+    });
+
+    const appended = await appendClientToolResultToLedger({
+      runtimeRoot: root,
+      sessionId: currentSessionId,
+      toolCallId: "tc_drift_1",
+      toolName: "create_space",
+      result: { success: true, spaceId: "space_1" },
+      isError: false,
+    });
+
+    expect(appended).toEqual({
+      status: "appended",
+      runId: "run_4",
+      toolName: "create_space",
+      idempotencyKey: buildToolIdempotencyKey(callSessionId, "tc_drift_1"),
+    });
+
+    const events = await readToolLoopEventsFromFilesystem(root, callSessionId);
+    expect(events).toHaveLength(2);
+    expect(events[1]).toMatchObject({
+      kind: "result",
+      runId: "run_4",
+      toolCallId: "tc_drift_1",
+      toolName: "create_space",
+      result: { success: true, spaceId: "space_1" },
+      idempotencyKey: buildToolIdempotencyKey(callSessionId, "tc_drift_1"),
       isError: false,
     });
   });

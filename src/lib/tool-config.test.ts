@@ -12,6 +12,26 @@ describe("resolveConfigFromChat", () => {
     expect(resolved).toMatchObject({ channelName: "general" });
   });
 
+  it("infers slack channelName from keyed prompt text", () => {
+    const resolved = resolveConfigFromChat(
+      "slack.channel-activity",
+      undefined,
+      'Use add_component with channelName "general" and limit 5.'
+    );
+
+    expect(resolved).toMatchObject({ channelName: "general" });
+  });
+
+  it("infers slack channel limit from keyed prompt text", () => {
+    const resolved = resolveConfigFromChat(
+      "slack.channel-activity",
+      undefined,
+      'Use add_component with channelName "general" and limit 5.'
+    );
+
+    expect(resolved).toMatchObject({ limit: 5 });
+  });
+
   it("infers slack channelId from the last user message", () => {
     const resolved = resolveConfigFromChat(
       "slack.channel-activity",

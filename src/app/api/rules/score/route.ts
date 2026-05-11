@@ -5,6 +5,7 @@
 import { NextRequest } from "next/server";
 import { generateObject } from "ai";
 import { openai } from "@ai-sdk/openai";
+import { loadPromptDoc } from "@/lib/prompt-docs";
 import { appendTelemetry } from "@/lib/telemetry";
 import { z } from "zod";
 
@@ -28,19 +29,10 @@ const ScoreResponseSchema = z.object({
   ),
 });
 
-const SCORE_SYSTEM_PROMPT = `You are a precise classifier.
-Return ONLY a JSON object with this shape:
-{
-  "scores": [
-    { "key": "string", "score": 0.0 }
-  ]
-}
-
-Rules:
-- score must be a number between 0 and 1 inclusive.
-- Higher score means better match to the instruction.
-- Return one entry per input item.
-- No markdown, no extra keys.`;
+const SCORE_SYSTEM_PROMPT = loadPromptDoc(
+  "docs/prompts/rules-score-system.md",
+  "You are a precise classifier. Return one score per item as JSON."
+);
 
 export async function POST(req: NextRequest) {
   try {

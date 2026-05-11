@@ -344,6 +344,158 @@ describe("data-slice fetchData", () => {
     }
   });
 
+  it("includes PostHog briefing params from space config in /api/briefing request", async () => {
+    const store = createTestStore();
+    const addResult = store.getState().addComponent({
+      typeId: "system.morning-brief",
+      config: {},
+    });
+    const componentId = addResult.affectedComponentIds[0];
+
+    store.setState((state) => {
+      const activeSpace = state.workspace.spaces.find((space) => space.id === state.activeSpaceId);
+      if (!activeSpace) return;
+      activeSpace.briefingConfig = {
+        repos: ["owner/repo"],
+        posthogProperties: ["app.example.com"],
+        posthogTimeWindow: "14d",
+        posthogTopPagesLimit: 7,
+        reasoningMode: "fallback",
+      } as typeof activeSpace.briefingConfig;
+    });
+
+    const fetchMock = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? "{}"));
+      expect(body.repos).toEqual(["owner/repo"]);
+      expect(body.posthogProperties).toEqual(["app.example.com"]);
+      expect(body.posthogTimeWindow).toBe("14d");
+      expect(body.posthogTopPagesLimit).toBe(7);
+      expect(body.reasoningMode).toBe("fallback");
+      expect(body.outputType).toBe("morning_brief");
+
+      return {
+        ok: true,
+        json: async () => ({
+          data: {
+            state: "presented",
+            current: {
+              version: 2,
+              generatedAt: new Date().toISOString(),
+              generatedBy: "assistant",
+              mission: {
+                id: "m1",
+                title: "Focus on onboarding conversion reliability",
+                rationale: "PostHog conversion and deploy errors indicate a high-impact risk.",
+                owner: "You",
+                horizon: "today",
+                priorityScore: 81,
+              },
+              evidence: [],
+              levers: [],
+              assumptions: [],
+              confidence: "medium",
+              freshnessSummary: "Freshness range 1-1 minutes; stale items 0.",
+            },
+            history: [],
+            userOverrides: [],
+          },
+          ttl: 1000,
+        }),
+      };
+    });
+
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    await store.getState().fetchData(componentId, {
+      source: "briefing",
+      query: { type: "morning_brief", params: {} },
+      refreshInterval: null,
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const ready = store.getState().canvas.components.find((c) => c.id === componentId);
+    expect(ready?.dataState.status).toBe("ready");
+    if (ready?.dataState.status === "ready") {
+      const data = ready.dataState.data as {
+        current?: { mission?: { title?: string } };
+      };
+      expect(data.current?.mission?.title).toContain("onboarding conversion");
+    }
+  });
+
+  it("auto-populates briefing repos from GitHub when morning brief has no configured repos", async () => {
+    const store = createTestStore();
+    const addResult = store.getState().addComponent({
+      typeId: "system.morning-brief",
+      config: {},
+    });
+    const componentId = addResult.affectedComponentIds[0];
+
+    const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? "{}"));
+      if (url === "/api/github") {
+        expect(body.type).toBe("user_repos");
+        return {
+          ok: true,
+          json: async () => ({
+            data: [
+              { fullName: "owner/repo-a" },
+              { fullName: "owner/repo-b" },
+            ],
+            ttl: 60_000,
+          }),
+        };
+      }
+
+      if (url === "/api/briefing") {
+        expect(body.outputType).toBe("morning_brief");
+        expect(body.repos).toEqual(["owner/repo-a", "owner/repo-b"]);
+        return {
+          ok: true,
+          json: async () => ({
+            data: {
+              state: "presented",
+              current: {
+                version: 2,
+                generatedAt: new Date().toISOString(),
+                generatedBy: "assistant",
+                mission: {
+                  id: "m1",
+                  title: "Unblock pull request flow across active repos",
+                  rationale: "Auto-seeded repos enabled actionable signal collection.",
+                  owner: "You",
+                  horizon: "today",
+                  priorityScore: 78,
+                },
+                evidence: [],
+                levers: [],
+                assumptions: [],
+                confidence: "medium",
+                freshnessSummary: "Freshness range 1-1 minutes; stale items 0.",
+              },
+              history: [],
+              userOverrides: [],
+            },
+            ttl: 1000,
+          }),
+        };
+      }
+
+      throw new Error(`Unexpected fetch: ${String(url)}`);
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    await store.getState().fetchData(componentId, {
+      source: "briefing",
+      query: { type: "morning_brief", params: {} },
+      refreshInterval: null,
+    });
+
+    const urls = fetchMock.mock.calls.map((call) => String(call[0]));
+    expect(urls).toContain("/api/github");
+    expect(urls).toContain("/api/briefing");
+  });
+
   it("applies LLM scores from /api/rules/score and sorts by score", async () => {
     const store = createTestStore();
 

@@ -36,4 +36,9 @@ describe("component config resolution", () => {
     const parsed = inferSlackChannelFromText("<#C123ABC45|general>");
     expect(parsed).toEqual({ channelId: "C123ABC45", channelName: "general" });
   });
+
+  it("parses keyed channel name text", () => {
+    const parsed = inferSlackChannelFromText('channelName "general"');
+    expect(parsed).toEqual({ channelName: "general" });
+  });
 });

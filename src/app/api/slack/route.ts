@@ -392,12 +392,12 @@ async function fetchChannelActivity(
   if (!channelId && params.channelName) {
     channelId = await resolveChannelId(params.channelName, headers);
     if (!channelId) {
-      throw new Error(`Channel not found: ${params.channelName}`);
+      throw new SlackRouteError(`Channel not found: ${params.channelName}`, 404);
     }
   }
 
   if (!channelId) {
-    throw new Error("Either channelId or channelName is required");
+    throw new SlackRouteError("Either channelId or channelName is required", 400);
   }
 
   const res = await fetch(
@@ -413,8 +413,9 @@ async function fetchChannelActivity(
   if (!data.ok) {
     if (data.error === "not_in_channel") {
       const channelLabel = params.channelName ? `#${params.channelName.replace(/^#/, "")}` : "the channel";
-      throw new Error(
-        `Slack bot is not a member of ${channelLabel}. Invite the app to the channel or choose another channel.`
+      throw new SlackRouteError(
+        `Slack bot is not a member of ${channelLabel}. Invite the app to the channel or choose another channel.`,
+        403
       );
     }
     throw new Error(`Slack API error: ${data.error}`);
@@ -643,19 +644,19 @@ async function fetchThreadReplies(
   const threadTs = params.threadTs;
 
   if (!threadTs) {
-    throw new Error("threadTs is required for thread_watch");
+    throw new SlackRouteError("threadTs is required for thread_watch", 400);
   }
 
   // Resolve channel name to ID if needed
   if (!channelId && params.channelName) {
     channelId = await resolveChannelId(params.channelName, headers);
     if (!channelId) {
-      throw new Error(`Channel not found: ${params.channelName}`);
+      throw new SlackRouteError(`Channel not found: ${params.channelName}`, 404);
     }
   }
 
   if (!channelId) {
-    throw new Error("Either channelId or channelName is required");
+    throw new SlackRouteError("Either channelId or channelName is required", 400);
   }
 
   const res = await fetch(
@@ -671,8 +672,9 @@ async function fetchThreadReplies(
   if (!data.ok) {
     if (data.error === "not_in_channel") {
       const channelLabel = params.channelName ? `#${params.channelName.replace(/^#/, "")}` : "the channel";
-      throw new Error(
-        `Slack bot is not a member of ${channelLabel}. Invite the app to the channel or choose another channel.`
+      throw new SlackRouteError(
+        `Slack bot is not a member of ${channelLabel}. Invite the app to the channel or choose another channel.`,
+        403
       );
     }
     throw new Error(`Slack API error: ${data.error}`);

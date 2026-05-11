@@ -42,7 +42,12 @@ import {
   summarizeGenerationResults,
   validateCanvasCommand,
 } from "@/lib/templates/execution";
-import { syncSpaceRoute } from "@/lib/space-route-sync";
+import {
+  beginAssistantToolExecution,
+  requestSpaceRouteSync,
+  setAssistantRunActive,
+} from "@/lib/space-route-sync-queue";
+import { ensureUniqueSpaceName, resolveSpaceIdentifier } from "@/lib/space-selection";
 import type { AssistantCommandSource } from "@/lib/undo/types";
 import type { CreateComponentPayload, UpdateComponentPayload, DataBinding } from "@/types";
 import {
@@ -790,18 +795,28 @@ function extractLastUserText(
 // Helper to create assistant source for undo attribution
 // ============================================================================
 
-function createToolSource(): AssistantCommandSource {
-  // Generate IDs since they're not available from tool execution context
+type FrontendToolExecutionContext = {
+  toolCallId?: string;
+};
+
+function createToolSource(toolCallId?: string): AssistantCommandSource {
+  // Use the model-provided toolCallId when available so undo/audit can be
+  // correlated with runtime ledger events.
+  const resolvedToolCallId =
+    typeof toolCallId === "string" && toolCallId.trim().length > 0
+      ? toolCallId
+      : `tc_${nanoid(10)}`;
   return {
     type: "assistant",
     messageId: `msg_${nanoid(10)}`,
-    toolCallId: `tc_${nanoid(10)}`,
+    toolCallId: resolvedToolCallId,
   };
 }
 
 type ToolTelemetryContext = {
   args?: unknown;
   source?: AssistantCommandSource;
+  executionContext?: FrontendToolExecutionContext;
 };
 
 function logToolStart(toolName: string, context: ToolTelemetryContext) {
@@ -831,19 +846,98 @@ function logToolError(toolName: string, error: unknown) {
   });
 }
 
+async function appendToolResultToPiLedger(input: {
+  toolName: string;
+  executionContext?: FrontendToolExecutionContext;
+  result: unknown;
+  isError: boolean;
+}): Promise<void> {
+  const toolCallId = input.executionContext?.toolCallId;
+  if (typeof toolCallId !== "string" || toolCallId.trim().length === 0) {
+    return;
+  }
+  if (typeof fetch !== "function") {
+    return;
+  }
+
+  const state = useStore.getState();
+  const workspaceId =
+    typeof state.workspace?.id === "string" && state.workspace.id.trim().length > 0
+      ? state.workspace.id
+      : "workspace_default";
+  const threadId =
+    typeof state.workspace?.threadId === "string" && state.workspace.threadId.trim().length > 0
+      ? state.workspace.threadId
+      : "thread_default";
+  const activeSpaceId =
+    typeof state.activeSpaceId === "string" && state.activeSpaceId.trim().length > 0
+      ? state.activeSpaceId
+      : null;
+
+  try {
+    const response = await fetch("/api/pi/runtime/tool-result", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        workspaceId,
+        threadId,
+        activeSpaceId,
+        toolCallId,
+        toolName: input.toolName,
+        result: input.result,
+        isError: input.isError,
+      }),
+    });
+
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => ({}))) as { error?: string };
+      throw new Error(payload.error ?? `HTTP ${response.status}`);
+    }
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : typeof error === "string" ? error : "Unknown error";
+    void trackClientTelemetry({
+      source: `tool.${input.toolName}`,
+      event: "ledger_result_append_error",
+      level: "error",
+      data: {
+        toolCallId,
+        error: message,
+      },
+    });
+  }
+}
+
 async function withToolTelemetry<T>(
   toolName: string,
   context: ToolTelemetryContext,
   run: () => Promise<T>
 ): Promise<T> {
+  const endToolExecution = beginAssistantToolExecution();
   logToolStart(toolName, context);
   try {
     const result = await run();
     logToolResult(toolName, result);
+    await appendToolResultToPiLedger({
+      toolName,
+      executionContext: context.executionContext,
+      result,
+      isError: false,
+    });
     return result;
   } catch (error) {
     logToolError(toolName, error);
+    await appendToolResultToPiLedger({
+      toolName,
+      executionContext: context.executionContext,
+      result: {
+        error: error instanceof Error ? error.message : String(error),
+      },
+      isError: true,
+    });
     throw error;
+  } finally {
+    endToolExecution();
   }
 }
 
@@ -969,12 +1063,12 @@ const addComponentToolDef = tool({
     label: z.string().optional(),
     transform_id: z.string().optional().describe("ID of a transform to apply to this component's data"),
   }),
-  execute: async (args) =>
-    withToolTelemetry("add_component", { args }, async () => {
+  execute: async (args, executionContext) =>
+    withToolTelemetry("add_component", { args, executionContext }, async () => {
       const { type_id, config, position, size, label, transform_id } = args;
       const store = useStore.getState();
       const getState = useStore.getState;
-      const source = createToolSource();
+      const source = createToolSource(executionContext?.toolCallId);
       let batchStarted = false;
 
       try {
@@ -1313,11 +1407,11 @@ const removeComponentToolDef = tool({
   parameters: z.object({
     component_id: z.string(),
   }),
-  execute: async (args) =>
-    withToolTelemetry("remove_component", { args }, async () => {
+  execute: async (args, executionContext) =>
+    withToolTelemetry("remove_component", { args, executionContext }, async () => {
       const { component_id } = args;
       const store = useStore.getState();
-      const source = createToolSource();
+      const source = createToolSource(executionContext?.toolCallId);
 
       store.startBatch(source, "AI: remove_component");
       try {
@@ -1369,11 +1463,11 @@ const moveComponentToolDef = tool({
     component_id: z.string(),
     position: positionSchema,
   }),
-  execute: async (args) =>
-    withToolTelemetry("move_component", { args }, async () => {
+  execute: async (args, executionContext) =>
+    withToolTelemetry("move_component", { args, executionContext }, async () => {
       const { component_id, position } = args;
       const store = useStore.getState();
-      const source = createToolSource();
+      const source = createToolSource(executionContext?.toolCallId);
 
       store.startBatch(source, "AI: move_component");
       try {
@@ -1416,11 +1510,11 @@ const resizeComponentToolDef = tool({
     component_id: z.string(),
     size: sizeSchema,
   }),
-  execute: async (args) =>
-    withToolTelemetry("resize_component", { args }, async () => {
+  execute: async (args, executionContext) =>
+    withToolTelemetry("resize_component", { args, executionContext }, async () => {
       const { component_id, size } = args;
       const store = useStore.getState();
-      const source = createToolSource();
+      const source = createToolSource(executionContext?.toolCallId);
 
       store.startBatch(source, "AI: resize_component");
       try {
@@ -1467,11 +1561,11 @@ const updateComponentToolDef = tool({
     label: z.string().optional(),
     pinned: z.boolean().optional(),
   }),
-  execute: async (args) =>
-    withToolTelemetry("update_component", { args }, async () => {
+  execute: async (args, executionContext) =>
+    withToolTelemetry("update_component", { args, executionContext }, async () => {
       const { component_id, config, label, pinned } = args;
       const store = useStore.getState();
-      const source = createToolSource();
+      const source = createToolSource(executionContext?.toolCallId);
 
       store.startBatch(source, "AI: update_component");
       try {
@@ -1526,11 +1620,11 @@ const clearCanvasToolDef = tool({
   parameters: z.object({
     preserve_pinned: z.boolean().default(true),
   }),
-  execute: async (args) =>
-    withToolTelemetry("clear_canvas", { args }, async () => {
+  execute: async (args, executionContext) =>
+    withToolTelemetry("clear_canvas", { args, executionContext }, async () => {
       const { preserve_pinned } = args;
       const store = useStore.getState();
-      const source = createToolSource();
+      const source = createToolSource(executionContext?.toolCallId);
 
       store.startBatch(source, "AI: clear_canvas");
       try {
@@ -1578,8 +1672,8 @@ Example: For filtering Slack messages to only show mentions, use:
       query_type: z.string().describe("Query type this works with (e.g., 'channel_messages', 'pull_requests')"),
     })).describe("What data sources this transform is compatible with"),
   }),
-  execute: async (args) =>
-    withToolTelemetry("create_transform", { args }, async () => {
+  execute: async (args, executionContext) =>
+    withToolTelemetry("create_transform", { args, executionContext }, async () => {
       const { name, description, code, compatible_with } = args;
       const store = useStore.getState();
 
@@ -1628,8 +1722,8 @@ const setPreferenceRulesToolDef = tool({
   parameters: z.object({
     patch: z.unknown().describe("Preference patch JSON (object or string)."),
   }),
-  execute: async (args) =>
-    withToolTelemetry("set_preference_rules", { args }, async () => {
+  execute: async (args, executionContext) =>
+    withToolTelemetry("set_preference_rules", { args, executionContext }, async () => {
       const { patch } = args;
       const store = useStore.getState();
 
@@ -1731,8 +1825,8 @@ const lookupSlackUserToolDef = tool({
     query: z.string().describe("Name or handle to search (e.g., 'pete' or '@pete')"),
     limit: z.number().int().min(1).max(20).optional().describe("Max results (default 5)"),
   }),
-  execute: async (args) =>
-    withToolTelemetry("lookup_slack_user", { args }, async () => {
+  execute: async (args, executionContext) =>
+    withToolTelemetry("lookup_slack_user", { args, executionContext }, async () => {
       const { query, limit } = args;
       try {
         const response = await fetch("/api/slack", {
@@ -1873,12 +1967,12 @@ This creates the transform AND adds the component together.`,
     size: sizeSchema.optional(),
     label: z.string().optional(),
   }),
-  execute: async (args) =>
-    withToolTelemetry("add_filtered_component", { args }, async () => {
+  execute: async (args, executionContext) =>
+    withToolTelemetry("add_filtered_component", { args, executionContext }, async () => {
       const { type_id, filter_name, filter_description, filter_code, config, position, size, label } = args;
       const store = useStore.getState();
       const getState = useStore.getState;
-      const source = createToolSource();
+      const source = createToolSource(executionContext?.toolCallId);
       let batchStarted = false;
 
       try {
@@ -2242,11 +2336,11 @@ const generateTemplateToolDef = tool({
     params: z.record(z.string(), z.unknown()).optional(),
     state: stateSchema.optional(),
   }),
-  execute: async (args) =>
-    withToolTelemetry("generate_template", { args }, async () => {
+  execute: async (args, executionContext) =>
+    withToolTelemetry("generate_template", { args, executionContext }, async () => {
       const { template_id, category, params, state } = args;
       const store = useStore.getState();
-      const source = createToolSource();
+      const source = createToolSource(executionContext?.toolCallId);
 
       registerDefaultTemplates();
 
@@ -2336,12 +2430,12 @@ export const GenerateTemplateTool = makeAssistantTool({
 // Generate Briefing Tool
 const generateBriefingToolDef = tool({
   description:
-    "Guided setup for a Morning Briefing space with GitHub repos, Slack mentions, and Vercel deployments.",
+    "Guided setup for a Morning Briefing space with GitHub, Slack, Vercel, and optional PostHog signals.",
   parameters: z.object({
     name: z.string().optional(),
   }),
-  execute: async (args) =>
-    withToolTelemetry("generate_briefing", { args }, async () => {
+  execute: async (args, executionContext) =>
+    withToolTelemetry("generate_briefing", { args, executionContext }, async () => {
       const { name } = args;
       return {
         success: true,
@@ -2369,6 +2463,9 @@ const GenerateBriefingToolUI = ({
   const [selectedSlackUser, setSelectedSlackUser] = useState<SlackUserListItem | null>(null);
   const [selectedSlackChannels, setSelectedSlackChannels] = useState<SlackChannelListItem[]>([]);
   const [selectedProject, setSelectedProject] = useState<VercelProjectListItem | null>(null);
+  const [posthogPropertiesInput, setPosthogPropertiesInput] = useState("");
+  const [posthogTimeWindow, setPosthogTimeWindow] = useState<"7d" | "14d" | "30d">("7d");
+  const [posthogTopPagesLimit, setPosthogTopPagesLimit] = useState(5);
   const [resolved, setResolved] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -2378,6 +2475,7 @@ const GenerateBriefingToolUI = ({
   const slackBotAvailable = integrationStatus ? integrationStatus.slack.bot : true;
   const slackStepAvailable = slackMentionsAvailable || slackBotAvailable;
   const vercelAvailable = integrationStatus ? integrationStatus.vercel : true;
+  const posthogAvailable = integrationStatus ? integrationStatus.posthog : true;
 
   useEffect(() => {
     let cancelled = false;
@@ -2428,6 +2526,10 @@ const GenerateBriefingToolUI = ({
       const primaryRepo = selectedRepos[0]?.fullName ?? "assistant-ui/assistant-ui";
       const now = Date.now();
       const initialSince = now - 24 * 60 * 60 * 1000;
+      const posthogProperties = posthogPropertiesInput
+        .split(",")
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0);
       const overrides = {
         repos: selectedRepos.map((repo) => repo.fullName),
         primaryRepo,
@@ -2438,6 +2540,13 @@ const GenerateBriefingToolUI = ({
         })),
         vercelProjectId: selectedProject?.id,
         vercelTeamId: selectedProject?.teamId,
+        ...(posthogAvailable
+          ? {
+              posthogProperties,
+              posthogTimeWindow,
+              posthogTopPagesLimit,
+            }
+          : {}),
       };
 
       const context = serializeCanvasContext(store.canvas);
@@ -2475,6 +2584,7 @@ const GenerateBriefingToolUI = ({
         id: channel.id,
         name: channel.name,
       }));
+      const hasPosthogConfig = posthogAvailable;
 
       filteredCommands = filteredCommands.map((command) => {
         if (command.type !== "component.create") return command;
@@ -2558,6 +2668,13 @@ const GenerateBriefingToolUI = ({
           ...(selectedSlackChannels.length > 0 ? { slackChannels: slackChannelSelection } : {}),
           ...(vercelProjectId ? { vercelProjectId } : {}),
           ...(vercelTeamId ? { vercelTeamId } : {}),
+          ...(hasPosthogConfig
+            ? {
+                posthogProperties,
+                posthogTimeWindow,
+                posthogTopPagesLimit,
+              }
+            : {}),
         } as Record<string, unknown>;
 
         const nextParams = {
@@ -2566,6 +2683,13 @@ const GenerateBriefingToolUI = ({
           ...(selectedSlackChannels.length > 0 ? { slackChannels: slackChannelSelection } : {}),
           ...(vercelProjectId ? { vercelProjectId } : {}),
           ...(vercelTeamId ? { vercelTeamId } : {}),
+          ...(hasPosthogConfig
+            ? {
+                posthogProperties,
+                posthogTimeWindow,
+                posthogTopPagesLimit,
+              }
+            : {}),
         } as Record<string, unknown>;
 
         if (!vercelProjectId) {
@@ -2579,6 +2703,14 @@ const GenerateBriefingToolUI = ({
         if (selectedSlackChannels.length === 0 && !selectedSlackUser) {
           delete nextConfig.slackChannels;
           delete nextParams.slackChannels;
+        }
+        if (!hasPosthogConfig) {
+          delete nextConfig.posthogProperties;
+          delete nextConfig.posthogTimeWindow;
+          delete nextConfig.posthogTopPagesLimit;
+          delete nextParams.posthogProperties;
+          delete nextParams.posthogTimeWindow;
+          delete nextParams.posthogTopPagesLimit;
         }
 
         return {
@@ -2622,7 +2754,8 @@ const GenerateBriefingToolUI = ({
       store.startBatch(source, "AI: generate_briefing");
       batchStarted = true;
 
-      const spaceName = args.name ?? "Morning Briefing";
+      const requestedName = args.name ?? "Morning Briefing";
+      const spaceName = ensureUniqueSpaceName(store.getSpaces(), requestedName);
       const spaceId = store.createEmptySpace({
         name: spaceName,
         createdBy: "assistant",
@@ -2633,6 +2766,13 @@ const GenerateBriefingToolUI = ({
           slackChannels: overrides.slackChannels,
           vercelProjectId: overrides.vercelProjectId,
           vercelTeamId: overrides.vercelTeamId,
+          ...(posthogAvailable
+            ? {
+                posthogProperties,
+                posthogTimeWindow,
+                posthogTopPagesLimit,
+              }
+            : {}),
           sinceTimestamp: initialSince,
         },
       });
@@ -2700,7 +2840,17 @@ const GenerateBriefingToolUI = ({
     } finally {
       setCreating(false);
     }
-  }, [args.name, selectedRepos, selectedSlackUser, selectedSlackChannels, selectedProject]);
+  }, [
+    args.name,
+    posthogAvailable,
+    posthogPropertiesInput,
+    posthogTimeWindow,
+    posthogTopPagesLimit,
+    selectedRepos,
+    selectedSlackUser,
+    selectedSlackChannels,
+    selectedProject,
+  ]);
 
   const renderStep = () => {
     if (step === "repos") {
@@ -2858,7 +3008,57 @@ const GenerateBriefingToolUI = ({
             <span>
               Vercel project: {selectedProject ? selectedProject.name : "Skipped"}
             </span>
+            <span>
+              PostHog: {posthogAvailable ? "Enabled" : "Skipped (not connected)"}
+            </span>
           </div>
+          {posthogAvailable ? (
+            <div className="flex flex-col gap-2 rounded border border-border/60 p-2">
+              <span className="text-foreground font-medium">PostHog options (optional)</span>
+              <label className="text-[11px]">
+                Host filters (comma-separated)
+                <input
+                  type="text"
+                  value={posthogPropertiesInput}
+                  onChange={(event) => setPosthogPropertiesInput(event.target.value)}
+                  placeholder="app.example.com, docs.example.com"
+                  className="mt-1 w-full rounded border border-border/70 bg-background px-2 py-1 text-xs text-foreground"
+                />
+              </label>
+              <label className="text-[11px]">
+                Time window
+                <select
+                  value={posthogTimeWindow}
+                  onChange={(event) =>
+                    setPosthogTimeWindow(event.target.value as "7d" | "14d" | "30d")
+                  }
+                  className="mt-1 w-full rounded border border-border/70 bg-background px-2 py-1 text-xs text-foreground"
+                >
+                  <option value="7d">Last 7 days</option>
+                  <option value="14d">Last 14 days</option>
+                  <option value="30d">Last 30 days</option>
+                </select>
+              </label>
+              <label className="text-[11px]">
+                Top pages limit
+                <input
+                  type="number"
+                  min={1}
+                  max={20}
+                  value={posthogTopPagesLimit}
+                  onChange={(event) => {
+                    const parsed = Number.parseInt(event.target.value, 10);
+                    if (Number.isNaN(parsed)) {
+                      setPosthogTopPagesLimit(5);
+                      return;
+                    }
+                    setPosthogTopPagesLimit(Math.max(1, Math.min(20, parsed)));
+                  }}
+                  className="mt-1 w-full rounded border border-border/70 bg-background px-2 py-1 text-xs text-foreground"
+                />
+              </label>
+            </div>
+          ) : null}
           {error ? (
             <div className="text-[11px] text-red-600 whitespace-pre-wrap">{error}</div>
           ) : null}
@@ -2914,11 +3114,11 @@ const createSpaceToolDef = tool({
       .optional(),
     switch_to: z.boolean().default(true),
   }),
-  execute: async (args) =>
-    withToolTelemetry("create_space", { args }, async () => {
+  execute: async (args, executionContext) =>
+    withToolTelemetry("create_space", { args, executionContext }, async () => {
       const { name, components, switch_to } = args;
       const store = useStore.getState();
-      const source = createToolSource();
+      const source = createToolSource(executionContext?.toolCallId);
       let createdSpaceId: string | null = null;
       let addedCount = 0;
       let batchStarted = false;
@@ -3019,9 +3219,7 @@ const createSpaceToolDef = tool({
         store.commitBatch();
         batchStarted = false;
         if (switch_to) {
-          setTimeout(() => {
-            syncSpaceRoute(spaceId);
-          }, 0);
+          requestSpaceRouteSync(spaceId);
         }
 
         return {
@@ -3065,14 +3263,13 @@ const switchSpaceToolDef = tool({
   parameters: z.object({
     space: z.string(),
   }),
-  execute: async (args) =>
-    withToolTelemetry("switch_space", { args }, async () => {
+  execute: async (args, executionContext) =>
+    withToolTelemetry("switch_space", { args, executionContext }, async () => {
       const { space } = args;
       const store = useStore.getState();
-      const source = createToolSource();
+      const source = createToolSource(executionContext?.toolCallId);
       const spaces = store.getSpaces();
-
-      const targetSpace = spaces.find((s) => s.id === space || s.name === space);
+      const targetSpace = resolveSpaceIdentifier(spaces, space, store.activeSpaceId);
       if (!targetSpace) {
         return {
           success: false,
@@ -3084,9 +3281,7 @@ const switchSpaceToolDef = tool({
       try {
         const result = store.loadSpace(targetSpace.id);
         store.commitBatch();
-        setTimeout(() => {
-          syncSpaceRoute(targetSpace.id);
-        }, 0);
+        requestSpaceRouteSync(targetSpace.id);
 
         return {
           success: result.success,
@@ -3120,17 +3315,17 @@ const pinSpaceToolDef = tool({
   parameters: z.object({
     space: z.string().optional(),
   }),
-  execute: async (args) =>
-    withToolTelemetry("pin_space", { args }, async () => {
+  execute: async (args, executionContext) =>
+    withToolTelemetry("pin_space", { args, executionContext }, async () => {
       const { space } = args;
       const store = useStore.getState();
-      const source = createToolSource();
+      const source = createToolSource(executionContext?.toolCallId);
 
       let spaceId: string | null = null;
 
       if (space) {
         const spaces = store.getSpaces();
-        const targetSpace = spaces.find((s) => s.id === space || s.name === space);
+        const targetSpace = resolveSpaceIdentifier(spaces, space, store.activeSpaceId);
         if (!targetSpace) {
           return {
             success: false,
@@ -3187,17 +3382,17 @@ const unpinSpaceToolDef = tool({
   parameters: z.object({
     space: z.string().optional(),
   }),
-  execute: async (args) =>
-    withToolTelemetry("unpin_space", { args }, async () => {
+  execute: async (args, executionContext) =>
+    withToolTelemetry("unpin_space", { args, executionContext }, async () => {
       const { space } = args;
       const store = useStore.getState();
-      const source = createToolSource();
+      const source = createToolSource(executionContext?.toolCallId);
 
       let spaceId: string | null = null;
 
       if (space) {
         const spaces = store.getSpaces();
-        const targetSpace = spaces.find((s) => s.id === space || s.name === space);
+        const targetSpace = resolveSpaceIdentifier(spaces, space, store.activeSpaceId);
         if (!targetSpace) {
           return {
             success: false,
@@ -3257,6 +3452,9 @@ export const UnpinSpaceTool = makeAssistantTool({
  * Tools register themselves and execute automatically when called by AI.
  */
 export function CanvasTools() {
+  const isAssistantRunning = useAssistantState(
+    (state) => state.thread?.isRunning ?? false
+  );
   const lastUserMessage = useAssistantState((state) =>
     extractLastUserText(
       state.thread?.messages as ReadonlyArray<{ role?: string; content?: unknown }>
@@ -3267,6 +3465,10 @@ export function CanvasTools() {
   useEffect(() => {
     setLastUserMessage(lastUserMessage ?? null);
   }, [lastUserMessage, setLastUserMessage]);
+
+  useEffect(() => {
+    setAssistantRunActive(Boolean(isAssistantRunning));
+  }, [isAssistantRunning]);
 
   return (
     <>

@@ -1,0 +1,2 @@
+- GitHub note: If GitHub token is unavailable, do not add GitHub components. Ask the user to connect GitHub.
+- GitHub note: Once GitHub is connected, use add_filtered_component for actor filters (for example: only "petekp").

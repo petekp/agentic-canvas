@@ -133,6 +133,10 @@ export interface Space {
     slackChannels?: Array<{ id: string; name: string }>;
     vercelProjectId?: string;
     vercelTeamId?: string;
+    posthogProperties?: string[];
+    posthogTimeWindow?: "7d" | "14d" | "30d";
+    posthogTopPagesLimit?: number;
+    reasoningMode?: "llm" | "fallback";
     sinceTimestamp?: number;
   };
 }
@@ -945,6 +949,7 @@ export interface EvidenceItem {
   freshnessMinutes: number;
   link?: string;
   confidence: "low" | "medium" | "high";
+  confidenceScore?: number;
 }
 
 export interface MissionStatement {
@@ -954,6 +959,9 @@ export interface MissionStatement {
   owner: string;
   horizon: "today" | "this_week";
   priorityScore: number;
+  whyNow?: string;
+  confidenceScore?: number;
+  certainty?: "low" | "medium" | "high";
 }
 
 export interface Lever {
@@ -976,6 +984,107 @@ export interface Assumption {
   text: string;
   reason: "missing_data" | "stale_data" | "conflict" | "insufficient_sample";
   sourceScope: MorningBriefDataSource[];
+  impact?: "low" | "medium" | "high";
+  relatedSource?: MorningBriefDataSource;
+}
+
+export interface MorningBriefMeta {
+  generatedAt: string;
+  window: {
+    todayStart: string;
+    now: string;
+    weekStart: string;
+  };
+  profileId: "user0";
+  rankingPolicy: "highest_impact_first";
+  maxPriorities: 3;
+}
+
+export interface MorningBriefAction {
+  id: string;
+  label: string;
+  app: "github" | "slack" | "posthog" | "vercel" | "workspace" | "custom";
+  type:
+    | "open_link"
+    | "create_space"
+    | "switch_space"
+    | "send_message_draft"
+    | "create_task"
+    | "manual";
+  payload?: Record<string, unknown>;
+  expectedOutcome: string;
+}
+
+export interface MorningBriefPriorityItem {
+  id: string;
+  rank: 1 | 2 | 3;
+  title: string;
+  recommendation: string;
+  approach: string;
+  whyHighestImpact: string;
+  horizon: "today" | "this_week";
+  scores: {
+    impact: number;
+    urgency: number;
+    ownershipFit: number;
+    confidence: number;
+    composite: number;
+  };
+  certainty: "low" | "medium" | "high";
+  ownershipHypothesis: {
+    likelyOwner: "me" | "team" | "shared" | "unknown";
+    rationale: string;
+    needsVerification: boolean;
+  };
+  relatedEvidenceIds: string[];
+  primaryActions: MorningBriefAction[];
+}
+
+export interface MorningBriefCorrelationStory {
+  id: string;
+  headline: string;
+  claim: string;
+  sources: MorningBriefDataSource[];
+  relatedEvidenceIds: string[];
+  confidenceScore: number;
+  certainty: "low" | "medium" | "high";
+}
+
+export interface MorningBriefActionDirectory {
+  availableNow: Array<{
+    app: string;
+    actions: string[];
+  }>;
+  suggestedSetup: Array<{
+    app: string;
+    missingAction: string;
+    value: string;
+    setupHint: string;
+  }>;
+}
+
+export interface MorningBriefWeeklyCheckinPrep {
+  ready: boolean;
+  bullets: string[];
+  gaps: string[];
+}
+
+export interface MorningBriefVerificationPrompt {
+  id: string;
+  prompt: string;
+  appliesToPriorityId?: string;
+  reason:
+    | "ownership_uncertain"
+    | "conflicting_signals"
+    | "low_confidence"
+    | "missing_context";
+}
+
+export interface MorningBriefSourceReadiness {
+  source: MorningBriefDataSource;
+  available: boolean;
+  freshnessMinutes?: number;
+  error?: string;
 }
 
 export interface MorningBriefVersion {
@@ -988,6 +1097,13 @@ export interface MorningBriefVersion {
   assumptions: Assumption[];
   confidence: "low" | "medium" | "high";
   freshnessSummary: string;
+  meta?: MorningBriefMeta;
+  priorities?: MorningBriefPriorityItem[];
+  correlations?: MorningBriefCorrelationStory[];
+  actionDirectory?: MorningBriefActionDirectory;
+  weeklyCheckin?: MorningBriefWeeklyCheckinPrep;
+  verification?: MorningBriefVerificationPrompt[];
+  sourceReadiness?: MorningBriefSourceReadiness[];
 }
 
 export type MorningBriefLifecycleState =
